@@ -551,9 +551,17 @@ $\mu_2 = \langle Q^2\rangle$ to $\mu_8 = \langle Q^8\rangle$:
    $2w_1y_1^2 + 2w_2y_2^2 = \mu_4$, then $w_0 = 1 - 2w_1 - 2w_2$.
 4. **Compute and average**, as for three: exact to degree 9.
 
-For seven frames and more the same matching is a small eigenvalue problem,
-built from the distribution's own averages [GolubWelsch1969]
-(`vibration.State.frames`).
+For seven frames and more the same matching is a small eigenvalue problem
+[GolubWelsch1969] — built without the averages themselves, from which the
+rule is found ill-conditioned as the frames grow, about a digit lost a frame
+even with the averages scaled not to grow [Gautschi1982]: the swing's
+distribution is replaced by a discrete one holding the same averages to
+degree $2m+1$ — $2m+2$ equal phases of the swing, each carrying the bell
+curve's $(m+1)$-point Gauss–Hermite rule — and the Gauss rule of that
+discrete distribution is found by the Lanczos recurrence on it, in exact
+arithmetic Gautschi's discretized Stieltjes procedure [Gautschi1982]; the
+bare swing's is Chebyshev's, below (`vibration.State.frames`, which builds
+three and five frames the same way, equal to the hand recipe).
 
 **Worked** — a swing $Q_0 = 2$ carrying a bell curve $\sigma = 1$ (any unit
 of $Q$): $\langle Q^2\rangle = 1 + 2 = 3$, $\langle Q^4\rangle = 3 + 12 + 6 =
@@ -1155,7 +1163,7 @@ $$
 $x_{\mathrm{out}}$ the rule's outermost node (§ 5.1: $\sqrt{3/2}$ for three
 frames, 2.0202 for five, 2.6520 for seven); $\max_A\lvert\mathbf L_A\rvert$ is
 `vibration.largest_move`, the one a Raman phase's $\pm\delta Q$ rests on too
-(`spectra.mode_frames.outermost_move` asks it; from R3d2b2 the motion
+(`spectra.mode_frames.outermost_move` asks it; from R3d2b2b the motion
 toolkit's `outermost_move`, for any state). Each frame states its own largest
 single-atom move beside it — the check a person reads against a bond length.
 
@@ -1722,7 +1730,11 @@ book against its author's page, 2026-11-23); each is in `references.bib`.
   optical rectification and field enhancement in a nanogap (§ 7).
 - [GolubWelsch1969] G. H. Golub, J. H. Welsch, *Math. Comp.* **23**,
   221–230 (1969), doi:10.1090/S0025-5718-69-99647-1 — a distribution's Gauss
-  rule from its own averages, as an eigenvalue problem (§ 2a.3, § 2b.4).
+  rule from its recurrence, as an eigenvalue problem (§ 2a.3, § 2b.4).
+- [Gautschi1982] W. Gautschi, *SIAM J. Sci. Stat. Comput.* **3**, 289–317
+  (1982), doi:10.1137/0903018 — a distribution's recurrence from a discrete
+  distribution holding its averages, by the Lanczos (Stieltjes) recurrence
+  (§ 2a.3).
 - [PatrickGiustino2013] C. E. Patrick, F. Giustino, *Nat. Commun.* **4**,
   2006 (2013), doi:10.1038/ncomms3006 — properties averaged over the
   harmonic nuclear distribution by random snapshots of every mode (§ 2c.3).

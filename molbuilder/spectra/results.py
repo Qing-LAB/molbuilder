@@ -1303,7 +1303,7 @@ class SpectraResults:
                 np.array([mass_of(i, labels, self.equilibrium_masses_amu)
                           for i in asked], dtype=float))
 
-    def vibration(self, source: str = ""):
+    def vibration(self, read_path: str = ""):
         """THE RESULT'S MODES AS A PERSON COMPUTES WITH THEM
         (`vibration.Vibration`, `engines/vibration.md` § 6.11 § 6): each mode
         over every atom in the user's order, held atoms still, by the masses
@@ -1312,9 +1312,10 @@ class SpectraResults:
         label's name), each atom's species label and the structure's region
         labels as written, at the geometry the result states, the temperature
         its thermochemistry states and the modes' own temperatures its
-        ``modes_thermal`` is at (:meth:`_mode_temperatures`); ``source`` the
-        file it was read from.  Refused by name before any geometry
-        exists."""
+        ``modes_thermal`` is at (:meth:`_mode_temperatures`) -- each shared
+        field the `Vibration`'s, its modes bound to it, with the structure the
+        result states; ``read_path`` the file it was read from.  Refused by
+        name before any geometry exists."""
         from ..vibration import Mode, Vibration
         weighted = self.atoms_weighted()
         if weighted is None:
@@ -1335,15 +1336,14 @@ class SpectraResults:
                  frequency_cm1=float(m.frequency_cm1),
                  has_imag=bool(m.has_imag),
                  eigenvector_canonical_per_amu12=np.asarray(
-                     m.eigenvector_canonical, dtype=float),
-                 free_atom_idxs=free, masses_amu=masses,
-                 element_symbols=elements,
-                 positions_ang=positions, record_temperature_k=temperature,
-                 species_labels=labels, regions=regions,
-                 mode_temperatures_k=temperatures)
+                     m.eigenvector_canonical, dtype=float))
             for m in self.modes)
-        return Vibration(modes=modes, record_temperature_k=temperature,
-                         source=str(source))
+        return Vibration(modes=modes, free_atom_idxs=free, masses_amu=masses,
+                         element_symbols=elements, positions_ang=positions,
+                         record_temperature_k=temperature,
+                         species_labels=labels, regions=regions,
+                         mode_temperatures_k=temperatures,
+                         read_path=str(read_path), structure=structure)
 
     def atom_index_map_stated(self):
         """THE ATOM INDEX MAP the result states (v10), or -- a file before

@@ -482,7 +482,7 @@ structure's `customized` rows) and, per frame, its coordinates and its
 construction — the same atoms in the same order, the same species, the same
 cell, each frame's rows saying what it is (a displacement along a normal mode,
 `engines/transport.md` § 2a.9). It is MADE by code that understands this,
-through the doors below — the motion toolkit (from R3d2b2; the frame
+through the doors below — the motion toolkit (from R3d2b2b; the frame
 generator, `spectra.mode_frames`, until then), a person's script. **It is never
 edited**: nothing moves atoms, adds or removes them, or rewrites coordinates in
 a frame set; the browser views one and the Molbuilder tab loads one frame of it
@@ -576,7 +576,7 @@ never written into the set.
 **Frame 0 is the set's reference**: the geometry a calculation measures
 each frame's change from ([`engines/transport.md`](?doc=engines/transport.md)
 § 2a.12). What a maker puts there is the maker's; every set the motion
-toolkit writes has the relaxed geometry there (from R3d2b2; today's frame
+toolkit writes has the relaxed geometry there (from R3d2b2b; today's frame
 generator's sets too)
 ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 5, the
 rule's home).
@@ -584,10 +584,10 @@ rule's home).
 **Every other row is its maker's** — the structure's rows and each frame's:
 carried exactly as written into the calculation's record and data file,
 never computed from and never checked by the calculation (`frameset.read`,
-the one reader) *(from R3d2b2; until then a vibration vocabulary name
+the one reader) *(from R3d2b2b; until then a vibration vocabulary name
 written with another unit is refused, `frame_average.check_units`)*. The
 summary `summarize` prints, transport's, says each row by its name, value and
-unit as written, a whole number whole *(from R3d2b2; until then the
+unit as written, a whole number whole *(from R3d2b2b; until then the
 vocabulary's words)*; the pages — above transport and the toolkit both — say
 a row in the plain words the vibration maker's vocabulary gives a name it
 knows, where the row's unit is the vocabulary's or it states none, and any
@@ -602,7 +602,7 @@ reads what it reads of every structure it cites** — transport frame 0's
 § 3.1 — **and none of a maker's own keys or channels** (`info.sampling`, an
 older set's `info.vibration`, `mass_amu`); its record cites the pair by its
 path and sha256 *(from
-R3d2b2; until then the record's frame set also carries `info.vibration` and
+R3d2b2b; until then the record's frame set also carries `info.vibration` and
 the `mass_amu` channel)*. What a maker wants a calculation's record to carry
 it writes as rows — a vibration's run and result as `vibration_run` and
 `vibration_result_sha256`.

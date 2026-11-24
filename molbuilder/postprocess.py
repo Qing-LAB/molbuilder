@@ -24,9 +24,10 @@ ROLE    ``parse`` -- an engine's file, a run's file → its result (the
         set's transport calculation averaged over another motion
         (`frame_average.reaveraged`); ``outermost_move`` -- how far
         a mode's frame set at a temperature moves its atom that moves most
-        (`spectra.mode_frames`); ``vibration`` -- a vibration result's modes
-        to compute with, each atom's move and a mode's states
-        (`vibration.Mode`, through `SpectraResults.vibration`); ``read_xv`` / ``read_xv_cell`` -- SIESTA's
+        (`spectra.mode_frames`); ``vibration`` -- a vibration result to
+        compute with, its modes, their states and the molecule's motion and
+        snapshots (`vibration.Vibration`, through `SpectraResults.vibration`;
+        `engines/vibration-frames.md`); ``read_xv`` / ``read_xv_cell`` -- SIESTA's
         own ``.XV``, IN THE ENGINE'S ORDER, as its docstring says; and where
         a calculation is: ``projects_root``, ``project_dir``, ``topic_dir``,
         ``structure_dir``, ``list_projects``, ``list_topics``,
@@ -320,11 +321,15 @@ def vibration(path):
     force constant, the spread and mean quanta at the modes' temperatures
     (``thermal``) -- and an atom's move for a coordinate and the coordinate
     back, a state's density, moments, spread and frames, the mode at
-    another frequency (`vibration.Mode`), every atom in the user's order.  A
-    temperature not given is the one the record states, and said so."""
-    from pathlib import Path
+    another frequency (`vibration.Mode`), every atom in the user's order;
+    and the vibration itself -- ``v.mode(n)``, ``v.displaced({...})``,
+    ``v.with_frequency_scale(f)``, ``v.motion(...)``, the molecule's motion and
+    its snapshots (`engines/vibration-frames.md` § 1-§ 3); ``v.read_path`` the
+    path read, as given.  A temperature not given: the contract's one table,
+    `engines/vibration-frames.md` § 2."""
+    import os
     from .sidecars.spectra import read_vibration_result
-    return read_vibration_result(path).vibration(source=Path(path).name)
+    return read_vibration_result(path).vibration(read_path=os.fspath(path))
 
 
 __all__ = ["AtomIndexMap", "AtomIndexUnknown", "RunStepsError", "atom_index_map",

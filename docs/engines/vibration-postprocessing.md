@@ -15,7 +15,7 @@ and [`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessin
 What a finished vibration holds, which call answers what, and worked examples in
 Python: the modes atom by atom, the infrared and the Raman, the thermochemistry,
 the charges and the optical calls. Every example below, save § 2a's (whose
-tests § 2a names) and § 2b's (to build), ran on a real calculation before it
+tests § 2a names) and § 2b's (in part to build), ran on a real calculation before it
 was written here: on
 SIESTA, a molecule of 4 free atoms held between 48 gold atoms, whose engine
 order differs from its user order; on PySCF, an H2, for what § 2, § 3, § 4 and
@@ -126,9 +126,8 @@ m.with_frequency(0.96 * m.frequency_cm1)          # the same pattern at a scaled
 
 **Where the molecule sits along the mode** is a state — at a temperature,
 at a mean number of quanta, with `quanta` exactly, driven in a steady swing of
-`swing_quanta` (its coherent state from R3d2b2 — in 2.78.0 a swing alone
-takes the record's temperature for its bath; with a temperature, a warm mode
-driven), or the classical limits (`classical=True`) — the table of states is
+`swing_quanta` (the coherent state; with a temperature, a warm mode driven),
+or the classical limits (`classical=True`) — the table of states is
 [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 2:
 
 ```python
@@ -137,20 +136,21 @@ s.spread_amu12_ang, s.mean_quanta
 s.atom_rms_ang                        # each atom's r.m.s. move, Å
 s.pdf(0.0), s.cdf(0.05), s.moment(4)  # density, distribution, <Q^4>
 f = m.state(quanta=1).frames(nodes=3) # three frames, exact to degree 5
-f.nodes_amu12_ang, f.weights          # where along the mode (f.q_amu12_ang from R3d2b2), each one's weight
+f.q_amu12_ang[:, 0], f.weights        # where along the mode, (0, +q, -q), each one's weight
 f.positions_ang                       # each frame's geometry, every atom at R + Q L
+s.draw(1000, seed=7)                  # coordinates drawn from the state, the mode's own streams
 ```
 
 Which state takes the record's temperature when none is given, and says so
 (`s.temperature_k`, `s.temperature_from`), is one table,
-[`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 2 —
-with what changes for a swing named by `swing_quanta` alone in R3d2b2 (§ 9
-there). An imaginary mode has moves for a coordinate given and no state.
+[`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 2. An
+imaginary mode has moves for a coordinate given and no state.
 
 ## 2b. Frames from the modes — the motion toolkit
 
-*(To build — [`plans/plan.md`](?doc=plans/plan.md) § 2; the design and every
-choice is [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md),
+*(The motion and its snapshots built, 2.80.0; reading a run's folder, the
+writer and the reader to build — [`plans/plan.md`](?doc=plans/plan.md) § 2;
+the design and every choice is [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md),
 the theory [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
 § 2c, § 5.)* Frames for a calculation over them — transport's, any other —
 each written as a frame set the calculation reads by its weights alone.

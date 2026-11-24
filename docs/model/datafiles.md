@@ -920,7 +920,7 @@ its basis and its frames:
 | `orbital_n` · `orbital_l` · `orbital_m` · `orbital_zeta` | orbital | raw | 1 | the orbital's principal quantum number, angular momentum, magnetic number and zeta, as the device run's basis states them (n, l, m, z) — *from the device run's `<label>.ORB_INDX`* |
 | `orbital_type` | orbital | derived | — | its type from l and m, in the words a selection's orbital menu uses — `s`, `px`, `py`, `pz`, `d…`; empty for an l the menu does not offer |
 
-**From `transport-data@14` (R3d2b2) the frames' part is generic** — the
+**From `transport-data@14` (R3d2b2b) the frames' part is generic** — the
 frame set's rows are their maker's, carried as the structure carries them
 ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12). `/structure`'s
 `structure_json` already holds the composed junction whole — the structure's

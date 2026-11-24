@@ -41,17 +41,35 @@ def q_zp_codata(nu_cm1: float) -> float:
     return math.sqrt(codata.hbar / (2.0 * omega_si(nu_cm1)) / AMU_KG) * 1e10
 
 
+def mode_of(*, index_1based, frequency_cm1, has_imag,
+            eigenvector_canonical_per_amu12, free_atom_idxs, masses_amu,
+            element_symbols, positions_ang, record_temperature_k=None,
+            species_labels=(), regions=None, mode_temperatures_k=()):
+    """A mode built as the result's reader builds it -- through its
+    `vibration.Vibration`, which holds what every mode shares."""
+    return V.Vibration(
+        modes=(V.Mode(index_1based=index_1based, frequency_cm1=frequency_cm1,
+                      has_imag=has_imag,
+                      eigenvector_canonical_per_amu12=np.asarray(
+                          eigenvector_canonical_per_amu12, dtype=float)),),
+        free_atom_idxs=tuple(free_atom_idxs), masses_amu=masses_amu,
+        element_symbols=tuple(element_symbols), positions_ang=positions_ang,
+        record_temperature_k=record_temperature_k,
+        species_labels=tuple(species_labels), regions=dict(regions or {}),
+        mode_temperatures_k=tuple(mode_temperatures_k)).modes[0]
+
+
 def h2_mode(nu_cm1: float = 4400.0, temperature_k=None) -> V.Mode:
     """H2's stretch along z: each atom ``±1/sqrt(2 m)``, the canonical form
     (``sum m |L|^2 = 1``)."""
     a = 1.0 / math.sqrt(2.0 * M_H)
-    return V.Mode(index_1based=1, frequency_cm1=nu_cm1, has_imag=False,
-                  eigenvector_canonical_per_amu12=np.array([[0.0, 0.0, a],
-                                                            [0.0, 0.0, -a]]),
-                  free_atom_idxs=(0, 1),
-                  masses_amu=np.array([M_H, M_H]), element_symbols=("H", "H"),
-                  positions_ang=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.741]]),
-                  record_temperature_k=temperature_k)
+    return mode_of(index_1based=1, frequency_cm1=nu_cm1, has_imag=False,
+                   eigenvector_canonical_per_amu12=np.array([[0.0, 0.0, a],
+                                                             [0.0, 0.0, -a]]),
+                   free_atom_idxs=(0, 1),
+                   masses_amu=np.array([M_H, M_H]), element_symbols=("H", "H"),
+                   positions_ang=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.741]]),
+                   record_temperature_k=temperature_k)
 
 
 # --------------------------------------------------------------------- #
@@ -120,11 +138,11 @@ def test_a_spring_between_two_masses_moves_as_the_two_body_problem_says():
     mu_kg = m1 * m2 / (m1 + m2) * AMU_KG
     assert nu == pytest.approx(math.sqrt(k_si / mu_kg)
                                / (2 * math.pi * codata.c) / 100.0, rel=1e-6)
-    mode = V.Mode(index_1based=1, frequency_cm1=nu, has_imag=False,
-                  eigenvector_canonical_per_amu12=np.asarray(modes[0]),
-                  free_atom_idxs=(0, 1),
-                  masses_amu=np.array([m1, m2]),
-                  element_symbols=("C", "O"), positions_ang=positions)
+    mode = mode_of(index_1based=1, frequency_cm1=nu, has_imag=False,
+                   eigenvector_canonical_per_amu12=np.asarray(modes[0]),
+                   free_atom_idxs=(0, 1),
+                   masses_amu=np.array([m1, m2]),
+                   element_symbols=("C", "O"), positions_ang=positions)
     q_zp = mode.zero_point_amplitude_amu12_ang
     u = mode.displacement(zero_point_widths=1.0)
     reach = q_zp / math.sqrt(m1 * m2 / (m1 + m2))
@@ -173,19 +191,19 @@ def test_the_reduced_mass_and_force_constant_are_as_gaussian_prints_them():
     k_n_per_m = M_H * AMU_KG * omega_si(4400.0) ** 2
     assert mode.force_constant_mdyn_per_ang == pytest.approx(
         k_n_per_m / 100.0, rel=1e-8)
-    imaginary = V.Mode(index_1based=1, frequency_cm1=-4400.0, has_imag=True,
-                       eigenvector_canonical_per_amu12=(
-                           h2_mode().eigenvector_canonical_per_amu12),
-                       free_atom_idxs=(0, 1), masses_amu=h2_mode().masses_amu,
-                       element_symbols=("H", "H"),
-                       positions_ang=h2_mode().positions_ang)
+    imaginary = mode_of(index_1based=1, frequency_cm1=-4400.0, has_imag=True,
+                        eigenvector_canonical_per_amu12=(
+                            h2_mode().eigenvector_canonical_per_amu12),
+                        free_atom_idxs=(0, 1), masses_amu=h2_mode().masses_amu,
+                        element_symbols=("H", "H"),
+                        positions_ang=h2_mode().positions_ang)
     assert imaginary.force_constant_mdyn_per_ang == pytest.approx(
         k_n_per_m / 100.0, rel=1e-8)
-    still = V.Mode(index_1based=1, frequency_cm1=4400.0, has_imag=False,
-                   eigenvector_canonical_per_amu12=np.zeros((2, 3)),
-                   free_atom_idxs=(0, 1), masses_amu=h2_mode().masses_amu,
-                   element_symbols=("H", "H"),
-                   positions_ang=h2_mode().positions_ang)
+    still = mode_of(index_1based=1, frequency_cm1=4400.0, has_imag=False,
+                    eigenvector_canonical_per_amu12=np.zeros((2, 3)),
+                    free_atom_idxs=(0, 1), masses_amu=h2_mode().masses_amu,
+                    element_symbols=("H", "H"),
+                    positions_ang=h2_mode().positions_ang)
     assert (still.reduced_mass_amu, still.force_constant_mdyn_per_ang) == (
         None, None)
 
@@ -198,21 +216,27 @@ def test_the_shares_sum_by_element_label_and_region():
     with no motion ``{}``.  THE SILENT FAILURES: a label's two atoms merged
     into their element, or a region summed over atoms it does not hold."""
     a = 1.0 / math.sqrt(2.0 * M_H)
-    mode = V.Mode(index_1based=1, frequency_cm1=4400.0, has_imag=False,
-                  eigenvector_canonical_per_amu12=np.array([[0.0, 0.0, a],
-                                                            [0.0, 0.0, -a]]),
-                  free_atom_idxs=(1, 2),
-                  masses_amu=np.array([196.97, M_H, M_H]),
-                  element_symbols=("Au", "H", "H"),
-                  positions_ang=np.zeros((3, 3)),
-                  species_labels=("Au1", "H1", "H2"),
-                  regions={"L-electrode": (0,), "bridge": (1, 2)})
+    mode = mode_of(index_1based=1, frequency_cm1=4400.0, has_imag=False,
+                   eigenvector_canonical_per_amu12=np.array([[0.0, 0.0, a],
+                                                             [0.0, 0.0, -a]]),
+                   free_atom_idxs=(1, 2),
+                   masses_amu=np.array([196.97, M_H, M_H]),
+                   element_symbols=("Au", "H", "H"),
+                   positions_ang=np.zeros((3, 3)),
+                   species_labels=("Au1", "H1", "H2"),
+                   regions={"L-electrode": (0,), "bridge": (1, 2)})
     assert mode.motion_share == pytest.approx([0.5, 0.5])
     assert mode.motion_shares(by="element") == pytest.approx({"H": 1.0})
     assert mode.motion_shares(by="label") == pytest.approx(
         {"H1": 0.5, "H2": 0.5})
     regions = {"L-electrode": (0,), "bridge": (1, 2), "H1 side": (1,)}
-    mode = replace(mode, regions=regions)
+    mode = mode_of(index_1based=1, frequency_cm1=4400.0, has_imag=False,
+                   eigenvector_canonical_per_amu12=(
+                       mode.eigenvector_canonical_per_amu12),
+                   free_atom_idxs=(1, 2), masses_amu=mode.masses_amu,
+                   element_symbols=mode.element_symbols,
+                   positions_ang=mode.positions_ang,
+                   species_labels=mode.species_labels, regions=regions)
     by_region = mode.motion_shares(by="region")
     assert by_region == pytest.approx({"bridge": 1.0, "H1 side": 0.5})
     assert list(by_region) == ["bridge", "H1 side"]
@@ -235,13 +259,13 @@ def test_a_modes_thermal_row_is_its_spread_at_each_temperature():
     assert mode_temperatures(298.15) == pytest.approx(sorted(
         {0.0, 4.0, 10.0, 20.0, 30.0, 40.0, 298.15} | set(grid)), abs=1e-9)
     nu = 700.0
-    mode = V.Mode(index_1based=1, frequency_cm1=nu, has_imag=False,
-                  eigenvector_canonical_per_amu12=(
-                      h2_mode().eigenvector_canonical_per_amu12),
-                  free_atom_idxs=(0, 1), masses_amu=h2_mode().masses_amu,
-                  element_symbols=("H", "H"),
-                  positions_ang=h2_mode().positions_ang,
-                  mode_temperatures_k=(0.0, 298.15))
+    mode = mode_of(index_1based=1, frequency_cm1=nu, has_imag=False,
+                   eigenvector_canonical_per_amu12=(
+                       h2_mode().eigenvector_canonical_per_amu12),
+                   free_atom_idxs=(0, 1), masses_amu=h2_mode().masses_amu,
+                   element_symbols=("H", "H"),
+                   positions_ang=h2_mode().positions_ang,
+                   mode_temperatures_k=(0.0, 298.15))
     x = codata.h * codata.c * nu * 100.0 / (codata.k * 298.15)
     row = mode.thermal
     assert row["temperature_k"] == [0.0, 298.15]
@@ -346,14 +370,16 @@ def test_hot_the_thermal_spread_is_the_classical_one():
                          ids=["three quanta", "ten thousand quanta"])
 def test_a_swing_over_a_bath_is_the_bath_carried_along_the_swing(nbar, n_s):
     """§ 2b.3, § 2a.2: a swing of ``n_s`` quanta, ``Q_0 = 2 Q_zp sqrt(n_s)``,
-    over a bath of spread ``sigma_T``: ``<Q^2> = sigma_T^2 + Q_0^2/2``,
+    carrying a bell curve of spread ``sigma_T`` -- the warm driven mode's,
+    ``nbar`` quanta of warmth, or the coherent state's ``Q_zp`` for none:
+    ``<Q^2> = sigma_T^2 + Q_0^2/2``,
     ``<Q^4> = 3 sigma_T^4 + 3 sigma_T^2 Q_0^2 + 3/8 Q_0^4``, its density the
     bath's Gaussian averaged over the swing's phase -- a swing two hundred
     of its bath's spreads wide as much as one of three -- its mean quanta the
     bath's and the swing's added, its spread the one they give."""
     mode = h2_mode()
-    s = mode.state(mean_quanta=nbar, swing_quanta=n_s).state
     q = mode.zero_point_amplitude_amu12_ang
+    s = V.State(V.SWING, q, bath_quanta=nbar, swing_quanta=n_s)
     st2, q0 = (2 * nbar + 1) * q * q, 2 * q * math.sqrt(n_s)
     assert s.moment(2) == pytest.approx(st2 + q0 * q0 / 2, rel=1e-12)
     assert s.moment(4) == pytest.approx(
@@ -394,6 +420,8 @@ SIGMA_THERMAL = Q_ZP_4400 * math.sqrt(2 * 0.7 + 1)          # 0.7 mean quanta
 SIGMA_CLASSICAL = math.sqrt(codata.k * 3000.0 / omega_si(4400.0) ** 2
                             / AMU_KG) * 1e10                # 3000 K
 Q0_TWO_QUANTA = 2 * Q_ZP_4400 * math.sqrt(2.0)
+T_FOR_0_4 = (codata.h * codata.c * 440000.0
+             / (codata.k * math.log1p(1.0 / 0.4)))     # 0.4 quanta at 4400 cm-1
 
 
 def _swing_over_bath_cdf(x, sigma, q0):
@@ -414,23 +442,34 @@ def _swing_over_bath_cdf(x, sigma, q0):
     (dict(swing_quanta=0.0, classical=True), 0.0, 1.0),
     (dict(temperature_k=0.0, classical=True), 0.0, 1.0),
     (dict(temperature_k=0.0, classical=True), -1.0e-6, 0.0),
-    (dict(mean_quanta=0.4, swing_quanta=2.0), Q0_TWO_QUANTA / 2,
+    (dict(swing_quanta=2.0, temperature_k=T_FOR_0_4), Q0_TWO_QUANTA / 2,
      _swing_over_bath_cdf(Q0_TWO_QUANTA / 2,
                           Q_ZP_4400 * math.sqrt(1.8), Q0_TWO_QUANTA)),
-    (dict(mean_quanta=0.4, swing_quanta=2.0), -1.2 * Q0_TWO_QUANTA,
+    (dict(swing_quanta=2.0, temperature_k=T_FOR_0_4), -1.2 * Q0_TWO_QUANTA,
      _swing_over_bath_cdf(-1.2 * Q0_TWO_QUANTA,
                           Q_ZP_4400 * math.sqrt(1.8), Q0_TWO_QUANTA)),
+    (dict(swing_quanta=2.0), Q0_TWO_QUANTA / 2,
+     _swing_over_bath_cdf(Q0_TWO_QUANTA / 2, Q_ZP_4400, Q0_TWO_QUANTA)),
+    (dict(swing_quanta=2.0, temperature_k=3000.0, classical=True),
+     Q0_TWO_QUANTA / 2,
+     _swing_over_bath_cdf(Q0_TWO_QUANTA / 2, SIGMA_CLASSICAL, Q0_TWO_QUANTA)),
 ], ids=["thermal at one spread", "thermal two spreads below",
         "classical at one spread", "a classical swing halfway out",
         "a classical swing halfway in", "a classical swing of no quanta",
         "classical at 0 K, at rest", "classical at 0 K, below rest",
-        "a swing over a bath halfway out", "a swing over a bath beyond"])
+        "a warm swing halfway out", "a warm swing beyond",
+        "the coherent state halfway out",
+        "a classical swing carrying the classical bell curve"])
 def test_each_states_distribution_is_its_closed_form(asked, x, expected):
     """§ 2b.3, § 2a.2: the chance that ``Q`` is ``x`` or less -- the
     Gaussian's ``(1 + erf(x / sqrt(2) sigma)) / 2``; the classical swing's
     ``1/2 + asin(x / Q_0) / pi``; all of it at rest for no quanta, and for
-    a classical mode at 0 K; a swing over a bath, the bath's distribution
-    averaged over the swing's phase."""
+    a classical mode at 0 K; a swing, the bell curve it carries averaged
+    over the swing's phase -- the coherent state's the zero-point width, a
+    warm driven mode's its temperature's, a classical swing's the classical
+    bell curve.  THE SILENT FAILURE: a driven mode handed the record's
+    temperature it was never given, or a classical swing dropping the bell
+    curve it carries."""
     s = V.state(Q_ZP_4400, 4400.0, **asked)
     assert s.cdf(x) == pytest.approx(expected, rel=1e-7, abs=1e-12)
 
@@ -447,7 +486,7 @@ def test_a_classical_mode_at_rest_sits_at_zero(asked):
     assert list(s.pdf(np.array([0.0, 1.0e-3, -1.0e-3]))) == [math.inf, 0.0,
                                                               0.0]
     assert s.spread_amu12_ang == 0.0
-    assert set(s.frames(3).nodes_amu12_ang) == {0.0}
+    assert set(s.frames(3).q_amu12_ang[:, 0]) == {0.0}
 
 
 # --------------------------------------------------------------------- #
@@ -455,7 +494,7 @@ def test_a_classical_mode_at_rest_sits_at_zero(asked):
 # --------------------------------------------------------------------- #
 
 def _moment_of(frames, k):
-    return sum(w * x ** k for x, w in zip(frames.nodes_amu12_ang,
+    return sum(w * x ** k for x, w in zip(frames.q_amu12_ang[:, 0],
                                           frames.weights))
 
 
@@ -474,7 +513,7 @@ def test_a_gaussian_states_frames_are_exact_to_their_degree(nodes):
         assert _moment_of(f, k) == pytest.approx(exact, rel=1e-10,
                                                  abs=1e-14 * sigma ** k)
     if nodes == 3:
-        assert sorted(f.nodes_amu12_ang) == pytest.approx(
+        assert sorted(f.q_amu12_ang[:, 0]) == pytest.approx(
             [-math.sqrt(3) * sigma, 0.0, math.sqrt(3) * sigma], abs=1e-15)
         assert sorted(f.weights) == pytest.approx([1 / 6, 1 / 6, 2 / 3])
 
@@ -501,25 +540,28 @@ def test_n_quantas_frames_are_the_gauss_rule_of_its_own_density(n, nodes):
             exact, rel=1e-8, abs=1e-12 * reach ** k)
 
 
-def test_a_swings_equal_phases_are_exact_to_degree_seven_on_five_frames():
-    """§ 2a.3: eight equal phases fold onto five positions -- ``0``,
-    ``±Q_0/sqrt(2)``, ``±Q_0`` at 1/4, 1/4, 1/8 -- exact to degree 7, and
-    not to 8."""
+def test_a_bare_swings_frames_are_chebyshevs_gauss_rule():
+    """§ 2a.3: the Gauss rule of a bare swing's own distribution is
+    Chebyshev's -- ``m`` frames at ``Q_0 cos((2j - 1) pi / 2m)``, each of
+    weight ``1/m`` -- exact to degree ``2m - 1`` and not to ``2m``; three at
+    0 and ``±0.866 Q_0``.  THE SILENT FAILURE: frames on the turning points,
+    where the swing spends most time and a rule places none."""
     mode = h2_mode()
     s = mode.state(swing_quanta=2.0, classical=True).state
     q0 = 2 * mode.zero_point_amplitude_amu12_ang * math.sqrt(2.0)
     f = s.frames(5)
-    pairs = sorted(zip(f.nodes_amu12_ang, f.weights))
-    assert [x for x, _ in pairs] == pytest.approx(
-        [-q0, -q0 / math.sqrt(2), 0.0, q0 / math.sqrt(2), q0], abs=1e-15)
-    assert [w for _, w in pairs] == pytest.approx(
-        [1 / 8, 1 / 4, 1 / 4, 1 / 4, 1 / 8])
-    assert f.exact_to_degree == 7
-    for k in range(0, 8):
+    assert sorted(f.q_amu12_ang[:, 0]) == pytest.approx(
+        sorted(q0 * math.cos((2 * j - 1) * math.pi / 10) for j in range(1, 6)),
+        abs=1e-15)
+    assert list(f.weights) == pytest.approx([1 / 5] * 5)
+    assert f.exact_to_degree == 9
+    for k in range(0, 10):
         exact = q0 ** k * (math.comb(k, k // 2) / 2 ** k if k % 2 == 0 else 0)
         assert _moment_of(f, k) == pytest.approx(exact, abs=1e-15)
-    assert _moment_of(f, 8) != pytest.approx(
-        q0 ** 8 * math.comb(8, 4) / 2 ** 8, rel=1e-3)
+    assert _moment_of(f, 10) != pytest.approx(
+        q0 ** 10 * math.comb(10, 5) / 2 ** 10, rel=1e-3)
+    assert sorted(s.frames(3).q_amu12_ang[:, 0]) == pytest.approx(
+        [-0.8660254 * q0, 0.0, 0.8660254 * q0], abs=1e-7 * q0)
 
 
 # --------------------------------------------------------------------- #
@@ -542,12 +584,12 @@ def test_a_temperature_not_given_is_the_records_and_says_so():
 def test_an_imaginary_mode_has_moves_and_no_harmonic_state():
     """§ 2b.1: an imaginary mode has no zero-point width -- a coordinate
     given still moves its atoms; a state or a width of it is refused."""
-    mode = V.Mode(index_1based=1, frequency_cm1=-120.0, has_imag=True,
-                  eigenvector_canonical_per_amu12=(
-                      h2_mode().eigenvector_canonical_per_amu12),
-                  free_atom_idxs=(0, 1), masses_amu=h2_mode().masses_amu,
-                  element_symbols=("H", "H"),
-                  positions_ang=h2_mode().positions_ang)
+    mode = mode_of(index_1based=1, frequency_cm1=-120.0, has_imag=True,
+                   eigenvector_canonical_per_amu12=(
+                       h2_mode().eigenvector_canonical_per_amu12),
+                   free_atom_idxs=(0, 1), masses_amu=h2_mode().masses_amu,
+                   element_symbols=("H", "H"),
+                   positions_ang=h2_mode().positions_ang)
     assert mode.zero_point_amplitude_amu12_ang is None
     assert mode.coordinate(mode.displacement(0.05)) == pytest.approx(0.05)
     with pytest.raises(ValueError, match="imaginary"):
@@ -561,7 +603,7 @@ def test_a_frames_geometries_are_each_atom_at_r_plus_q_l():
     its weight the rule's."""
     mode = h2_mode()
     got = mode.state(298.15).frames(3)
-    for q, geometry in zip(got.nodes_amu12_ang, got.positions_ang):
+    for q, geometry in zip(got.q_amu12_ang[:, 0], got.positions_ang):
         assert geometry == pytest.approx(
             mode.positions_ang
             + q * mode.eigenvector_canonical_over_atoms_per_amu12, abs=1e-15)
@@ -570,17 +612,18 @@ def test_a_frames_geometries_are_each_atom_at_r_plus_q_l():
 
 @pytest.mark.parametrize("nodes", [3, 5])
 def test_a_swing_over_a_bath_is_averaged_exactly_to_its_frames_degree(nodes):
-    """§ 2a.3: a swing over a bath -- each phase position carrying the bath's
-    own rule, each frame's weight the product -- reproduces the state's
-    moments, ``E[(X + Q_0 cos phi)^k]`` over the bath ``X`` and the phase, to
-    the lesser of the phases' degree ``2 (m - 1) - 1`` and the bath rule's
-    ``2 m - 1`` (§ 5.1), its weights summing to 1."""
+    """§ 2a.3: a warm driven mode's frames -- the Gauss rule of its own
+    distribution, the swing carrying a bell curve -- reproduce the state's
+    moments, ``E[(X + Q_0 cos phi)^k]`` over the bell curve ``X`` and the
+    phase, to degree ``2m - 1``, its weights summing to 1.  THE SILENT
+    FAILURE: the folded equal phases of 2.79.0, exact only to
+    ``2 (m - 1) - 1``."""
     mode = h2_mode()
-    s = mode.state(mean_quanta=0.4, swing_quanta=3.0).state
     q = mode.zero_point_amplitude_amu12_ang
+    s = V.State(V.SWING, q, bath_quanta=0.4, swing_quanta=3.0)
     st, q0 = q * math.sqrt(2 * 0.4 + 1), 2 * q * math.sqrt(3.0)
     f = s.frames(nodes)
-    assert f.exact_to_degree == 2 * (nodes - 1) - 1
+    assert f.exact_to_degree == 2 * nodes - 1
     assert sum(f.weights) == pytest.approx(1.0)
     for k in range(0, f.exact_to_degree + 1):
         exact = sum(math.comb(k, j)
@@ -619,16 +662,19 @@ def test_a_state_named_no_way_of_its_kinds_is_refused_naming_them():
         V.state(q, 4400.0, quanta=2, temperature_k=300.0)
 
 
-def test_a_swings_bath_and_a_classical_state_take_the_records_temperature():
-    """§ 6.11 § 9 item 6: the person's door takes the record's temperature
-    for a swing's bath and for a classical state, and says so; a classical
-    swing alone takes none."""
-    taken = h2_mode(700.0, temperature_k=500.0).state(swing_quanta=2.0)
-    assert (taken.temperature_k, taken.temperature_from) == (
-        500.0, "the record's")
-    assert taken.mean_quanta == pytest.approx(
-        1.0 / math.expm1(codata.h * codata.c * 70000.0 / (codata.k * 500.0))
-        + 2.0, rel=1e-8)
+def test_a_driven_mode_alone_is_the_coherent_state_and_takes_no_temperature():
+    """`engines/vibration-frames.md` § 2: a driven mode named by its swing
+    quanta alone is the coherent state -- the zero-point width carried by
+    the swing, its mean quanta the swing's, no temperature taken (the user,
+    2026-11-23: "the 'driven mode' should only have one possible state");
+    a classical state takes the record's temperature and says so; a
+    classical swing alone takes none.  THE SILENT FAILURE: 2.79.0's swing
+    over the record's bath, warm where the person asked for none."""
+    cold = h2_mode(700.0, temperature_k=500.0).state(swing_quanta=2.0)
+    assert (cold.temperature_k, cold.temperature_from) == (None, None)
+    assert cold.mean_quanta == 2.0
+    assert cold.carried_spread_amu12_ang == pytest.approx(q_zp_codata(700.0),
+                                                          rel=1e-7)
     alone = h2_mode(700.0, temperature_k=500.0).state(swing_quanta=2.0,
                                                       classical=True)
     assert alone.temperature_k is None and alone.state.cdf(0.0) == 0.5
@@ -648,10 +694,10 @@ def test_a_held_atom_stays_still_and_adds_nothing_to_its_elements_share():
     a = 1.0 / math.sqrt(2.0 * M_H)
     rows = np.array([[0.0, 0.0, a], [0.0, 0.0, -a]])
     at = np.array([[0.0, 0.0, -2.5], [0.0, 0.0, 0.0], [0.0, 0.0, 0.741]])
-    mode = V.Mode(index_1based=1, frequency_cm1=4400.0, has_imag=False,
-                  eigenvector_canonical_per_amu12=rows, free_atom_idxs=(1, 2),
-                  masses_amu=np.array([196.97, M_H, M_H]),
-                  element_symbols=("Au", "H", "H"), positions_ang=at)
+    mode = mode_of(index_1based=1, frequency_cm1=4400.0, has_imag=False,
+                   eigenvector_canonical_per_amu12=rows, free_atom_idxs=(1, 2),
+                   masses_amu=np.array([196.97, M_H, M_H]),
+                   element_symbols=("Au", "H", "H"), positions_ang=at)
     q_zp = q_zp_codata(4400.0)
     assert mode.motion_shares(by="element") == pytest.approx({"H": 1.0})
     assert mode.zero_point_displacement_ang == pytest.approx(q_zp * rows,
@@ -660,8 +706,627 @@ def test_a_held_atom_stays_still_and_adds_nothing_to_its_elements_share():
     assert cold.atom_rms_ang == pytest.approx([0.0, q_zp * a, q_zp * a],
                                               rel=1e-7)
     frames = cold.frames(3)
-    for q, geometry in zip(frames.nodes_amu12_ang + (0.05,),
-                           frames.positions_ang + (mode.displaced(0.05),)):
+    for q, geometry in zip(list(frames.q_amu12_ang[:, 0]) + [0.05],
+                           list(frames.positions_ang) + [mode.displaced(0.05)]):
         assert geometry == pytest.approx(
             np.array([at[0], at[1] + q * rows[0], at[2] + q * rows[1]]),
             abs=1e-15)
+
+
+# --------------------------------------------------------------------- #
+#  The draws, frames for other states, the molecule's motion and its     #
+#  snapshots (`engines/vibration-frames.md` § 2-§ 4, § 7, § 8)          #
+# --------------------------------------------------------------------- #
+
+def _model_vibration(record_temperature_k=300.0) -> V.Vibration:
+    """A model molecule -- three atoms, three modes at 120, 700 and 1600 cm-1
+    orthonormal with the masses, ``sum_A m_A L_k,A . L_l,A = delta_kl`` --
+    built as a reader builds a result's: the closed forms of science § 2b.5
+    and § 2c hold for any such set."""
+    masses = np.array([12.0, 1.008, 15.999])
+    u, _ = np.linalg.qr(np.random.default_rng(20261123).standard_normal((9, 3)))
+    rows = u.T.reshape(3, 3, 3) / np.sqrt(masses)[None, :, None]
+    modes = tuple(V.Mode(index_1based=k + 1, frequency_cm1=nu, has_imag=False,
+                         eigenvector_canonical_per_amu12=rows[k])
+                  for k, nu in enumerate((120.0, 700.0, 1600.0)))
+    return V.Vibration(modes=modes, free_atom_idxs=(0, 1, 2),
+                       masses_amu=masses, element_symbols=("C", "H", "O"),
+                       positions_ang=np.array([[0.0, 0.0, 0.0],
+                                               [1.09, 0.0, 0.0],
+                                               [0.0, 1.2, 0.0]]),
+                       record_temperature_k=record_temperature_k)
+
+
+@pytest.mark.parametrize("asked", [
+    dict(temperature_k=300.0), dict(swing_quanta=2.0),
+    dict(swing_quanta=2.0, temperature_k=600.0), dict(quanta=3),
+    dict(swing_quanta=2.0, classical=True),
+    dict(swing_quanta=2.0, temperature_k=600.0, classical=True),
+], ids=["thermal", "the coherent state", "a warm driven mode", "3 quanta",
+        "a classical swing", "a classical swing carrying the bell curve"])
+def test_each_states_draws_follow_its_own_distribution(asked):
+    """§ 2c.3, `engines/vibration-frames.md` § 2: a state's draws follow its
+    distribution (a two-sided Kolmogorov test against its ``cdf``), one
+    standard normal number per draw from the mode's own stream -- for n
+    quanta the ``Q`` where the distribution reaches ``Phi(z)``.  THE SILENT
+    FAILURE: a state drawn from another's distribution, a bell curve for a
+    swing, which no average of a few frames would show."""
+    from scipy import stats
+    s = _model_vibration().mode(2).state(**asked)
+    x = s.draw(4000, seed=12)
+    assert stats.kstest(x, s.cdf).pvalue > 1e-3
+    if s.kind == V.NUMBER:
+        z = np.random.default_rng([12, 2, 0]).standard_normal(4000)
+        assert s.cdf(x) == pytest.approx(stats.norm.cdf(z), abs=1e-9)
+
+
+def test_a_draw_continues_its_seed_from_the_modes_own_stream():
+    """`engines/vibration-frames.md` § 2, § 3.3: draws ``start ...`` of a
+    seed's sequence are the same however many were asked; each mode draws
+    from its own streams, keyed by its number; the seed is required.  THE
+    SILENT FAILURE: a set made larger later drawing other frames than its
+    first part."""
+    v = _model_vibration()
+    s = v.mode(2).state(swing_quanta=1.0)
+    whole = s.draw(16, seed=5)
+    assert np.array_equal(s.draw(8, seed=5), whole[:8])
+    assert np.array_equal(s.draw(8, seed=5, start=8), whole[8:])
+    assert not np.array_equal(v.mode(3).state(swing_quanta=1.0).draw(
+        16, seed=5), whole)
+    with pytest.raises(ValueError, match="seed"):
+        s.draw(4, seed=None)
+
+
+@pytest.mark.parametrize("asked, nodes", [
+    (dict(temperature_k=300.0), 3), (dict(temperature_k=300.0), 5),
+    (dict(quanta=2), 5), (dict(swing_quanta=2.0), 3),
+    (dict(swing_quanta=2.0, temperature_k=900.0), 7),
+    (dict(temperature_k=300.0), 4), (dict(swing_quanta=2.0), 4),
+], ids=["thermal 3", "thermal 5", "2 quanta 5", "driven 3", "warm driven 7",
+        "thermal 4", "driven 4"])
+def test_a_modes_frames_are_exactly_symmetric_in_the_sets_order(asked, nodes):
+    """`engines/vibration-frames.md` § 4: every state's rule exactly
+    symmetric -- an odd rule's middle node 0 exactly, its middle frame the
+    relaxed geometry bit for bit; each pair ``q_- = -q_+`` exactly, its two
+    weights equal -- in the order ``(0, +q1, -q1, +q2, -q2, ...)``; an even
+    rule's frame 0 the relaxed geometry prepended at weight 0.  THE SILENT
+    FAILURE: frame 0 a near-copy of the relaxed geometry, a second reference
+    for a calculation, or an odd response that does not cancel."""
+    v = _model_vibration()
+    f = v.mode(2).state(**asked).frames(nodes)
+    q, w = f.q_amu12_ang[:, 0], f.weights
+    assert q[0] == 0.0 and np.array_equal(f.positions_ang[0], v.positions_ang)
+    assert w[0] == 0.0 if nodes % 2 == 0 else w[0] > 0.0
+    assert np.array_equal(q[2::2], -q[1::2])
+    assert np.array_equal(w[2::2], w[1::2])
+    assert np.all(np.diff(np.abs(q[1::2])) > 0.0) and np.all(q[1::2] > 0.0)
+    assert len(q) == nodes + (nodes % 2 == 0)
+
+
+def test_a_swings_frames_are_its_own_gauss_rule_as_the_science_works_them():
+    """Science § 2a.3, worked: a swing ``Q_0 = 2`` carrying a bell curve of
+    ``sigma = 1`` -- three frames at ``0, ±2.65`` with weights ``0.571,
+    0.214``; five at ``0, ±2.0656, ±3.9105`` with ``0.4225, 0.2644, 0.0243``;
+    on the contact bond ``e^-Q`` (true ``I_0(2) e^{1/2} = 3.7584``) 3.6068,
+    3.7568 and, with nine, the true value.  THE SILENT FAILURE: the bell
+    curve's frames, blind to the swing's shape (+19 % here)."""
+    s = V.State(V.SWING, 1.0, swing_quanta=1.0)      # Q_0 = 2, carried 1
+    three = s.frames(3)
+    assert list(three.q_amu12_ang[:, 0]) == pytest.approx(
+        [0.0, math.sqrt(7.0), -math.sqrt(7.0)], abs=1e-12)
+    assert list(three.weights) == pytest.approx([24 / 42, 9 / 42, 9 / 42])
+    five = s.frames(5)
+    assert list(five.q_amu12_ang[:, 0]) == pytest.approx(
+        [0.0, 2.0656, -2.0656, 3.9105, -3.9105], abs=5e-5)
+    assert list(five.weights) == pytest.approx(
+        [0.4225, 0.2644, 0.2644, 0.0243, 0.0243], abs=5e-5)
+    true = special.i0(2.0) * math.exp(0.5)
+    for nodes, expected in ((3, 3.6068), (5, 3.7568), (9, true)):
+        f = s.frames(nodes)
+        got = float((f.weights * np.exp(-f.q_amu12_ang[:, 0])).sum())
+        assert got == pytest.approx(expected, abs=5e-5)
+
+
+@pytest.mark.parametrize("ratio, expected", [
+    (1, ((1.9573, 0.160), (2.0815, 0.017), (2.0873, 0.001))),
+    (2, ((2.9146, 0.360), (3.6405, 0.087), (3.7494, 0.015))),
+    (3, ((4.5101, 0.57), (7.1067, 0.26), (7.9011, 0.083))),
+])
+def test_frames_re_weighted_to_another_state_follow_the_sciences_table(
+        ratio, expected):
+    """Science § 5.4's table: three, five and seven frames written for a bell
+    curve of spread ``sigma_T = 1`` re-weighted to a swing of ``Q_0 =
+    ratio sigma_T`` carrying it, on the contact bond ``e^-Q`` -- each the
+    table's average, and the share of the swing beyond the outermost frames
+    the table's; the weights reproduce the state's averages of ``1 ...
+    Q^(m-1)``; a weight below zero said.  THE SILENT FAILURE: a re-averaged
+    number with the motion the frames never reached left unsaid."""
+    bell = V.State(V.THERMAL, 1.0)
+    swing = V.State(V.SWING, 1.0, swing_quanta=ratio ** 2 / 4.0)
+    for nodes, (average, beyond) in zip((3, 5, 7), expected):
+        q = bell.frames(nodes).q_amu12_ang[:, 0]
+        w = swing.weights_at(q)
+        assert float((w.weights * np.exp(-q)).sum()) == pytest.approx(
+            average, abs=5e-5)
+        assert w.beyond == pytest.approx(beyond, abs=0.006)
+        assert w.exact_to_degree == len(q) - 1
+        for k in range(len(q)):
+            assert float((w.weights * q ** k).sum()) == pytest.approx(
+                swing.moment(k), rel=1e-9, abs=1e-12)
+        assert any("beyond the outermost frames" in s for s in w.said)
+    seven = swing.weights_at(bell.frames(7).q_amu12_ang[:, 0])
+    assert (ratio == 3) == any("below zero" in s for s in seven.said)
+    with pytest.raises(ValueError, match="one position"):
+        swing.weights_at([0.0, 1.0, 1.0])
+
+
+def test_a_mean_number_of_quanta_names_its_temperature():
+    """Science § 2a.1, § 2a.3: the temperature whose thermal state holds
+    ``n`` quanta, ``T = h c nu / (k_B ln(1 + 1/n))`` -- one quantum of a
+    1000 cm-1 mode at 2075.7 K by CODATA -- 0 K for none; back through
+    Bose and Einstein it is ``n``.  THE SILENT FAILURE: a pumped mode's set
+    written at a temperature that holds other quanta than it was pumped to."""
+    t = V.temperature_of_quanta(1000.0, 1.0)
+    assert t == pytest.approx(codata.h * codata.c * 1.0e5
+                              / (codata.k * math.log(2.0)), rel=1e-8)
+    assert V.mean_quanta(1000.0, t) == pytest.approx(1.0, rel=1e-12)
+    assert V.temperature_of_quanta(1000.0, 0.4) == pytest.approx(
+        codata.h * codata.c * 1.0e5 / (codata.k * math.log(1.0 + 1.0 / 0.4)),
+        rel=1e-8)
+    assert V.temperature_of_quanta(1000.0, 0.0) == 0.0
+
+
+def test_snapshots_of_a_thermal_motion_have_the_sciences_covariance():
+    """Science § 2b.5, § 2c.1: every mode thermal, independent -- the
+    snapshots' coordinates uncorrelated, each of variance ``sigma_k^2``;
+    each atom's displacement covariance ``sum_k sigma_k^2 L_k,A L_k,A^T``;
+    frame 0 the relaxed geometry at weight 0, then ``1/N`` each.  THE SILENT
+    FAILURE: modes drawn with one shared number, correlated where the
+    harmonic picture has them independent."""
+    v = _model_vibration()
+    motion = v.motion(300.0)
+    snaps = motion.sample(40000, seed=3, antithetic=False)
+    assert snaps.weights[0] == 0.0 and np.array_equal(
+        snaps.positions_ang[0], v.positions_ang)
+    assert snaps.weights[1:] == pytest.approx(np.full(40000, 1 / 40000))
+    q = snaps.q_amu12_ang[1:]
+    sigma = np.array([motion.states[k].spread_amu12_ang
+                      for k in snaps.mode_index_1based])
+    sigma2 = sigma ** 2
+    cov = np.cov(q.T)
+    # each mode's variance within five of its own standard errors, and every
+    # pair uncorrelated within five of theirs
+    assert np.all(np.abs(np.diag(cov) - sigma2)
+                  < 5 * sigma2 * math.sqrt(2 / 40000))
+    off = ~np.eye(3, dtype=bool)
+    assert np.all(np.abs(cov[off])
+                  < 5 * np.outer(sigma, sigma)[off] / math.sqrt(40000))
+    rows = np.stack([v.mode(k).eigenvector_canonical_over_atoms_per_amu12
+                     for k in (1, 2, 3)])
+    expected = np.einsum("k,ki,kj->ij", sigma2, rows[:, 1], rows[:, 1])
+    moves = snaps.atom_moves_ang[1:, 1]
+    centred = moves - moves.mean(axis=0)
+    products = centred[:, :, None] * centred[:, None, :]
+    # each element within five of its own standard errors
+    assert np.all(np.abs(products.mean(axis=0) - expected)
+                  < 5 * products.std(axis=0) / math.sqrt(40000))
+
+
+def test_a_drive_groups_modes_swing_in_step_by_the_persons_lags():
+    """Science § 2c.2, § 2b.5: one laser's modes share one phase per
+    snapshot, each at its lag -- ``Cov(Q_a, Q_b) = Q_0a Q_0b cos(l_a - l_b)
+    / 2`` -- and the group's average of ``e^{sum a_d Q_d}`` is one factor,
+    ``I_0(|sum a_d Q_0d e^{-i l_d}|) prod e^{a_d^2 sigma_0d^2 / 2}``,
+    within the set's own error.  THE SILENT FAILURE: the group's modes drawn
+    each with its own phase, which no single mode's distribution shows."""
+    v = _model_vibration()
+    lags = {2: 1.57, 3: 0.12}
+    motion = v.motion(300.0).with_drive({2: 2.0, 3: 1.0}, lags_rad=lags)
+    snaps = motion.sample(40000, seed=9, antithetic=False)
+    cols = [list(snaps.mode_index_1based).index(k) for k in (2, 3)]
+    q2, q3 = snaps.q_amu12_ang[1:, cols[0]], snaps.q_amu12_ang[1:, cols[1]]
+    q0 = {k: motion.states[k].swing_amplitude_amu12_ang for k in (2, 3)}
+    product = (q2 - q2.mean()) * (q3 - q3.mean())
+    assert abs(product.mean()
+               - 0.5 * q0[2] * q0[3] * math.cos(lags[2] - lags[3])) < \
+        5 * product.std() / math.sqrt(40000)
+    a = {2: 1.5, 3: -2.0}
+    x = np.exp(a[2] * q2 + a[3] * q3)
+    phasor = sum(a[k] * q0[k] * np.exp(-1j * lags[k]) for k in (2, 3))
+    exact = special.i0(abs(phasor)) * math.exp(sum(
+        a[k] ** 2 * motion.states[k].carried_spread_amu12_ang ** 2 / 2
+        for k in (2, 3)))
+    est = snaps.standard_error(np.concatenate([[np.nan], x]))
+    assert abs(est.value - exact) < 4 * est.error
+
+
+def test_mirrored_pairs_cancel_the_odd_part_exactly():
+    """Science § 5.5: each snapshot followed by its mirror, every ``Q``
+    negated -- each pair's coordinates sum to zero exactly, a response odd
+    in ``Q`` averages to zero exactly; ``parts`` gives a purely odd
+    response no even part and a purely even one no odd part; the error of a
+    paired set from its pair means, ``X(Q) X(-Q) = 1`` making the pair
+    means' variance ``(<X^2> + 1)/2 - <X>^2`` known before the draw.  THE
+    SILENT FAILURE: a paired set's error from its frames as if independent,
+    wrong both ways."""
+    v = _model_vibration()
+    motion = v.motion(300.0)
+    snaps = motion.sample(80000, seed=4, antithetic=True)
+    q = snaps.q_amu12_ang
+    assert np.all(q[1::2] + q[2::2] == 0.0)
+    odd = q @ np.array([1.0, -2.0, 0.5])
+    assert snaps.standard_error(odd).value == 0.0
+    assert snaps.parts(odd).even == 0.0
+    assert snaps.parts(q[:, 0] ** 2).odd == 0.0
+    a = np.array([0.8, -0.6, 1.1])
+    x = np.exp(q @ a)
+    sigma2 = np.array([motion.states[k].spread_amu12_ang ** 2
+                       for k in snaps.mode_index_1based])
+    mean = math.exp(float(a ** 2 @ sigma2) / 2)
+    mean_sq = math.exp(2 * float(a ** 2 @ sigma2))
+    variance = (mean_sq + 1) / 2 - mean ** 2
+    pair_means = (x[1::2] + x[2::2]) / 2
+    spread = (pair_means - pair_means.mean()) ** 2
+    # the pair means' variance against the closed form, within five of the
+    # variance estimate's own standard errors -- 40 000 pairs, so an error
+    # off by sqrt(2) is far outside them
+    assert abs(snaps.standard_error(x).error ** 2 * 40000 - variance) < \
+        5 * spread.std() / math.sqrt(40000)
+    with pytest.raises(ValueError, match="even"):
+        motion.sample(7, seed=4, antithetic=True)
+
+
+def test_a_seed_holds_a_set_and_its_continuation():
+    """`engines/vibration-frames.md` § 3.3: the same seed, the same frames;
+    ``sample(2N)`` beginning with ``sample(N)``, pairs or not; ``start=N``
+    its next ``N``; a mode driven leaving every other mode's column as it
+    was; a drive group's phase keyed by the modes it was made with whatever order the
+    groups were added in; a mode in two groups refused; sets pooled the set
+    drawn at once, overlapping ranges and pairs with unpaired refused.  THE
+    SILENT FAILURE: a driven set and its baseline differing in every mode's
+    draws, the difference drowned in their spread."""
+    v = _model_vibration()
+    motion = v.motion(300.0)
+    for pairs in (False, True):
+        whole = motion.sample(16, seed=7, antithetic=pairs)
+        first = motion.sample(8, seed=7, antithetic=pairs)
+        rest = motion.sample(8, seed=7, antithetic=pairs, start=8)
+        assert np.array_equal(whole.q_amu12_ang[:9], first.q_amu12_ang)
+        assert np.array_equal(whole.q_amu12_ang[9:], rest.q_amu12_ang[1:])
+        assert np.array_equal(V.pooled(first, rest).q_amu12_ang,
+                              whole.q_amu12_ang)
+    driven = motion.with_mode(2, swing_quanta=3.0).sample(16, seed=7,
+                                                          antithetic=False)
+    base = motion.sample(16, seed=7, antithetic=False)
+    assert np.array_equal(driven.q_amu12_ang[:, [0, 2]],
+                          base.q_amu12_ang[:, [0, 2]])
+    one = (motion.with_drive({1: 1.0}, lags_rad={1: 0.3})
+           .with_drive({2: 2.0, 3: 1.0}, lags_rad={2: 1.0, 3: 0.2}))
+    other = (motion.with_drive({2: 2.0, 3: 1.0}, lags_rad={2: 1.0, 3: 0.2})
+             .with_drive({1: 1.0}, lags_rad={1: 0.3}))
+    assert np.array_equal(one.sample(8, seed=2, antithetic=False).q_amu12_ang,
+                          other.sample(8, seed=2, antithetic=False).q_amu12_ang)
+    with pytest.raises(ValueError, match="one group at most"):
+        one.with_drive({3: 1.0}, lags_rad={3: 0.0})
+    with pytest.raises(ValueError, match="overlap"):
+        V.pooled(first, first)
+    with pytest.raises(ValueError, match="pairs pool only with pairs"):
+        V.pooled(motion.sample(8, seed=1, antithetic=False),
+                 motion.sample(8, seed=2, antithetic=True))
+
+
+def test_every_analysis_takes_one_value_per_frame_frame_0_first():
+    """`engines/vibration-frames.md` § 3.3, § 7: an analysis takes a
+    calculation's values whole, one per frame, frame 0 first, and leaves the
+    reference out; a value missing drops its pair, said; a pooled set's
+    analyses take each set's values whole, in order.  THE SILENT FAILURE:
+    frame 0 counted as a snapshot, or the values read one frame off."""
+    motion = _model_vibration().motion(300.0)
+    snaps = motion.sample(6, seed=1, antithetic=True)
+    values = np.array([1e9, 1.0, 3.0, 2.0, 2.0, 5.0, 1.0])
+    est = snaps.standard_error(values)
+    assert (est.value, est.n) == (pytest.approx(14.0 / 6.0), 6)
+    values[3] = np.nan
+    gone = snaps.standard_error(values)
+    assert (gone.value, gone.n) == (pytest.approx(10.0 / 4.0), 4)
+    assert gone.said and "pair" in gone.said[0]
+    with pytest.raises(ValueError, match="one value per frame"):
+        snaps.standard_error(values[1:])
+    pool = V.pooled(snaps, motion.sample(2, seed=1, antithetic=True, start=6))
+    assert pool.standard_error(np.array([1e9, 1, 3, 2, 2, 5, 1.0]),
+                               np.array([-1e9, 4.0, 4.0])).value == \
+        pytest.approx(22.0 / 8.0)
+
+
+def test_a_motion_says_what_it_takes_and_refuses_by_name():
+    """`engines/vibration-frames.md` § 3.1: none left to move refused; the
+    record's temperature taken and said; a cold driven mode in a warm motion
+    said with its thermal quanta (Bose and Einstein's, from CODATA) and its
+    two baselines, ``classical=False`` named in a classical motion;
+    a state of another mode refused; a mode set apart twice taking the later
+    call's state, said; a drive's lag stated for every mode, never
+    defaulted.  THE SILENT FAILURE: a soft mode driven cold in a warm motion
+    read as the warm driven mode."""
+    v = _model_vibration()
+    motion = v.motion()
+    assert motion.temperature_from == "the record's"
+    assert any("the record's" in s for s in motion.said)
+    cold = motion.with_mode(1, swing_quanta=2.0)
+    n_th = 1.0 / math.expm1(codata.h * codata.c * 12000.0 / (codata.k * 300.0))
+    (said,) = [s for s in cold.said if s.startswith("mode 1 is driven")]
+    assert f"{n_th:.3g}" in said
+    assert "with_mode(1, temperature_k=0.0) beside the warm others" in said
+    assert "with_mode(1, swing_quanta=2, temperature_k=300)" in said
+    classical = v.motion(300.0, classical=True).with_mode(1, swing_quanta=2.0)
+    assert any("with_mode(1, temperature_k=0.0, classical=False)" in s
+               for s in classical.said)
+    again = cold.with_mode(1, temperature_k=77.0)
+    assert any("set apart again" in s for s in again.said)
+    with pytest.raises(ValueError, match="takes a state of mode 2"):
+        motion.with_mode(2, state=v.mode(3).state(300.0))
+    with pytest.raises(ValueError, match="no lag for mode 3"):
+        motion.with_drive({2: 1.0, 3: 1.0}, lags_rad={2: 0.0})
+    with pytest.raises(ValueError, match="real mode to move"):
+        v.motion(300.0, modes=[])
+
+
+def test_a_vibrations_geometry_and_its_frequencies_scaled():
+    """`engines/vibration-frames.md` § 1, § 3.2: a geometry for coordinates
+    the person gives, ``R^0 + sum_k Q_k L_k``, modes by number; every
+    frequency scaled at once, each pattern kept, the result's own frequency
+    kept beside it, ``Q_zp`` from the new one; a mode the result does not
+    have refused by name.  THE SILENT FAILURE: a scaled set's frames placed
+    for the result's frequency while saying the scaled one."""
+    v = _model_vibration()
+    l2 = v.mode(2).eigenvector_canonical_over_atoms_per_amu12
+    l3 = v.mode(3).eigenvector_canonical_over_atoms_per_amu12
+    assert np.array_equal(v.displaced({}), v.positions_ang)
+    assert v.displaced({2: 0.1, 3: -0.05}) == pytest.approx(
+        v.positions_ang + 0.1 * l2 - 0.05 * l3, abs=1e-15)
+    scaled = v.with_frequency_scale(0.96)
+    m = scaled.mode(2)
+    assert (m.frequency_cm1, m.result_frequency_cm1) == (
+        pytest.approx(672.0), 700.0)
+    assert m.zero_point_amplitude_amu12_ang == pytest.approx(
+        q_zp_codata(672.0), rel=1e-7)
+    assert scaled.frequency_scale == pytest.approx(0.96)
+    with pytest.raises(ValueError, match="no mode 9"):
+        v.mode(9)
+
+
+def test_a_driven_modes_normal_numbers_are_its_baselines_own():
+    """`engines/vibration-frames.md` § 3.3 (science § 2c.4, § 5.5): a mode
+    driven draws its normal numbers from its own stream, the ones its thermal
+    baseline drew -- its coordinate ``Q_0 cos(phi) + Q_zp z`` where the
+    baseline's is ``sigma_T z``, the phases its own uniform stream's -- so a
+    driven set and its baseline, one seed, differ by that mode's swing alone.
+    THE SILENT FAILURE: the driven mode drawing other normal numbers, its
+    difference from the baseline drowned in their spread."""
+    v = _model_vibration()
+    motion = v.motion(300.0)
+    base = motion.sample(64, seed=17, antithetic=False)
+    driven = motion.with_mode(2, swing_quanta=3.0).sample(64, seed=17,
+                                                          antithetic=False)
+    s = driven.motion.states[2]
+    phi = 2 * math.pi * np.random.default_rng([17, 2, 1]).random(64)
+    z_driven = ((driven.q_amu12_ang[1:, 1]
+                 - s.swing_amplitude_amu12_ang * np.cos(phi))
+                / s.carried_spread_amu12_ang)
+    z_base = base.q_amu12_ang[1:, 1] / motion.states[2].spread_amu12_ang
+    assert z_driven == pytest.approx(z_base, rel=1e-9, abs=1e-12)
+
+
+def test_a_motions_set_apart_modes_take_its_temperature_and_its_classical_form():
+    """`engines/vibration-frames.md` § 2's table, § 3.1: a thermal or
+    classical mode set apart with no temperature takes the motion's, said;
+    in a classical motion a thermal mode set apart is classical, a driven one
+    quantum; a drive group's warmth its ``temperature_k``; a state and a
+    state's arguments together refused by name.  THE SILENT FAILURE: a mode
+    set apart in a 77 K motion drawn at the record's 300 K."""
+    v = _model_vibration(record_temperature_k=300.0)
+    cold = v.motion(77.0).with_mode(2, quanta=1).with_mode(2)
+    assert (cold.states[2].kind, cold.states[2].temperature_k,
+            cold.states[2].temperature_from) == (V.THERMAL, 77.0,
+                                                 "the motion's")
+    assert "77 K (the motion's)" in cold.set_apart_modes
+    classical = v.motion(300.0, classical=True)
+    assert classical.with_mode(2).states[2].kind == V.CLASSICAL
+    assert classical.with_mode(2, swing_quanta=1.0).states[2].kind == V.SWING
+    warm = v.motion(300.0).with_drive({2: 1.0}, lags_rad={2: 0.0},
+                                      temperature_k=600.0)
+    assert warm.states[2].state.bath_quanta == pytest.approx(
+        1.0 / math.expm1(codata.h * codata.c * 70000.0 / (codata.k * 600.0)),
+        rel=1e-8)
+    with pytest.raises(ValueError, match="not both"):
+        v.motion(300.0).with_mode(2, state=v.mode(2).state(300.0),
+                                  swing_quanta=1.0)
+
+
+def test_a_drive_group_keeps_its_phases_when_a_member_is_set_apart_again():
+    """`engines/vibration-frames.md` § 3.1, § 3.3: a drive group's phase
+    stream is keyed by the modes it was made with, ``[seed, 0, *modes]``, and
+    kept when a member is set apart again -- the others draw exactly as
+    before; the set-apart modes said in § 5.1's words, the group as it now
+    stands, a group of one mode in the singular.  THE SILENT FAILURE: a
+    mode set apart re-keying the others' shared phase, every other driven
+    mode's draws changed by a call about one mode."""
+    v = _model_vibration()
+    group = v.motion(300.0).with_drive({2: 2.0, 3: 1.0},
+                                       lags_rad={2: 1.57, 3: 0.12})
+    both = group.sample(32, seed=4, antithetic=False)
+    alone = group.with_mode(2, temperature_k=0.0).sample(32, seed=4,
+                                                         antithetic=False)
+    assert np.array_equal(alone.q_amu12_ang[:, 2], both.q_amu12_ang[:, 2])
+    assert group.set_apart_modes == ("modes 2 and 3: one drive, 2 and 1 "
+                                     "swing quanta, lags 1.57 and 0.12 rad, "
+                                     "the zero-point width")
+    words = group.with_mode(2, temperature_k=0.0).set_apart_modes
+    assert words == ("mode 2: thermal at 0 K; mode 3: one drive, 1 swing "
+                     "quantum, lag 0.12 rad, the zero-point width")
+    # the group's phase is its key's stream, [seed, 0, 2, 3]
+    s3 = group.states[3]
+    phi = 2 * math.pi * np.random.default_rng([4, 0, 2, 3]).random(32)
+    z3 = np.random.default_rng([4, 3, 0]).standard_normal(32)
+    assert both.q_amu12_ang[1:, 2] == pytest.approx(
+        s3.swing_amplitude_amu12_ang * np.cos(phi - 0.12)
+        + s3.carried_spread_amu12_ang * z3, rel=1e-12, abs=1e-15)
+
+
+def test_what_a_set_says_and_what_pools():
+    """`engines/vibration-frames.md` § 3.3, § 4, § 7: a snapshot set says its
+    largest single-atom move, its frame and the mode moving it most -- 0 at
+    frame 0 -- beside each mode's spread; a mode's frames say their
+    outermost move; an imaginary mode is left out of a motion and said; an
+    odd start with pairs refused; two motions not pooled, the same result
+    read twice pooled, a pooled set's values taken as written or set by set.
+    THE SILENT FAILURE: an analysis taking a pooled set's values one frame
+    off, or two reads of one result refused as two motions."""
+    v = _model_vibration()
+    snaps = v.motion(300.0).sample(16, seed=8, antithetic=False)
+    largest = snaps.max_atom_displacement_ang
+    i = int(np.argmax(largest))
+    assert snaps.max_atom_mode_index_1based[0] == 0
+    assert f"{largest[i]:.4f} Å, frame {i}" in snaps.said[0]
+    frames = v.mode(3).state(300.0).frames(3)
+    assert f"{frames.max_atom_displacement_ang.max():.4f} Å" in frames.said[0]
+    imaginary = V.Vibration(
+        modes=tuple(replace(m, frequency_cm1=-50.0, has_imag=True)
+                    if m.index_1based == 1 else m for m in v.modes),
+        free_atom_idxs=v.free_atom_idxs, masses_amu=v.masses_amu,
+        element_symbols=v.element_symbols, positions_ang=v.positions_ang,
+        record_temperature_k=300.0)
+    motion = imaginary.motion(300.0)
+    assert list(motion.states) == [2, 3]
+    assert any("mode 1 left out: imaginary" in s for s in motion.said)
+    measured = imaginary.mode(1).with_frequency(50.0).state(300.0)
+    back = motion.with_mode(1, state=measured)
+    assert not any("left out" in s for s in back.said)
+    with pytest.raises(ValueError, match="even start"):
+        v.motion(300.0).sample(4, seed=1, antithetic=True, start=3)
+    with pytest.raises(ValueError, match="one motion"):
+        V.pooled(v.motion(300.0).sample(4, seed=1, antithetic=False),
+                 v.motion(77.0).sample(4, seed=2, antithetic=False))
+    again = _model_vibration()
+    first = v.motion(300.0).sample(4, seed=1, antithetic=False)
+    second = again.motion(300.0).sample(4, seed=1, antithetic=False, start=4)
+    pool = V.pooled(first, second)
+    # frames 1 to 8 hold 1 ... 8: their mean 4.5, frame 0 left out either way
+    assert pool.standard_error(np.arange(9.0)).value == pytest.approx(4.5)
+    assert pool.standard_error(np.arange(5.0), np.array([-1e9, 5, 6, 7, 8])
+                               ).value == pytest.approx(4.5)
+
+
+def test_two_drives_made_apart_keep_apart_phases():
+    """`engines/vibration-frames.md` § 3.3: two lasers' groups draw two
+    phases -- a group's key the modes it was made with, unique among the
+    groups a motion holds, even after a member left one group and started
+    another.  THE SILENT FAILURE: the new group drawing the old one's
+    phases, two independent lasers phase-locked without a word."""
+    v = _model_vibration()
+    motion = (v.motion(300.0)
+              .with_drive({1: 2.0, 2: 2.0}, lags_rad={1: 0.0, 2: 0.0})
+              .with_mode(1, temperature_k=0.0)
+              .with_drive({1: 2.0, 3: 2.0}, lags_rad={1: 0.0, 3: 0.0}))
+    assert sorted(d.key for d in motion.drives) == [(1, 2), (1, 3)]
+    snaps = motion.sample(20000, seed=6, antithetic=False)
+    q2, q3 = snaps.q_amu12_ang[1:, 1], snaps.q_amu12_ang[1:, 2]
+    assert abs(np.corrcoef(q2, q3)[0, 1]) < 5 / math.sqrt(20000)
+
+
+def test_a_motion_keeps_the_results_order_and_one_vibrations_states():
+    """`engines/vibration-frames.md` § 3.1, § 3.3: a motion's modes in the
+    result's order however it was built; a state from a second read of the
+    same result accepted as this vibration's, one from another vibration
+    refused by name.  THE SILENT FAILURE: two orders of one motion refused
+    by `pooled`, or one result read twice taken for two."""
+    v = _model_vibration()
+    motion = v.motion(300.0, modes=[3, 1]).with_mode(2, quanta=1)
+    assert list(motion.states) == [1, 2, 3]
+    assert list(motion.sample(4, seed=1, antithetic=False)
+                .mode_index_1based) == [1, 2, 3]
+    again = _model_vibration()
+    assert motion.with_mode(2, state=again.mode(2).state(77.0)).states[
+        2].temperature_k == 77.0
+    other = v.with_frequency_scale(0.96)
+    with pytest.raises(ValueError, match="of another vibration"):
+        motion.with_mode(2, state=other.mode(2).state(77.0))
+
+
+def test_an_analysis_says_what_it_dropped_and_few_frames_say_their_degree():
+    """`engines/vibration-frames.md` § 7; science § 5.4 item 2: a pair with
+    a value missing left out of `parts` and said; none left said; three
+    frames re-weighted said to be blind to the shape, two exact only to
+    degree 1; one mirrored pair said to have no error.  THE SILENT FAILURE:
+    a split or an error from fewer pairs than the person thinks."""
+    v = _model_vibration()
+    snaps = v.motion(300.0).sample(6, seed=1, antithetic=True)
+    values = np.array([0.0, 1.0, 3.0, np.nan, 2.0, 5.0, 1.0])
+    assert snaps.parts(values).said == ("1 pair left out: a value missing",)
+    nothing = snaps.standard_error(np.full(7, np.nan))
+    assert "no pair left" in nothing.said[-1] and math.isnan(nothing.error)
+    bell = V.State(V.THERMAL, 1.0)
+    swing = V.State(V.SWING, 1.0, swing_quanta=1.0)
+    three = swing.weights_at(bell.frames(3).q_amu12_ang[:, 0])
+    assert any("three frames carry only the curvature" in s
+               for s in three.said)
+    two = swing.weights_at([-1.0, 1.0])
+    assert any("two frames are exact only to degree 1" in s for s in two.said)
+    pair = v.motion(300.0).sample(2, seed=1, antithetic=True)
+    assert any("one mirrored pair" in s for s in pair.said)
+
+
+def test_the_mode_moving_a_frames_atom_most_is_judged_by_its_move():
+    """`engines/vibration-frames.md` § 3.3: each frame's mode moving its
+    most-moved atom most, by the move ``|Q_k L_k,A|`` at that atom -- not by
+    the largest coordinate.  THE SILENT FAILURE: a soft mode's large
+    coordinate named for a move another mode makes."""
+    v = _model_vibration()
+    snaps = v.motion(300.0).sample(64, seed=8, antithetic=False)
+    moves = np.linalg.norm(snaps.atom_moves_ang, axis=-1)
+    expected, by_q = [], []
+    for i in range(1, 65):
+        atom = int(moves[i].argmax())
+        each = [abs(snaps.q_amu12_ang[i, c]) * np.linalg.norm(
+            v.mode(int(k)).eigenvector_canonical_over_atoms_per_amu12[atom])
+            for c, k in enumerate(snaps.mode_index_1based)]
+        expected.append(int(snaps.mode_index_1based[int(np.argmax(each))]))
+        by_q.append(int(snaps.mode_index_1based[
+            int(np.abs(snaps.q_amu12_ang[i]).argmax())]))
+    assert list(snaps.max_atom_mode_index_1based[1:]) == expected
+    assert expected != by_q
+
+
+@pytest.mark.parametrize("n", [0, 1, 3])
+def test_n_quantas_average_of_an_exponential_is_laguerres(n):
+    """Science § 2b.5: over n quanta exactly, ``<e^{aQ}> = e^{lambda^2/2}
+    L_n(-lambda^2)``, ``lambda = a Q_zp``, ``L_n`` Laguerre's polynomial --
+    reached by the state's own Gauss rule as its frames grow.  THE SILENT
+    FAILURE: n quanta averaged as a bell curve of the same spread."""
+    s = V.State(V.NUMBER, 1.0, quanta=n)
+    lam = 0.8
+    f = s.frames(14)
+    got = float((f.weights * np.exp(lam * f.q_amu12_ang[:, 0])).sum())
+    assert got == pytest.approx(
+        math.exp(lam ** 2 / 2) * special.eval_laguerre(n, -lam ** 2),
+        rel=1e-10)
+
+
+def test_the_refusals_the_contract_states_and_one_set_pooled():
+    """`engines/vibration-frames.md` § 3.1, § 3.3, § 7: `parts` of a set
+    drawn without pairs refused by name; a bare `State` given as a mode's
+    state refused, naming the call that makes one; one set pooled is that
+    set, none refused -- no floor of ours; a `ModeState` handing on its
+    state's own fields.  THE SILENT FAILURE: a split of an unpaired set read
+    as an even and an odd part."""
+    v = _model_vibration()
+    motion = v.motion(300.0)
+    alone = motion.sample(8, seed=1, antithetic=False)
+    with pytest.raises(ValueError, match="drawn alone"):
+        alone.parts(np.zeros(9))
+    with pytest.raises(ValueError, match=r"v\.mode\(2\)\.state"):
+        motion.with_mode(2, state=V.State(V.THERMAL, 0.1))
+    assert V.pooled(alone) is alone
+    with pytest.raises(ValueError, match="a set to pool"):
+        V.pooled()
+    driven = v.mode(2).state(swing_quanta=4.0)
+    assert (driven.swing_quanta, driven.bath_quanta) == (4.0, 0.0)

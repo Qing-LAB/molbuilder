@@ -47,7 +47,8 @@ def test_h2s_bond_moves_by_the_textbooks_zero_point_amplitude(
     is ``Q_zp`` and each atom's r.m.s. move half the bond's; a state asked
     with no temperature is at the one the record states (§ 6.11 § 9 item 6),
     its spread ``Q_zp sqrt(coth(h c nu / 2 k_B T))`` -- the same from the
-    JSON and from its data file.  THE SILENT FAILURE: a mass, a unit or a
+    JSON and from its data file; the vibration says the path it was read
+    from, as given, and the structure the result states.  THE SILENT FAILURE: a mass, a unit or a
     normalisation off, which every number derived from the mode would carry
     without a sign; or the record's temperature misread from one file."""
     from molbuilder.postprocess import vibration
@@ -55,7 +56,8 @@ def test_h2s_bond_moves_by_the_textbooks_zero_point_amplitude(
     read = result if which == "json" else data
     v = vibration(read)
     stated_t = json.loads(result.read_text())["thermo"]["temperature_K"]
-    assert (v.record_temperature_k, v.source) == (stated_t, read.name)
+    assert (v.record_temperature_k, v.read_path) == (stated_t, str(read))
+    assert v.structure is not None and len(v.structure.elements) == 2
     assert len(v.modes) == 1
     mode = v.modes[0]
     nu, (m1, m2) = mode.frequency_cm1, mode.masses_amu
