@@ -20,9 +20,14 @@ ROLE    ``parse`` -- an engine's file, a run's file → its result (the
         ``raman_view`` -- a SIESTA vibration's Raman at a laser, from its
         optical calls (`spectra.raman`); ``pdos`` -- a transport point's PDOS
         of a mixed selection from its data file and digests, summed as the
-        report sums (`tbtnc.pdos_from_files`); ``reaveraged`` -- a frame
-        set's transport calculation averaged over another motion
-        (`frame_average.reaveraged`); ``outermost_move`` -- how far
+        report sums (`tbtnc.pdos_from_files`); ``frame_rows`` -- a
+        transport calculation's frame set's rows, from its data file
+        (`frameset.read`); ``weights_for_set`` -- the weights for a mode's
+        own set's rows at a state (`vibration_frames.weights_for_set`);
+        ``reaveraged`` -- a mode's own set's transport
+        calculation averaged at another state, the motion toolkit's weights
+        for its rows (`vibration_frames.weights_for_set`) at transport's
+        averaging door (`frame_average.averaged_at`); ``outermost_move`` -- how far
         a mode's frame set at a temperature moves its atom that moves most
         (`spectra.mode_frames`); ``vibration`` -- a vibration result to
         compute with, its modes, their states and the molecule's motion and
@@ -271,28 +276,83 @@ def pdos(data_file, point, *, atoms=None, labels=None, regions=None,
                                    regions=regions, orbitals=orbitals))
 
 
-def reaveraged(path, *, temperature_k, swing_quanta=None) -> Dict[str, Any]:
-    """A FRAME SET'S TRANSPORT CALCULATION AVERAGED OVER ANOTHER MOTION
-    (`science/vibrational-averaging.md` § 5.4), from its data file
-    ``<label>.transport.nc``: the bell curve at ``temperature_k`` -- the
-    junction's, or a randomly pumped mode's effective one -- with a swing
-    adding ``swing_quanta`` quanta on it, each frame weighted from its
-    position along the mode alone (`frame_average.motion_weights`).  Nothing
-    is computed again and nothing is written.  Answered by the frames'
-    post-process (`frame_average.reaveraged`).
+def frame_rows(data_file):
+    """A TRANSPORT CALCULATION'S FRAME SET'S ROWS, from its data file
+    ``<label>.transport.nc`` (`engines/transport-postprocessing.md` § 3.2):
+    the composed junction the file carries whole (``/structure``'s
+    ``structure_json``) read through the structure's own door
+    (`frameset.read`) -- a `frameset.FrameRows`: ``rows.structure`` and
+    ``rows.frames`` as written, each row ``{name, value, unit, note}``,
+    ``rows.value(name, frame)``, ``rows.weights``; ``None`` for a junction
+    that states no rows.  Refused by name: a data file of another schema
+    (`transport.datafile.DataFileError`)."""
+    from .frameset import read
+    from .ncdata import STRUCTURE_JSON
+    from .structure import Structure
+    from .transport.datafile import STRUCTURE_GROUP, read_data_file
+    stated = (read_data_file(data_file)["groups"][STRUCTURE_GROUP]["attrs"]
+              .get(STRUCTURE_JSON))
+    return read(Structure.from_dict(stated)) if stated else None
 
-    Answers ``{motion, frames, weights, reach, bias_v, energy_ev,
-    transmission, conductance_g0, conductance_change_percent, said}``: at
-    each voltage the averaged T(E), G/G0 at E_F and its change in per cent
-    of frame 0's -- by the record's own rule at each voltage
-    (`frame_average.at_voltage`), with these weights: NaN where it has no
-    value, its reason said, a voltage whose points are not all done among
-    them -- and what is said beside them.  Refused by name
-    (`frame_average.ReaverageError`): what `motion_weights` refuses, and a
-    data file of another schema (`transport.datafile.DataFileError`)."""
-    from .frame_average import reaveraged as _reaveraged
-    return _reaveraged(path, temperature_k=temperature_k,
-                       **_said(swing_quanta=swing_quanta))
+
+def weights_for_set(rows, *, temperature_k=None, swing_quanta=None,
+                    quanta=None, mean_quanta=None, classical=False):
+    """THE WEIGHTS FOR A MODE'S OWN SET'S ROWS AT A STATE
+    (`engines/vibration-frames.md` § 7) -- ``rows`` as :func:`frame_rows`
+    reads them, the state named as the toolkit's table names one, a
+    temperature not given the set's own, said: a `vibration.Weights`.
+    Answered, and refused by name, by the motion toolkit
+    (`vibration_frames.weights_for_set`)."""
+    from .vibration_frames import weights_for_set as _weights_for_set
+    return _weights_for_set(
+        rows, classical=classical,
+        **_said(temperature_k=temperature_k, swing_quanta=swing_quanta,
+                quanta=quanta, mean_quanta=mean_quanta))
+
+
+def reaveraged(path, *, temperature_k=None, swing_quanta=None, quanta=None,
+               mean_quanta=None, classical=False) -> Dict[str, Any]:
+    """A MODE'S OWN SET'S TRANSPORT CALCULATION AVERAGED AT ANOTHER STATE
+    (`engines/vibration-frames.md` § 7; `science/vibrational-averaging.md`
+    § 5.4), from its data file ``<label>.transport.nc`` -- two calls joined,
+    no rule of this layer's: the motion toolkit's weights for the set's rows
+    (:func:`frame_rows`) at the state named as its table names one
+    (`vibration_frames.weights_for_set`: a temperature not given the set's
+    own ``temperature_k`` row, said), and transport's averaging of the
+    file's frames at those weights (`frame_average.averaged_at`).  Nothing
+    is computed again and nothing is written.
+
+    Answers ``{bias_v, energy_ev, transmission, conductance_g0,
+    conductance_change_percent, weights, said, assumptions}``: at each
+    voltage the averaged T(E), G/G0 at E_F and its change in per cent of
+    frame 0's -- by the record's own rule at each voltage, NaN where it has
+    no value, its reason said -- ``weights`` the `vibration.Weights`,
+    ``said`` the weights' words then the average's, and ``assumptions``
+    transport's own, then the set's own, named so -- the motion it was
+    written for (`vibration_frames.assumptions_of_set`).  The state's rule and its
+    refusals are the toolkit's (`engines/vibration-frames.md` § 2, § 7);
+    a data file of another schema is refused by its door
+    (`transport.datafile.DataFileError`)."""
+    from .frame_average import averaged_at
+    rows = frame_rows(path)
+    weights = weights_for_set(rows, temperature_k=temperature_k,
+                              swing_quanta=swing_quanta, quanta=quanta,
+                              mean_quanta=mean_quanta, classical=classical)
+    got = averaged_at(path, weights.weights)
+    # WHAT THE NUMBERS ASSUME, beside them (science § 7, "never dropped"):
+    # transport's own, then the set's -- its own row, or molbuilder's words
+    # for a set that states none -- for the state it was written for, not
+    # the one asked.
+    from .vibration_frames import assumptions_of_set
+    own = assumptions_of_set(rows)
+    whose = ("the set's own" if rows is not None
+             and rows.value("assumptions") is not None
+             else "molbuilder's for the set, which states none")
+    return {**got, "weights": weights,
+            "said": [*weights.said, *got["said"]],
+            "assumptions": [*got["assumptions"], *(
+                [f"{whose}, for the state it was written for: {own}"]
+                if own else [])]}
 
 
 def outermost_move(path, *, mode: int, temperature_k: float,
@@ -337,6 +397,7 @@ __all__ = ["AtomIndexMap", "AtomIndexUnknown", "RunStepsError", "atom_index_map"
            "read_steps_data", "read_raman_data", "read_spectra_data", "read_steps",
            "read_chart_data",
            "read_structure", "read_transport_data", "read_xv", "read_xv_cell", "reaveraged",
+           "frame_rows", "weights_for_set",
            "pdos",
            "outermost_move", "projects_root", "project_dir", "topic_dir",
            "structure_dir", "list_projects", "list_topics", "list_structures",

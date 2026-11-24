@@ -4,11 +4,14 @@ of each frame, and the one row a combination of its frames reads
 
 MODULE  frameset (L2 by the index, `architecture.md`; it imports only the
         Structure and the standard library)
-ROLE    :func:`read` -- the structure's rows and each frame's as written, and
-        each frame's ``weight``
+ROLE    :func:`read` -- the structure's rows and each frame's as written,
+        each row's meaning (:meth:`FrameRows.meaning`), and each frame's
+        ``weight``
 USED-BY the frames' post-process (`frame_average`: the weighted average, the
-        data file's frame part, what a page is answered); the report log's
-        reader (`parse.instruments.reports`, :func:`finite_number`)
+        data file's frame part, what a page is answered); the vibration frame
+        sets' words and weights (`vibration_frames`); a data file's frame
+        set's rows (`postprocess.frame_rows`); the report log's reader
+        (`parse.instruments.reports`, :func:`finite_number`)
 
 **A calculation over the frames needs the frames and nothing else** (user,
 2026-10-18: "the frame can of course carry meta data, and why you treat it as
@@ -58,12 +61,23 @@ class FrameRows:
         rows = self.structure if frame is None else self.frames[frame]
         return next((r["value"] for r in rows if r["name"] == name), None)
 
+    def meaning(self, name: str, *, of_frames: bool = False
+                ) -> Optional[str]:
+        """Row ``name``'s meaning as written (its ``note``) -- the
+        structure's, or, ``of_frames``, the first frame's stating one, a
+        frame row's one meaning (`model/structure.md` § 2.2f) -- or ``None``
+        where none is written."""
+        sets = self.frames if of_frames else (self.structure,)
+        return next((str(r["note"]) for rows in sets for r in rows
+                     if r["name"] == name and str(r.get("note") or "")),
+                    None)
+
 
 def finite_number(value: Any) -> Optional[float]:
     """``value`` as a finite number, or ``None`` -- true/false is not a
     number here, though Python counts it as one.  The one rule every
-    reader of a frame's row asks (`frame_average`), and the report log's
-    reader of a report's sent time."""
+    reader of a frame's row asks (`frame_average`, `vibration_frames`), and
+    the report log's reader of a report's sent time."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
     try:

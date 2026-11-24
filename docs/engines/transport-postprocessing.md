@@ -108,51 +108,57 @@ float(p.current_a) == float(s.current_a.sel(frame=0, bias_v=0.2))
 
 ### 3.2 A frame set: along the mode, the average, its error
 
-A mode's own set, read along the mode — its frames' coordinate a label in
-the summary in `@13`; from `transport-data@14` a row of the frame set's
-rows, which the file carries in the structure it cites (`structure_json`,
-[`engines/transport.md`](?doc=engines/transport.md) § 2a.12), read through
-the structure's door by `frame_rows` *(to build, R3d2b2)* and set beside
-`frame` in one line:
+A mode's own set, read along the mode — its frames' coordinate is a row of
+the frame set's rows, which the file carries in the structure it cites
+(`structure_json`, [`engines/transport.md`](?doc=engines/transport.md)
+§ 2a.12), read through the structure's door by `frame_rows` and set beside
+`frame` in one line; each frame's `weight`, the one row the calculation
+reads, is a label beside `frame` already:
 
 ```python
 from molbuilder.postprocess import frame_rows
 s = xr.load_dataset("F.transport.nc", group="summary")       # read whole, no handle held (§ 7)
-rows = frame_rows("F.transport.nc")                           # @14: the set's rows and each frame's
+rows = frame_rows("F.transport.nc")                           # the set's rows and each frame's
 s = s.assign_coords(q_amu12_ang=("frame", [rows.value("q_amu12_ang", f) for f in range(len(rows.frames))]))
-along_q = s.swap_dims(frame="q_amu12_ang").sortby("q_amu12_ang")   # @13: this line alone
+along_q = s.swap_dims(frame="q_amu12_ang").sortby("q_amu12_ang")
 along_q.conductance_g0.differentiate("q_amu12_ang")
 s.average_transmission.sel(bias_v=0.0).plot(x="energy_ev")
 s.average_why.to_series()           # why an average is none, where it is
 ```
 
-**Averaged over another motion** — a mode's own set. Each frame is its
+**Averaged at another state** — a mode's own set. Each frame is its
 position along the mode; its weight is the motion's. The same frames
-averaged over a bell curve at another temperature, or with a swing added by a
-push in step with the mode, the weights the motion toolkit's
+averaged over a bell curve at another temperature, with a swing added by a
+push in step with the mode, at $n$ quanta — any state of the toolkit's table
+— the weights the motion toolkit's for the set's rows
 ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 7;
 [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
-§ 5.4) — nothing computed again, nothing written:
+§ 5.4), the averaging transport's own (`frame_average.averaged_at`) —
+nothing computed again, nothing written:
 
 ```python
 from molbuilder.postprocess import reaveraged
-r = reaveraged("F.transport.nc", temperature_k=300.0)   # the bell curve at 300 K
-r["motion"]                       # the quanta, the spreads, the swing's turning points
-r["weights"]                      # each frame's weight for this motion
+r = reaveraged("F.transport.nc", temperature_k=77.0)    # the bell curve at 77 K
+r["weights"].weights              # each frame's weight for this state
+r["weights"].beyond               # the share of the state's motion beyond the outermost frames
+r["weights"].exact_to_degree      # the degree the weights reproduce the state's averages to
 r["conductance_change_percent"]   # <ΔG>/G at each voltage
-r["said"]                         # the frames' reach, a weight below zero, ...
+r["said"]                         # the state taken, the share beyond, a weight below zero, ...
+r["assumptions"]                  # transport's own, then the set's, for the state it was written for
+reaveraged("F.transport.nc", swing_quanta=2, temperature_k=300.0)   # a warm driven mode
 ```
 
-With three frames the number is said to be blind to the shape (§ 5.4
-there). *From R3d2b2* (today a temperature and a swing on it, and a swing
-reaching beyond the outermost frame refused): `reaveraged` takes any state's
-arguments and joins the toolkit's weights for the set's rows with
-transport's own averaging door — its rules, the temperature it takes and
-what it refuses, are the toolkit's
-([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 2's
-table, § 7). **Frames re-weighted are exact only to degree $m-1$**: a driven
-mode's effect read from one set re-weighted to the thermal state needs five
-frames at least, or two sets ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
+Its rules — the state's table, the temperature it takes when none is
+given, what it says beside the weights and what it refuses — are the
+toolkit's, stated once ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 2's table, § 7; the weights alone, `postprocess.weights_for_set(frame_rows(path),
+...)`): the set re-weighted to its own state is not said to reach short
+or to be blind (science § 5.4's items 1 and 2), frames placed for another
+motion are; a weight below zero is said of any frames. **Frames re-weighted are
+exact only to degree $m-1$** ($m$ for an odd number of symmetric frames and
+a symmetric state): a driven mode's effect read from one set re-weighted to
+the thermal state needs five frames at least, or two sets
+([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
 § 6).
 
 **A snapshot set's average, and its error.** Every frame of a snapshot set
@@ -172,8 +178,8 @@ mean, error = pairs.mean(), pairs.std(ddof=1) / np.sqrt(len(pairs))
 
 The motion toolkit gives the same from the data file's values whole, one
 per frame, frame 0 first — the set read back leaving frame 0 out itself
-(`read_frame_set(...).standard_error(g)`, an `Estimate`, and `parts` for the
-even and odd shares, [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+(`read_frame_set(...).standard_error(g)` *(the reader to build, R3d2b2b2)*,
+an `Estimate`, and `parts` for the even and odd shares, [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
 § 3.3, § 7). **More frames** are the same seed drawn further, or another seed: the
 new set's calculation's results join the first's at equal weights, each
 set's frame 0 left out, the error from all their pairs together (`pooled`,

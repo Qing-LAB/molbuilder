@@ -52,6 +52,7 @@ from flask import Blueprint, jsonify, request
 from ._shared import (
     err,
     catalogue_to_form_schema,
+    frame_set_said,
     issues_to_json as _issues_to_json,
 )
 
@@ -147,7 +148,7 @@ def api_transport_describe_attempt() -> Any:
                                               compose_junction,
                                               labeled_citation_structure,
                                               refuse_failed_citation)
-    from molbuilder.frame_average import answer_said
+    from molbuilder.frame_average import answer
     from molbuilder.issues import Issue
     from molbuilder.transport.sort import (ORDER_INVERTED,
                                            electrode_orientation)
@@ -340,14 +341,16 @@ def api_transport_describe_attempt() -> Any:
             # empty card.
             pass
 
-    # WHAT ITS FRAMES ARE (§ 3.8.1): a cited pair's count and its rows, the
-    # frames' post-process's answer; a cited run is one structure.  Rows the
-    # vocabulary refuses are said where the frames would be, and as a
-    # refusal beside the junction, as every refusal here is (§ 2a.9).
-    frame_set = answer_said(
-        cited.structure if isinstance(cited, CitedPair) else None)
-    if frame_set.get("why"):
-        findings.append(Issue("error", str(frame_set["why"])))
+    # WHAT ITS FRAMES ARE (§ 3.8.1): a cited pair's count and its rows as
+    # written, the frames' post-process's answer -- a cited run is one
+    # structure -- and beside them the page's words for each row and where
+    # the set came from, the vibration frame sets' (`frame_set_said`).
+    frame_set = answer(cited.structure if isinstance(cited, CitedPair)
+                       else None)
+    frames_said = (frame_set_said(citation, root,
+                                  n_frames=frame_set["n_frames"],
+                                  structure=cited.structure)
+                   if isinstance(cited, CitedPair) else None)
     if finished is not None:
         # ITS FRAME 0 IS THE FINISHED JUNCTION, or it is refused here, where
         # it is picked, the junction the tab holds staying held; the rename
@@ -374,6 +377,7 @@ def api_transport_describe_attempt() -> Any:
         # choice it holds and offers to withdraw it (§ 4).
         "swap_electrodes": swap,
         "frame_set": frame_set,
+        "frame_set_said": frames_said,
     })
 
 
@@ -386,9 +390,9 @@ def _describe_reused(folder: str, root) -> Any:
     drawn for; ``reuses``, the folder; and its bias list and treatment.  A
     folder that is not a transport calculation's answers ``citation: null``
     with the refusal as its summary, as any path that is not citable."""
-    from molbuilder.frame_average import answer_said
-    from molbuilder.issues import Issue
+    from molbuilder.frame_average import answer
     from molbuilder.jobset.rung import citation_of
+    from molbuilder.transport.compose import read_provenance
     from molbuilder.jobset.runstatus import jobset_status
     from molbuilder.transport.compose import recorded_junction
     from molbuilder.transport.reuse import Extension, ReuseError, reused
@@ -408,7 +412,7 @@ def _describe_reused(folder: str, root) -> Any:
     except compose_refusals() as exc:
         recorded, unread = None, str(exc)
     # THE JUNCTION IN THE USER ORDER, once -- the structure the viewer draws
-    # and the frames' rows and masses beside it, one list
+    # and the frames and their rows beside it, one list
     # (`model/overview.md` § 2.2a) -- or, a junction whose order is not
     # recorded (I9), as TranSIESTA lists it, marked and said (§ 2.2b, F4).
     junction = (recorded.structure.restored() if recorded is not None
@@ -431,18 +435,22 @@ def _describe_reused(folder: str, root) -> Any:
         stands] + ([f"its junction's record does not read: {unread}"]
                    if unread else [])
         + ([unstated] if unstated else []))
-    # ITS FRAMES, as any citation's are said (§ 3.8.1, § 2a.9).
-    frame_set = answer_said(junction if junction is not None
-                            and junction.n_frames > 1 else None)
+    # ITS FRAMES, as any citation's are said (§ 3.8.1, § 2a.9): the
+    # junction's rows as it ran them, and beside them the cited pair's words
+    # and provenance, its files against the sha256 the calculation pinned.
+    frame_set = answer(junction if junction is not None
+                       and junction.n_frames > 1 else None)
+    provenance = read_provenance(calc.base) or {}
     return jsonify({
         "ok": True, "citation": citation_of(task), "reuses": rel,
         "concluded": True, "summary": summary,
-        "findings": _issues_to_json(
-            [Issue("error", str(frame_set["why"]))]
-            if frame_set.get("why") else []),
+        "findings": [],
         "structure": junction.to_dict() if junction is not None else None,
         "fix": None, "swap_electrodes": task.swap_electrodes,
         "frame_set": frame_set,
+        "frame_set_said": frame_set_said(
+            citation_of(task), root, files=provenance.get("files"),
+            n_frames=frame_set["n_frames"], structure=junction),
         "bias": [float(v) for v in task.bias],
         "low_bias_approximation": task.low_bias_approximation,
         # THE WINDOW ITS TRANSMISSION COMPUTED, in the meta line's words --
@@ -496,10 +504,25 @@ def api_transport_record() -> Any:
     command line's deliverable.  The bench summary's door, for a transport
     calculation (`/api/bench/summary`).
 
+    Beside the record, the cited frame set as the Results tab's frame-set
+    card draws it (`web/results.md` § 2.5; `engines/transport.md` § 3.8.1):
+    ``frame_set`` -- the composed junction's frames and rows as written,
+    the describe door's answer (`frame_average.answer`), ``null`` for one
+    structure, before the first prep composes the junction and while it
+    does not read -- and ``frame_set_said`` -- the page's words for those
+    frames and where they came from, the cited pair's files checked against
+    the sha256 the record pinned (:func:`frame_set_said`), ``null`` with
+    it.
+
     Errors: 400 for a path outside the projects tree, or one that is not a
     transport calculation's; 404 for nothing there.
     """
+    from pathlib import Path
+    from molbuilder.frame_average import answer
+    from molbuilder.projects import find_projects_root, projects_root
+    from molbuilder.transport.compose import recorded_junction
     from molbuilder.transport.record import RecordError, collect_record
+    from molbuilder.transport.rung import compose_refusals
     calc, refusal = _transport_calc(str(request.args.get("path") or ""))
     if refusal is not None:
         return refusal
@@ -507,7 +530,27 @@ def api_transport_record() -> Any:
         record = collect_record(calc, partial=True)
     except (RecordError, OSError, ValueError) as exc:
         return err(str(exc), 400)
-    return jsonify({"ok": True, "record": record})
+    # THE COMPOSED JUNCTION, as the record reads it: none before the first
+    # prep composes it, none where it does not read (`collect_record`).
+    try:
+        recorded = recorded_junction(calc.base)
+    except compose_refusals():
+        recorded = None
+    junction = recorded.structure if recorded is not None else None
+    cited = record.get("frame_set") or {}
+    frame_set = (answer(junction) if junction is not None
+                 and junction.n_frames > 1 else None)
+    # THE CALCULATION'S OWN TREE, as prep resolves its citation
+    # (`projects.find_projects_root`), the folder answer's rule -- the
+    # server's only for a calculation that sits in none.
+    tree = (find_projects_root(Path(calc.base))
+            or Path(projects_root()).resolve())
+    return jsonify({
+        "ok": True, "record": record, "frame_set": frame_set,
+        "frame_set_said": frame_set_said(
+            cited.get("citation"), tree, files=cited.get("files"),
+            n_frames=frame_set["n_frames"], structure=junction)
+        if frame_set else None})
 
 
 def _transport_calc(raw: str):

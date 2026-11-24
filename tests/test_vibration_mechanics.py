@@ -839,8 +839,10 @@ def test_frames_re_weighted_to_another_state_follow_the_sciences_table(
     ratio sigma_T`` carrying it, on the contact bond ``e^-Q`` -- each the
     table's average, and the share of the swing beyond the outermost frames
     the table's; the weights reproduce the state's averages of ``1 ...
-    Q^(m-1)``; a weight below zero said.  THE SILENT FAILURE: a re-averaged
-    number with the motion the frames never reached left unsaid."""
+    Q^(m-1)`` -- and of ``Q^m``, odd, the frames and the state both
+    symmetric: exact to degree m; a weight below zero said.  THE SILENT
+    FAILURE: a re-averaged number with the motion the frames never reached
+    left unsaid."""
     bell = V.State(V.THERMAL, 1.0)
     swing = V.State(V.SWING, 1.0, swing_quanta=ratio ** 2 / 4.0)
     for nodes, (average, beyond) in zip((3, 5, 7), expected):
@@ -849,14 +851,21 @@ def test_frames_re_weighted_to_another_state_follow_the_sciences_table(
         assert float((w.weights * np.exp(-q)).sum()) == pytest.approx(
             average, abs=5e-5)
         assert w.beyond == pytest.approx(beyond, abs=0.006)
-        assert w.exact_to_degree == len(q) - 1
+        assert w.exact_to_degree == len(q)
         for k in range(len(q)):
             assert float((w.weights * q ** k).sum()) == pytest.approx(
                 swing.moment(k), rel=1e-9, abs=1e-12)
         assert any("beyond the outermost frames" in s for s in w.said)
     seven = swing.weights_at(bell.frames(7).q_amu12_ang[:, 0])
     assert (ratio == 3) == any("below zero" in s for s in seven.said)
-    with pytest.raises(ValueError, match="one position"):
+    # EVERY MESSAGE COUNTS FRAMES FROM 1, in the one spelling
+    # (`model/structure.md` § 2.2e): the middle frame, frame 0, weighted
+    # below zero at Q0 = 3 sigma_T (science § 5.4's table).
+    if ratio == 3:
+        assert any(s.startswith("frame 1 of 7's weight is")
+                   for s in seven.said), seven.said
+    with pytest.raises(ValueError, match="frame 2 of 3 and frame 3 of 3 sit "
+                                         "at one position"):
         swing.weights_at([0.0, 1.0, 1.0])
 
 
@@ -1250,6 +1259,30 @@ def test_a_motion_keeps_the_results_order_and_one_vibrations_states():
     other = v.with_frequency_scale(0.96)
     with pytest.raises(ValueError, match="of another vibration"):
         motion.with_mode(2, state=other.mode(2).state(77.0))
+
+
+@pytest.mark.parametrize("state", [
+    V.State(V.THERMAL, 1.0, bath_quanta=0.5),
+    V.State(V.SWING, 1.0, swing_quanta=2.0),
+    V.State(V.NUMBER, 1.0, quanta=2),
+], ids=["thermal", "driven", "n quanta"])
+@pytest.mark.parametrize("nodes", [3, 4, 5, 7])
+def test_a_states_own_frames_weighted_for_it_are_its_own_rule(state, nodes):
+    """Science § 5.1, § 5.4; `engines/vibration-frames.md` § 7: frames placed
+    for a state, weighted for that same state, are its own Gauss rule --
+    their weights the rule's, exact to degree 2m - 1 on its m nodes -- and
+    an odd rule's says nothing of frames placed for another motion: no
+    share beyond, no blindness.  An even rule's prepended frame 0 at weight
+    0 is never said below zero.  THE SILENT FAILURE: a set's own average
+    re-weighted to its own state said to be extrapolated, or its zero
+    weight said below zero."""
+    f = state.frames(nodes)
+    w = state.weights_at(f.q_amu12_ang[:, 0])
+    assert w.weights == pytest.approx(f.weights, abs=1e-12)
+    assert w.exact_to_degree == 2 * nodes - 1, w
+    assert not any("below zero" in s for s in w.said), w.said
+    if nodes % 2:
+        assert w.said == (), w.said
 
 
 def test_an_analysis_says_what_it_dropped_and_few_frames_say_their_degree():

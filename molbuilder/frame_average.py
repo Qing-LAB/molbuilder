@@ -1,6 +1,6 @@
-"""THE FRAMES, POST-PROCESSED -- what a multi-frame calculation's points are
-combined and read as, after the calculation has run (`engines/transport.md`
-§ 2a.12; `model/structure.md` § 2.2f).
+"""THE FRAMES, POST-PROCESSED -- what a multi-frame transport calculation's
+points are combined and read as, after the calculation has run
+(`engines/transport.md` § 2a.12; `model/structure.md` § 2.2f).
 
 MODULE  frame_average (L2; the frames' rows (`frameset`), the transport
         stages' voltage rule and its data file's groups, numpy)
@@ -8,186 +8,48 @@ ROLE    the post-process over a multi-frame transport calculation, kept out of
         its execution: the frames' weighted average at each voltage
         (:func:`average_block`) and its summary lines (:func:`summary_lines`),
         the frame set the record cites (:func:`citation_block`), the data
-        file's frame part (:func:`data_file_variables`, :func:`with_meanings`,
+        file's frame part (:func:`data_file_variables`,
         :func:`fill_data_file`), what a page is answered of the frames
-        (:func:`answer`) and what is said of their rows
-        (:func:`warnings_of`); another motion's weights, the frames
-        re-averaged after the run (:func:`motion_weights`,
-        :func:`reaveraged`) -- with the
-        interpretation a mode's frame set's
-        maker writes its rows in: the vocabulary's page words and meanings
-        (:data:`ROWS`) and what a harmonic mode's average assumes
-        (:data:`ASSUMPTIONS`)
-USED-BY the frame generator (`spectra.mode_frames`: the vocabulary it writes in),
-        the transport record (`transport.record`), the data file
+        (:func:`answer`), and a data file's frames averaged at weights a
+        caller gives (:func:`averaged_at`) -- with what transport's average
+        assumes (:data:`ASSUMPTIONS`)
+USED-BY the transport record (`transport.record`), the data file
         (`transport.datafile`), the junction's composition
-        (`transport.compose`), the describe door and Task setup's folder
-        answer (`web/blueprints/transport.py`, `web/blueprints/build.py`),
-        the post-processing layer (`postprocess.reaveraged`)
+        (`transport.compose`), the describe door and the record's answer
+        (`web/blueprints/transport.py`), Task setup's folder answer
+        (`web/blueprints/build.py`), the post-processing layer
+        (`postprocess.reaveraged`)
 
-**Transport runs the frames and keeps every point; this combines and reads
-them** (the user, 2026-10-18: "how to interpret and present the data is
-entirely result tab or some other's work -- meta data is providing the
-background and some parameters (such as averaging when needed) for the
-calculation, it should not be deeply integrated with transport framework
-itself").  The one parameter the combination takes is each frame's
-``weight`` (`frameset.read`); every other row is carried as written, and a
-row the vocabulary below knows is said in its words.  Nothing here refuses a
-row.
+**Transport runs the frames and keeps every point; this combines them**
+(the user, 2026-10-18: "how to interpret and present the data is entirely
+result tab or some other's work -- meta data is providing the background and
+some parameters (such as averaging when needed) for the calculation, it
+should not be deeply integrated with transport framework itself").  The one
+parameter the combination takes is each frame's ``weight``
+(`frameset.read`); every other row is its maker's, carried as written and
+never read here -- what a row means and how a page says it is its maker's
+(a vibration's: `vibration_frames`).  Nothing here refuses a row.
 """
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from .frameset import WEIGHT_ROW, finite_number
 from .units import volts_words
 
-# ----------------------------------------------------------------------- #
-#  A mode's frame set's vocabulary -- how its maker's rows are said        #
-# ----------------------------------------------------------------------- #
-
-#: Each atom's mass, the value channel a mode's maker weights its coordinate
-#: by (`model/structure-annotations.md`).
-MASS_CHANNEL = "mass_amu"
-
-#: Where a mode's maker says the mode came from: ``info.vibration = {run,
-#: result_sha256}``.
-INFO_KEY = "vibration"
-
-
-@dataclass(frozen=True)
-class Row:
-    """One row of a mode's frame set's vocabulary: its ``name`` (its unit in
-    it), ``where`` it lives (``structure`` or ``frame``), its ``kind``
-    (``given``, ``measured`` from the coordinates, ``derived`` from the
-    others), the ASCII spelling of its ``unit`` (``None``: a number without
-    one), how a page says it -- its ``words`` and its ``page_unit`` -- and
-    what it means, ``means``: the words its maker writes as the row's
-    ``note``, so the set says what each number is wherever it is read
-    (`model/structure.md` § 2.2f).  ``text``: a row whose value is a name,
-    never a number."""
-    name: str
-    where: str
-    kind: str
-    unit: Optional[str]
-    words: str
-    page_unit: Optional[str]
-    means: str
-    text: bool = False
-
-    @property
-    def unit_spelled(self) -> str:
-        """Its unit as a file spells it -- ``"1"``, the dimensionless unit,
-        for a number without one: the data file's ``units``, and what a
-        frame set's ``unit`` field may say (:func:`check_units`)."""
-        return self.unit or "1"
-
-
-#: THE VOCABULARY -- `model/structure.md` § 2.2f's table: the rows a mode's
-#: frame set is written in, how a page says each, and what each means.
-ROWS: Tuple[Row, ...] = (
-    Row("mode_index_1based", "structure", "given", None,
-        "Mode", None,
-        "which mode of the vibration result, counted as the result counts "
-        "them (index_1based)"),
-    Row("frequency_cm1", "structure", "given", "cm-1",
-        "Frequency", "cm⁻¹",
-        "the mode's wavenumber, as the vibration result states it"),
-    Row("temperature_k", "structure", "given", "K",
-        "Temperature", "K",
-        "the temperature of the motion the frames sample -- the junction's, "
-        "or for a mode pumped out of equilibrium its effective temperature, "
-        "the one whose thermal state holds the same mean number of quanta; "
-        "the input that sets the spread, chosen by the set's maker"),
-    Row("mean_quanta", "structure", "derived", None,
-        "Mean quanta n", None,
-        "the mode's mean number of vibrational quanta at that temperature, "
-        "n = 1 / (exp(hbar omega / k_B T) - 1)"),
-    Row("zero_point_amplitude_amu12_ang", "structure", "given",
-        "amu^1/2 angstrom", "Zero-point amplitude", "amu½·Å",
-        "the mode's zero-point amplitude Q_zp = sqrt(hbar / 2 omega) in the "
-        "mass-weighted coordinate q, as the vibration result states it"),
-    Row("max_displacement_ang", "structure", "measured", "angstrom",
-        "Outermost move", "Å",
-        "the outermost move: the largest single atom's move at the "
-        "outermost frames, max_A |R_A - R0_A| = sqrt(2) x_out sigma "
-        "max_A |L_A|, x_out the rule's outermost node -- the check against "
-        "a bond length"),
-    Row("sigma_amu12_ang", "structure", "derived", "amu^1/2 angstrom",
-        "Spread σ", "amu½·Å",
-        "the spread sigma of the Gaussian in q the frames sample, from the "
-        "temperature: sigma = Q_zp sqrt(2n + 1) = "
-        "Q_zp sqrt(coth(hbar omega / 2 k_B T))"),
-    Row("sampling_rule", "structure", "given", None,
-        "Sampling rule", None,
-        "the rule, by name, that placed the frames along the mode and gave "
-        "their weights.  gauss-hermite, the frame generator's: the frames "
-        "sit at the nodes q_f of an m-point Gauss-Hermite rule for a "
-        "Gaussian of spread sigma in q, density exp(-q^2 / 2 sigma^2) / "
-        "(sigma sqrt(2 pi)), and sum_f weight_f X_f approximates that "
-        "Gaussian's average of a property X -- exactly when X is a "
-        "polynomial in q of degree below 2m; a response not smooth over the "
-        "spread, a level crossing E_F, is averaged poorly", text=True),
-    Row("sampling_nodes", "structure", "given", None,
-        "Nodes", None,
-        "m, the rule's number of nodes, one frame at each -- the frame "
-        "generator writes 3 (q = 0, +-sqrt(3) sigma, weighted 2/3, 1/6, "
-        "1/6), 5 or 7"),
-    Row("mass_source", "structure", "given", None,
-        "Masses", None,
-        "which masses the mass_amu channel holds, by name, and so which "
-        "masses q is measured with and the mode vector L is normalised "
-        "with, sum_A m_A |L_A|^2 = 1.  standard atomic weights: the "
-        "isotope-averaged standard atomic weights (chemistry.atomic_mass) "
-        "a molbuilder vibration's deck states, as its result states them",
-        text=True),
-    Row("displacement_ang", "frame", "measured", "angstrom",
-        "Displacement", "Å",
-        "the frame's plain displacement from the first frame, sqrt(sum_A |R_A - "
-        "R0_A|^2) over every atom -- no masses"),
-    Row("max_atom_displacement_ang", "frame", "measured", "angstrom",
-        "Largest atom move", "Å",
-        "its largest single atom's displacement from the first frame, "
-        "max_A |R_A - R0_A|"),
-    Row("q_amu12_ang", "frame", "derived", "amu^1/2 angstrom",
-        "Position along the mode, q", "amu½·Å",
-        "its position along the mode, the mass-weighted normal coordinate: "
-        "every atom displaced by q L_A, with sum_A m_A |L_A|^2 = 1 over the "
-        "mass_amu masses; |q| = sqrt(sum_A m_A |R_A - R0_A|^2), its sign "
-        "the side of the first frame it sits on; the frame's node, sqrt(2) sigma "
-        "x_f"),
-    Row("node_sigma", "frame", "derived", None,
-        "q in units of σ", None,
-        "the same position in units of the spread, q / sigma"),
-    Row(WEIGHT_ROW, "frame", "given", None,
-        "Weight", None,
-        "the frame's share of the mode's average: the sampling rule's "
-        "weight at this frame's node, the weights summing to 1, so "
-        "sum_f weight_f X_f is the rule's estimate of the Gaussian average "
-        "of X"),
-)
-STRUCTURE_ROWS = tuple(r for r in ROWS if r.where == "structure")
-FRAME_ROWS = tuple(r for r in ROWS if r.where == "frame")
-_STRUCTURE = {r.name: r for r in STRUCTURE_ROWS}
-_FRAME = {r.name: r for r in FRAME_ROWS}
-
-#: What a harmonic mode's average assumes, said beside its numbers where the
-#: frames state a mode (`science/vibrational-averaging.md` § 7) -- the
-#: interpretation of a mode's frame set, never transport's.
+#: WHAT TRANSPORT'S AVERAGE OF THE FRAMES ASSUMES, said beside its numbers
+#: wherever it is taken (`science/vibrational-averaging.md` § 7, items 2-6)
+#: -- said of frames; what the frames' maker assumes is its own
+#: ``assumptions`` row, carried with the set's rows as written.
 ASSUMPTIONS = (
-    "A harmonic mode: the molecule's position along the mode follows a "
-    "Gaussian of the spread the set states, the same either side of "
-    "equilibrium; a strongly anharmonic mode skews it, which a harmonic "
-    "frame set does not carry.",
     "Static frames: each frame is a frozen geometry, the electron crossing "
-    "fast against the vibration; the inelastic steps at eV = hbar*omega and "
-    "a strongly coupled level's polaron shift need the electron-vibration "
-    "coupling and are not here.",
+    "fast against the atoms' motion; the inelastic steps at eV = hbar*omega "
+    "and a strongly coupled level's polaron shift need the electron-"
+    "vibration coupling and are not here.",
     "One distribution, one voltage at a time: the average is taken over "
     "the frames at each voltage separately, with the same weights at every "
-    "voltage; a bias that heats the mode is not modelled.",
+    "voltage; a bias that heats the motion is not modelled.",
     "Each frame's electrons in their ground state for that frame: every "
     "frame runs its own self-consistent device.",
     "The level alignment is DFT's, frame by frame.",
@@ -196,229 +58,48 @@ ASSUMPTIONS = (
 )
 
 
-def warnings_of(frame_set) -> List[str]:
-    """What is said of a frame set's rows, beside the frames on every reader
-    -- the record, the data file, a page: what the weights' reader said
-    (`frameset.read`), and the vocabulary's rows written without their
-    meaning (their ``note``; `model/structure.md` § 2.2f), named in one
-    line and read as written."""
-    if frame_set is None:
-        return []
-    # BARE BY THE READERS' RULE (:func:`_note`): a frame row is read with
-    # the first meaning any frame writes for it.
-    framed = dict.fromkeys(r["name"] for frame in frame_set.frames
-                           for r in frame)
-    named = ([r["name"] for r in frame_set.structure
-              if r["name"] in _STRUCTURE and not str(r.get("note") or "")]
-             + [n for n in framed
-                if n in _FRAME and _note(frame_set, n, "frame") is None])
-    one = len(named) == 1
-    return list(frame_set.warnings) + (
-        [f"the frame set's {'row' if one else 'rows'} {', '.join(named)} "
-         f"{'is' if one else 'are'} written without "
-         f"{'its' if one else 'their'} meaning (the row's note): "
-         f"{'it is' if one else 'each is'} read with the meaning "
-         f"molbuilder's frame-set table gives it"]
-        if named else [])
-
-
-def _note(frame_set, name: str, where: str) -> Optional[str]:
-    """Row ``name``'s meaning as the set writes it -- the structure's row, or
-    the first frame stating one -- or ``None`` where it writes none."""
-    sets = ([frame_set.structure] if where == "structure"
-            else list(frame_set.frames))
-    return next((str(r["note"]) for rows in sets for r in rows
-                 if r["name"] == name and str(r.get("note") or "")), None)
-
-
-def _states_a_mode(frame_set) -> bool:
-    """Do the frames state a mode -- the structure's ``mode_index_1based``?"""
-    return frame_set is not None and \
-        frame_set.value("mode_index_1based") is not None
-
-
-# ----------------------------------------------------------------------- #
-#  The frames' weighted average -- the record's ``average`` block          #
-# ----------------------------------------------------------------------- #
-
 class AverageError(ValueError):
     """The frames' transmissions cannot be averaged -- the message names the
     voltage and the frame, ready to surface verbatim."""
 
 
 # ----------------------------------------------------------------------- #
-#  Another motion's weights -- the frames re-averaged after the run        #
+#  The frames' weighted average -- the record's ``average`` block          #
 # ----------------------------------------------------------------------- #
-
-class ReaverageError(ValueError):
-    """The frames cannot be re-averaged over the motion asked -- the message
-    names why and the way out (`science/vibrational-averaging.md` § 5.4)."""
-
-
-def _motion_moments(m: int, sigma_t: float, q0: float) -> List[float]:
-    """The motion's averages of ``q**k``, ``k = 0 … m-1``: the bell curve of
-    spread ``sigma_t`` carried along a swing of amplitude ``q0`` -- the two
-    add, so ``<q^k> = Σ_j C(k, j) q0^j <cos^j φ> <δ^(k-j)>``, ``<cos^j φ> =
-    C(j, j/2) / 2^j`` and ``<δ^i> = σ^i (i-1)!!`` for even ``j``, ``i``, zero
-    for odd (`science/vibrational-averaging.md` § 5.4)."""
-    def swing(j: int) -> float:
-        return 0.0 if j % 2 else math.comb(j, j // 2) / 2.0 ** j
-
-    def bell(i: int) -> float:
-        return 0.0 if i % 2 else sigma_t ** i * math.prod(range(i - 1, 0, -2))
-    return [math.fsum(math.comb(k, j) * q0 ** j * swing(j) * bell(k - j)
-                      for j in range(k + 1)) for k in range(m)]
-
-
-def motion_weights(q, *, temperature_k, swing_quanta,
-                   frequency_cm1: float,
-                   zero_point_amplitude_amu12_ang: float) -> Dict[str, Any]:
-    """THE FRAMES' WEIGHTS FOR ANOTHER MOTION
-    (`science/vibrational-averaging.md` § 5.4): ``q`` each frame's position
-    along the mode (amu^1/2·Å), the motion the bell curve at
-    ``temperature_k`` -- the junction's, or a randomly pumped mode's
-    effective one, its zero-point motion included -- with a swing adding
-    ``swing_quanta`` quanta on it; the mode by its frequency and zero-point
-    amplitude.  The weights are the ones with which the frames reproduce the
-    motion's averages of ``q**0 … q**(m-1)``, so ``Σ w_f X_f`` is exact for
-    a response of degree ``m - 1`` or less.
-
-    Answers ``{motion, weights, reach, said}``: the motion's quanta, spreads
-    and turning points; each frame's weight; how far the frames reach
-    against it; and what is said beside a number -- three frames blind to a
-    swing's shape, a weight below zero.  Refused (:class:`ReaverageError`):
-    frames stating no position, two at one position, no mode's frequency or
-    zero-point amplitude, a temperature not kelvin 0 or more, swing quanta
-    below 0, a swing whose turning points lie beyond the outermost frame."""
-    import numpy as np
-    from .vibration import (checked_temperature_k, mean_quanta,
-                            thermal_spread_amu12_ang)
-    from .structure import frame_words
-    q = np.asarray(q, dtype=float).ravel()
-    m = len(q)
-    if m < 2 or not np.all(np.isfinite(q)):
-        raise ReaverageError(
-            "the frames state no position along a mode (q_amu12_ang) -- a "
-            "family of structures, or one structure: there is no motion to "
-            "weight them by")
-    for i in range(m):
-        for j in range(i + 1, m):
-            if math.isclose(q[i], q[j], rel_tol=1e-12, abs_tol=1e-12):
-                raise ReaverageError(
-                    f"{frame_words(i, m)} and {frame_words(j, m)} sit at one "
-                    f"position along the mode, q = {q[i]:g} amu^1/2 Angstrom: "
-                    f"two frames at one position give no weight to either")
-    try:
-        nu, qzp = float(frequency_cm1), float(zero_point_amplitude_amu12_ang)
-    except (TypeError, ValueError):
-        nu = qzp = float("nan")
-    if not (math.isfinite(nu) and nu > 0 and math.isfinite(qzp) and qzp > 0):
-        raise ReaverageError(
-            "the frames state no mode's frequency and zero-point amplitude "
-            "(frequency_cm1, zero_point_amplitude_amu12_ang): a temperature "
-            "gives no spread without them")
-    try:
-        t = checked_temperature_k(temperature_k)
-    except ValueError:
-        raise ReaverageError(
-            f"the temperature is the random part's -- the junction's, or a "
-            f"randomly pumped mode's effective one -- a number of kelvin, 0 "
-            f"or more; {temperature_k!r} is not one") from None
-    try:
-        n_swing = float(swing_quanta)
-    except (TypeError, ValueError):
-        n_swing = float("nan")
-    if not (math.isfinite(n_swing) and n_swing >= 0.0):
-        raise ReaverageError(
-            f"the swing's quanta are what a push in step with the mode adds, "
-            f"0 or more; {swing_quanta!r} is not a number of them")
-    n_th = mean_quanta(nu, t)
-    sigma_t = thermal_spread_amu12_ang(qzp, nu, t)
-    q0 = 2.0 * qzp * math.sqrt(n_swing)
-    sigma = math.sqrt(sigma_t ** 2 + 0.5 * q0 ** 2)
-    q_out = float(np.abs(q).max())
-    if q0 > q_out * (1.0 + 1e-12):
-        raise ReaverageError(
-            f"the swing turns at q = ±{q0:.6g} amu^1/2 Angstrom, beyond the "
-            f"outermost frame at ±{q_out:.6g}: its average would come from "
-            f"values extrapolated past the frames -- frames written at a "
-            f"higher temperature, or more of them, reach further")
-    # THE WEIGHTS, from the motion's moments, the positions scaled by the
-    # outermost so the system stays well conditioned for seven frames.
-    scale = q_out
-    moments = _motion_moments(m, sigma_t / scale, q0 / scale)
-    vander = np.vander(q / scale, m, increasing=True).T
-    weights = [float(w) for w in np.linalg.solve(vander, moments)]
-    said: List[str] = []
-    if m == 3 and n_swing > 0.0:
-        said.append(
-            "three frames carry only the curvature, where a swing and a bell "
-            "curve of the same spread agree: this average is blind to the "
-            "swing's shape -- five or seven frames see it")
-    below = [f for f, w in enumerate(weights) if w < 0.0]
-    if below:
-        said.append(
-            f"{', '.join(frame_words(f, m) for f in below)} "
-            f"{'is' if len(below) == 1 else 'are'} weighted below zero "
-            f"({', '.join(f'{weights[f]:.3g}' for f in below)}): the frames "
-            f"do not suit this motion's shape well -- frames written at its "
-            f"spread suit it")
-    return {
-        "motion": {"temperature_k": t, "thermal_quanta": n_th,
-                   "thermal_spread_amu12_ang": sigma_t,
-                   "swing_quanta": n_swing,
-                   "swing_amplitude_amu12_ang": q0,
-                   "quanta": n_th + n_swing,
-                   "spread_amu12_ang": sigma},
-        "weights": weights,
-        "reach": {"outermost_q_amu12_ang": q_out,
-                  "outermost_over_spread": q_out / sigma,
-                  "outermost_over_swing": (q_out / q0 if q0 > 0.0
-                                           else None)},
-        "said": said,
-    }
-
 
 def average_block(n_frames: Optional[int], frame_set,
                   points: List[Dict], missing: List[Dict],
-                  same_volts: Callable[[float, float], bool]) -> Dict:
-    """The record's ``average`` block (`engines/transport.md` § 2a.12): the
-    frames' rows as written (``frame_set``, `frameset.FrameRows`, ``None``
-    for a structure that states none) -- the vocabulary's structure rows by
-    their names, every row as written, each frame's weight, their sum, what
-    is said of them -- what a mode's average assumes where the frames state
-    a mode, and, at each voltage the points ran at, the average over every
-    frame at its stated weight (``⟨T(E)⟩ = Σ_f W_f T_f(E)``), its change from
-    the base frame's (``ΔT(E) = ⟨T(E)⟩ − T₀(E)``), and at E_F the averaged
-    conductance beside the base frame's, with the change in per cent of it.
-    ``n_frames`` is the composed junction's count (``None`` before its
-    first prep); ``points`` are the record's done points, ``missing`` its
-    pending, not run and failed ones -- each a dict with ``frame`` and
-    ``bias_v``;
-    ``same_volts`` the stages' one voltage rule.  ``why`` says, in one
-    sentence, why there is no average: nothing composed yet, one structure,
-    or frames that do not each state a weight."""
+                  same_volts: Callable[[float, float], bool], *,
+                  unread: Optional[str] = None) -> Dict:
+    """The record's ``average`` block (`engines/transport.md` § 2a.12):
+    each frame's weight as its rows state it (``frame_set``,
+    `frameset.FrameRows`, ``None`` for a structure that states no rows),
+    their sum and its tolerance, what is said of them, what the average
+    assumes where one is taken, and, at each voltage the points ran at, the
+    average over every frame at its stated weight (``⟨T(E)⟩ = Σ_f W_f
+    T_f(E)``), its change from frame 0's (``ΔT(E) = ⟨T(E)⟩ − T₀(E)``), and
+    at E_F the averaged conductance beside frame 0's, with the change in per
+    cent of it.  ``n_frames`` is the composed junction's count (``None``
+    before its first prep); ``points`` are the record's done points,
+    ``missing`` its pending, not run and failed ones -- each a dict with
+    ``frame`` and ``bias_v``; ``same_volts`` the stages' one voltage rule;
+    ``unread``, why the composed junction that holds the frames does not
+    read, where it does not.  ``why`` says, in one sentence, why there is
+    no average: nothing composed yet, one structure, a junction that does
+    not read, frames stating no rows -- a family -- or frames that do not
+    each state a weight."""
     from .frameset import WEIGHT_SUM_TOLERANCE
-    if frame_set is not None:
-        check_units(frame_set)
     weights = (list(frame_set.weights) if frame_set is not None
                and frame_set.weights is not None else None)
-    # EVERY KEY, EVERY RECORD: the vocabulary's structure rows by their own
-    # names, as written, ``None`` where the structure states none; and every
-    # row as written beside them.
-    named = {r.name: (frame_set.value(r.name) if frame_set is not None
-                      else None) for r in STRUCTURE_ROWS}
+    # EVERY KEY, EVERY RECORD.
     block: Dict = {
         "frames": n_frames,
-        **named,
-        "rows": list(frame_set.structure) if frame_set is not None else [],
         "weights": weights,
         "weight_sum": (frame_set.weight_sum if frame_set is not None
                        else None),
         "tolerance": WEIGHT_SUM_TOLERANCE,
-        "warnings": warnings_of(frame_set),
-        "assumptions": (list(ASSUMPTIONS) if _states_a_mode(frame_set)
-                        else []),
+        "warnings": list(frame_set.warnings) if frame_set is not None else [],
+        "assumptions": [],
         "why": None,
         "at": [],
     }
@@ -430,22 +111,28 @@ def average_block(n_frames: Optional[int], frame_set,
         block["why"] = ("one structure, not a frame set: there are no frames "
                         "to average over")
         return block
-    if frame_set is None:
+    if unread is not None:
         # FRAMES COUNTED, THEIR RECORD NOT READ: the composed junction that
         # holds them does not read (`transport.record`, `junction_unread`).
         block["why"] = ("the composed junction, which holds the frames and "
                         "their weights, does not read -- no average; each "
                         "frame's curve is its own point")
         return block
+    if frame_set is None:
+        # A FAMILY: frames stating no rows (`model/structure.md` § 2.2f).
+        block["why"] = ("the frames state no rows -- a family: no average; "
+                        "each frame's curve is its own point")
+        return block
     if weights is None:
         block["why"] = (f"the frames do not each state a {WEIGHT_ROW} -- no "
                         f"average; each frame's curve is its own point")
         return block
+    block["assumptions"] = list(ASSUMPTIONS)
     from .transport.stages import voltages_once
     voltages = voltages_once((p["bias_v"] for p in list(points) + list(missing)),
                              same_volts)
     block["at"] = [at_voltage(v, n_frames, weights, points, missing,
-                               same_volts) for v in voltages]
+                              same_volts) for v in voltages]
     return block
 
 
@@ -504,50 +191,73 @@ def at_voltage(v: float, n: int, weights: List[float],
             entry["conductance_change_percent"] = (100.0 * (g_avg - gs[0])
                                                    / gs[0])
         else:
-            entry["conductance_why"] = ("the base frame's conductance is "
-                                        "zero: no change in per cent of it")
+            entry["conductance_why"] = (f"{frame_words(0, n)}'s "
+                                        f"conductance is zero: no change "
+                                        f"in per cent of it")
     return entry
 
 
-def summary_lines(avg: Dict) -> List[str]:
+
+
+def _as_written(value: Any) -> str:
+    """A row's value as `summarize` prints it: as written -- a whole number
+    whole, a number at its full precision, a name as it reads.  A float
+    printed whole below 1e15, where every whole number is a float exactly
+    (2^53 is 9.0e15)."""
+    if isinstance(value, float) and value.is_integer() and abs(value) < 1e15:
+        return str(int(value))
+    return str(value)
+
+
+def _row_line(row: Dict[str, Any]) -> str:
+    """One row in a line: its name, its value and its unit, as written -- no
+    unit where it states none or the dimensionless one."""
+    unit = row.get("unit")
+    return (f"{row['name']} {_as_written(row.get('value'))}"
+            + (f" {unit}" if unit not in (None, "", "1") else ""))
+
+
+def summary_lines(avg: Dict, frame_set: Optional[Dict] = None) -> List[str]:
     """The frames' average, as `summarize` prints it: what is said of the
-    weights, the frames' rows -- a mode's set in its vocabulary's words --
-    the weights, at each voltage the averaged conductance beside the base
-    frame's and its change in per cent -- or why there is none."""
+    weights, the weights, at each voltage the averaged conductance beside
+    frame 0's -- the set's reference, its number from 1 in the line -- and
+    its change in per cent, or why there is none; what it assumes, and the
+    frame set's rows (``frame_set``, the record's block,
+    :func:`citation_block`) each by its name, value and unit as written."""
+    from .structure import frame_words
     if not avg.get("frames") or avg["frames"] < 2:
         return []
-    said = [f"  the frames' average: warning: {w}"
-            for w in avg.get("warnings") or ()]
+    lines = [f"  the frames' average: warning: {w}"
+             for w in avg.get("warnings") or ()]
     if avg.get("why"):
-        return said + [f"  the frames' average: {avg['why']}"]
-    # THE ROWS AS A PAGE SAYS THEM (:func:`_said`, the frame card's one
-    # rule): the vocabulary's words and units in its order, any other row's
-    # name and unit as written, each number to six figures as the card
-    # shows it.
-    rows = ", ".join(_row_words(r) for r in _in_order(avg.get("rows") or ()))
-    head = (f"  the frames' average over {avg['frames']} frames"
-            + (f" -- {rows}" if rows else ""))
-    total, tol = avg.get("weight_sum"), avg.get("tolerance")
-    within = (total is not None and tol is not None
-              and abs(total - 1.0) <= tol)
-    lines = said + [head + f", weights {avg['weights']} (sum {total!r}"
-                    + (f", within {tol:g} of 1" if within else "") + "):"]
-    for e in avg.get("at", ()):
-        if e.get("why"):
-            lines.append(f"  {e['bias_v']:>8.3f} V  {e['why']}")
-            continue
-        g, d = e.get("conductance_g0"), e.get("conductance_change_percent")
-        g0 = e.get("base_conductance_g0")
-        lines.append(
-            f"  {e['bias_v']:>8.3f} V  <G> = "
-            + (f"{g:.6f} G0" if g is not None else "--")
-            + " against the base frame's "
-            + (f"{g0:.6f} G0" if g0 is not None else "--")
-            + ", change "
-            + (f"{d:+.4f} %" if d is not None
-               else f"-- ({e.get('conductance_why')})"))
-    if avg.get("assumptions"):
-        lines.append("  it assumes: " + " ".join(avg["assumptions"]))
+        lines.append(f"  the frames' average: {avg['why']}")
+    else:
+        total, tol = avg.get("weight_sum"), avg.get("tolerance")
+        within = (total is not None and tol is not None
+                  and abs(total - 1.0) <= tol)
+        lines.append(f"  the frames' average over {avg['frames']} frames, "
+                     f"weights {avg['weights']} (sum {total!r}"
+                     + (f", within {tol:g} of 1" if within else "") + "):")
+        for e in avg.get("at", ()):
+            if e.get("why"):
+                lines.append(f"  {e['bias_v']:>8.3f} V  {e['why']}")
+                continue
+            g, d = e.get("conductance_g0"), e.get("conductance_change_percent")
+            g0 = e.get("base_conductance_g0")
+            lines.append(
+                f"  {e['bias_v']:>8.3f} V  <G> = "
+                + (f"{g:.6f} G0" if g is not None else "--")
+                + f" against {frame_words(0, avg['frames'])}'s "
+                + (f"{g0:.6f} G0" if g0 is not None else "--")
+                + ", change "
+                + (f"{d:+.4f} %" if d is not None
+                   else f"-- ({e.get('conductance_why')})"))
+        if avg.get("assumptions"):
+            lines.append("  it assumes: " + " ".join(avg["assumptions"]))
+    rows = (frame_set or {}).get("rows") or ()
+    if rows:
+        lines.append("  the frame set's rows, as written:")
+        lines.extend(f"    {_row_line(r)}" for r in rows)
     return lines
 
 
@@ -557,200 +267,79 @@ def summary_lines(avg: Dict) -> List[str]:
 
 def answer(structure) -> Dict[str, object]:
     """What a citation's frames are, as every page that shows them reads it
-    (`engines/transport.md` § 3.8.1: the describe door, Task setup's echo):
-    ``{n_frames, definition}`` -- the structure's frame count and its rows
-    as a page shows them (:func:`_wire`), ``None`` for a structure that
-    states none."""
+    (`engines/transport.md` § 3.8.1: the describe door, Task setup's echo,
+    the Results tab): ``{n_frames, definition}`` -- the structure's frame
+    count and its rows as written, ``None`` for a structure that states
+    none.  The definition is ``{structure: [{name, value, unit, note}],
+    columns: [{name, unit, note}], frames: [[a value per column, None where
+    a frame states none] per frame], weights, weight_sum, warnings}`` -- the
+    columns in the order the frames first state them, each its unit and
+    meaning as the first frame stating one writes it."""
     from .frameset import read
     if structure is None:
         return {"n_frames": 1, "definition": None}
     rows = read(structure)
-    if rows is not None:
-        check_units(rows)
-    return {"n_frames": structure.n_frames,
-            "definition": _wire(rows, structure) if rows is not None
-            else None}
-
-
-def answer_said(structure) -> Dict[str, object]:
-    """:func:`answer` as every page draws it: the frames, or -- their rows
-    refused (:func:`check_units`) -- the refusal in the form a citation that
-    does not read takes, ``{n_frames, definition: None, why}``, its words
-    the refusal's (`engines/transport.md` § 3.8.1, `web/task-setup.md`
-    § 3): the page names it and still opens."""
-    try:
-        return answer(structure)
-    except AverageError as exc:
-        return {"n_frames": getattr(structure, "n_frames", None),
-                "definition": None, "why": str(exc)}
+    if rows is None:
+        return {"n_frames": structure.n_frames, "definition": None}
+    columns: Dict[str, Dict[str, Any]] = {}
+    for frame in rows.frames:
+        for r in frame:
+            columns.setdefault(r["name"], {
+                "name": r["name"], "unit": r.get("unit"),
+                "note": rows.meaning(r["name"], of_frames=True)})
+    return {"n_frames": structure.n_frames, "definition": {
+        "structure": [{"name": r["name"], "value": r.get("value"),
+                       "unit": r.get("unit"),
+                       "note": str(r.get("note") or "") or None}
+                      for r in rows.structure],
+        "columns": list(columns.values()),
+        "frames": [[rows.value(n, f) for n in columns]
+                   for f in range(len(rows.frames))],
+        "weights": list(rows.weights) if rows.weights is not None else None,
+        "weight_sum": rows.weight_sum,
+        "warnings": list(rows.warnings),
+    }}
 
 
 def average_said(n_frames: Optional[int], frame_set,
                  points: List[Dict], missing: List[Dict],
-                 same_volts: Callable[[float, float], bool]) -> Dict:
+                 same_volts: Callable[[float, float], bool], *,
+                 unread: Optional[str] = None) -> Dict:
     """:func:`average_block` as a page draws it (`engines/transport.md`
-    § 3.8.1): the block, or -- the frames' rows refused
-    (:func:`check_units`) -- the block of no average, its ``why`` the
-    refusal's words, so the Results tab's report still opens with every
-    point and draws the refusal where the average would be."""
+    § 3.8.1): the block, or -- the frames' transmissions on different
+    energy grids (:class:`AverageError`) -- the block of no average, its
+    ``why`` the refusal's words, so the Results tab's report still opens
+    with every point and draws the refusal where the average would be."""
     try:
         return average_block(n_frames, frame_set, points, missing,
-                             same_volts)
+                             same_volts, unread=unread)
     except AverageError as exc:
-        block = average_block(n_frames, None, [], [], same_volts)
+        block = average_block(n_frames, None, [], [], same_volts,
+                              unread=unread)
         block.update(why=str(exc), at=[])
         return block
-
-
-def check_units(rows) -> None:
-    """THE NAME CARRIES ITS UNIT (`model/structure.md` § 2.2f): a row of the
-    vocabulary -- the structure's or a frame's -- written with another unit
-    states a contradiction, refused by name (:class:`AverageError`) wherever
-    the rows are read for a record (:func:`average_block`), a data file
-    (:func:`fill_data_file`) or a page (:func:`answer`) -- never one unit on
-    the page and another in the data file.  ``rows`` is
-    `frameset.FrameRows`."""
-    for vocabulary, written in ((_STRUCTURE, rows.structure),
-                                *((_FRAME, frame) for frame in rows.frames)):
-        for r in written:
-            known = vocabulary.get(r["name"])
-            unit = r.get("unit")
-            if (known is not None and unit not in (None, "")
-                    and str(unit) != known.unit_spelled):
-                raise AverageError(
-                    f"the frame set's row {r['name']!r} is written with the "
-                    f"unit {unit!r}; the vocabulary's name means "
-                    f"{known.unit_spelled!r} -- "
-                    f"write the value in that unit, or give the row another "
-                    f"name")
-
-
-def _said(name: str, unit: Any, note: Optional[str],
-          vocabulary: Dict[str, Row], **value) -> Dict[str, Any]:
-    """A row as a page says it: the vocabulary's words, kind and unit for a
-    row it knows where the row lives (its unit checked first,
-    :func:`check_units`), else its name and unit as written -- and what it
-    means, ``means``: its ``note`` as the set writes it, else the
-    vocabulary's (`model/structure.md` § 2.2f)."""
-    known = vocabulary.get(name)
-    if known is not None:
-        return {"name": name, **value, "unit": known.unit,
-                "kind": known.kind, "words": known.words,
-                "page_unit": known.page_unit,
-                "means": note or known.means}
-    return {"name": name, **value, "unit": unit, "kind": "as written",
-            "words": name, "page_unit": unit, "means": note or ""}
-
-
-def _in_order(rows) -> List[Dict[str, Any]]:
-    """The structure's rows in the vocabulary's order, any other row after
-    them as written -- the order every surface says them in."""
-    order = {r.name: i for i, r in enumerate(STRUCTURE_ROWS)}
-    return sorted(rows, key=lambda r: order.get(r["name"], len(order)))
-
-
-def _row_words(row: Dict[str, Any]) -> str:
-    """One structure row in a line of text, as the frame card says it: its
-    words, its value -- a number to six figures -- and its page unit."""
-    said = _said(row["name"], row.get("unit"), None, _STRUCTURE,
-                 value=row["value"])
-    v = said["value"]
-    text = f"{v:.6g}" if finite_number(v) is not None else str(v)
-    return (f"{said['words']} {text}"
-            + (f" {said['page_unit']}" if said.get("page_unit") else ""))
-
-
-def _wire(rows, structure) -> Dict[str, Any]:
-    """``{structure: [{name, value, unit, kind, words, page_unit, means}],
-    columns: [{name, unit, kind, words, page_unit, means}], frames: [[a value
-    per column, None where a frame states none] per frame], weights,
-    weight_sum, warnings, mode}`` -- ``mode`` whether the frames state one -- and
-    ``masses_amu`` and ``vibration`` where the structure carries them; the
-    vocabulary's rows first, in its order."""
-    srows = _in_order(rows.structure)
-    stated: List[str] = []
-    units: Dict[str, Any] = {}
-    for frame in rows.frames:
-        for r in frame:
-            if r["name"] not in units:
-                stated.append(r["name"])
-                units[r["name"]] = r.get("unit")
-    names = ([r.name for r in FRAME_ROWS if r.name in stated]
-             + [n for n in stated if n not in _FRAME])
-    out: Dict[str, Any] = {
-        "structure": [_said(r["name"], r.get("unit"),
-                            str(r.get("note") or "") or None, _STRUCTURE,
-                            value=r["value"]) for r in srows],
-        "columns": [_said(n, units.get(n), _note(rows, n, "frame"), _FRAME)
-                    for n in names],
-        "frames": [[rows.value(n, f) for n in names]
-                   for f in range(len(rows.frames))],
-        "weights": list(rows.weights) if rows.weights is not None else None,
-        "weight_sum": rows.weight_sum,
-        "warnings": warnings_of(rows),
-        # WHETHER THE FRAMES STATE A MODE -- said here, so no page spells
-        # the row that decides it (`transport.md` § 3.8.1: the card keeps
-        # no list).
-        "mode": _states_a_mode(rows),
-    }
-    masses = masses_of(structure)
-    if masses is not None:
-        out["masses_amu"] = masses
-    info = (structure.info or {}).get(INFO_KEY)
-    if isinstance(info, dict):
-        out["vibration"] = dict(info)
-    return out
 
 
 def citation_block(structure, provenance: Optional[Dict]
                    ) -> Optional[Dict[str, Any]]:
     """The record's ``frame_set`` block (`engines/transport.md` § 2a.12): the
-    frame set the calculation cites, whole -- the pair and its files' sha256
-    as the citation pinned them (``provenance``, the slot's), the
-    structure's rows as written, each with its meaning (``note``), where the
-    mode came from (:data:`INFO_KEY`) and every atom's mass
-    (:data:`MASS_CHANNEL`) -- so the average beside it says, in the record
-    itself, which rule weighted it and which masses its coordinate was
-    measured with.  ``None`` where the citation is no frame set -- one
-    structure, or nothing composed yet; inside the block, each key empty
-    where the set states none."""
+    frame set the calculation cites -- the pair and its files' sha256 as the
+    citation pinned them (``provenance``, the slot's) and the structure's
+    rows as written, each with its meaning (``note``).  ``None`` where the
+    citation is no frame set -- one structure, or nothing composed yet."""
     from .frameset import read
     if structure is None or structure.n_frames < 2:
         return None
     prov = provenance or {}
     rows = read(structure)
-    info = (structure.info or {}).get(INFO_KEY)
     return {"citation": prov.get("citation"),
             "files": dict(prov.get("files") or {}),
-            "rows": list(rows.structure) if rows is not None else [],
-            "vibration": dict(info) if isinstance(info, dict) else None,
-            MASS_CHANNEL: masses_of(structure)}
-
-
-def masses_of(structure) -> Optional[List[Any]]:
-    """Every atom's value on the :data:`MASS_CHANNEL` channel, as written,
-    where the structure carries it as a value channel -- else ``None``: the
-    masses a data file's ``/structure`` states (`ncdata.structure_values`;
-    which masses, the set's ``mass_source``)."""
-    channel = (structure.annotations or {}).get(MASS_CHANNEL)
-    data = getattr(channel, "data", None)
-    if getattr(channel, "kind", None) != "value" or not isinstance(data, dict):
-        return None
-    return [data.get(i) for i in range(structure.n_atoms)]
+            "rows": list(rows.structure) if rows is not None else []}
 
 
 # ----------------------------------------------------------------------- #
 #  The data file's frame part                                              #
 # ----------------------------------------------------------------------- #
-
-def mass_numbers(structure) -> Optional[List[float]]:
-    """Every atom's mass as a data file states it -- :func:`masses_of`,
-    one that is not a finite number the fill, NaN, as every frame row's
-    (:func:`_or_nan`) -- or ``None`` where the structure carries no
-    masses."""
-    masses = masses_of(structure)
-    return None if masses is None else [_or_nan(m) for m in masses]
-
 
 def _or_nan(value) -> float:
     """``value`` as a number for a variable, NaN -- the fill value -- where
@@ -760,39 +349,27 @@ def _or_nan(value) -> float:
 
 
 def data_file_variables() -> Tuple[Any, ...]:
-    """The data file's frame part, as its variables (`ncdata.Var`): along
-    ``frame`` every per-frame
-    row of the vocabulary -- its words the ``long_name``, its meaning the
-    ``definition``, which the set's own meaning replaces where it writes one
-    (:func:`with_meanings`) -- and every row each frame states as written
-    (``frame_rows``); and the frames' average at each voltage, each naming
-    the rule it was taken at.  The atoms' masses are the file's
-    ``/structure``'s (`ncdata.structure_vars`), from :func:`masses_of`."""
+    """The data file's frame part, as its variables (`ncdata.Var`): each
+    frame's ``weight``, a label beside ``frame``; the weights' sum and
+    tolerance; and the frames' average at each voltage.  Every other row
+    of the frame set is its maker's, carried in ``/structure``'s
+    ``structure_json`` as the structure carries it (`engines/transport.md`
+    § 2a.12)."""
     from .ncdata import Var
-    return tuple(Var(r.name, ("frame",), r.kind, r.unit_spelled, r.words,
-                     _defined(r, r.means, "model/structure.md 2.2f"),
-                     auxiliary=True)
-                 for r in FRAME_ROWS) + tuple(
-        # A STRUCTURE ROW'S NUMBER, a variable of no dimension
-        # (`model/datafiles.md` § 2); a name, an attribute.
-        Var(r.name, (), r.kind, r.unit_spelled, r.words,
-            _defined(r, r.means, "model/structure.md 2.2f"))
-        for r in STRUCTURE_ROWS if not r.text) + (
+    return (
+        Var(WEIGHT_ROW, ("frame",), "given", "1", "the frame's weight",
+            "the frame's share of the frames' average, as the frame set's "
+            "maker states it (model/structure.md 2.2f); the fill value where "
+            "the frame states none", auxiliary=True),
         Var("weight_sum", (), "derived", "1", "the frames' weights, summed",
             "sum_f weight_f, checked against 1 within weight_tolerance; the "
             "fill value where the frames state no weights"),
         Var("weight_tolerance", (), "given", "1", "the weights' tolerance",
             "how far from 1 their sum may be; the fill value where the "
             "frames state no weights"),
-        Var("frame_rows", ("frame",), "given", "", "the frame's rows",
-            "every row the frame states, as written: a JSON list of its rows "
-            "(model/structure.md 2.2f)", dtype=str, auxiliary=True,
-            json=True),
         Var("average_transmission", ("bias_v", "energy_ev"), "derived", "1",
             "the frames' average transmission",
-            "sum_f weight_f T_f(E) over every frame, at its stated weight -- "
-            "the frame set's sampling_rule at its sampling_nodes frames "
-            "where it states them (the structure_rows attribute)",
+            "sum_f weight_f T_f(E) over every frame, at its stated weight",
             key="transmission"),
         Var("average_delta_transmission", ("bias_v", "energy_ev"), "derived",
             "1", "the average's change",
@@ -809,39 +386,16 @@ def data_file_variables() -> Tuple[Any, ...]:
             key="conductance_change_percent"),
         Var("average_why", ("bias_v",), "state", "",
             "why the frames' average is none",
-            "why there is no average at this voltage: one structure, or "
-            "the weights not stated; or the frames whose point at this "
-            "voltage is not done yet",
+            "why there is no average at this voltage: one structure, "
+            "frames that state no rows (a family) or not every one a "
+            "weight -- the same at every voltage -- or the frames whose "
+            "point at this voltage is not done yet",
             dtype=str, key="why"),
         Var("average_conductance_why", ("bias_v",), "state", "",
             "why the averaged conductance or its change is none",
             "the window not straddling E_F, or frame 0's conductance zero",
             dtype=str, key="conductance_why"),
     )
-
-
-def _defined(row: Row, means: str, said_in: str) -> str:
-    """A row's variable ``definition``: what the row means, and where that
-    meaning is said -- the vocabulary's table, or the frame set."""
-    who = "the frame" if row.where == "frame" else "the set"
-    return f"{means} ({said_in}; the fill value where {who} states none)"
-
-
-def with_meanings(variables: Tuple[Any, ...], structure) -> Tuple[Any, ...]:
-    """``variables`` -- the data file's table, :func:`data_file_variables`
-    among them -- with each row's ``definition`` the meaning the set writes
-    for it (its ``note``: the structure's, or the first frame stating one),
-    the vocabulary's where it writes none (`model/datafiles.md` § 2: a cited
-    value keeps what it means)."""
-    from dataclasses import replace
-    from .frameset import read
-    rows = read(structure) if structure is not None else None
-    if rows is None:
-        return tuple(variables)
-    said = {r.name: (r, _note(rows, r.name, r.where)) for r in ROWS}
-    return tuple(replace(v, definition=_defined(
-        said[v.name][0], said[v.name][1], "as the frame set writes it"))
-        if v.name in said and said[v.name][1] else v for v in variables)
 
 
 #: WHAT EACH VOLTAGE'S ENTRY OF THE AVERAGE FILLS (:func:`at_voltage`): the
@@ -851,43 +405,33 @@ AT_VOLTAGE = tuple(v.name for v in data_file_variables()
                    if "bias_v" in v.dims)
 
 #: THE FRAME PART'S VARIABLES OF THE SUMMARY -- the frames' average at each
-#: voltage, then the set's own numbers that are no structure row (its
-#: weights' sum and tolerance) -- across the points, where a grouped data
-#: file lays it (`engines/transport.md` § 2a.12, *The calculation as
-#: groups*); every other of :func:`data_file_variables` is the structure's:
-#: each frame's rows, the set's numbers.
-SUMMARY_PART = AT_VOLTAGE + tuple(
-    v.name for v in data_file_variables()
-    if not v.dims and v.name not in {r.name for r in STRUCTURE_ROWS})
+#: voltage and the weights' sum and tolerance -- across the points, where a
+#: grouped data file lays it (`engines/transport.md` § 2a.12, *The
+#: calculation as groups*); each frame's ``weight`` is the junction's, a
+#: label beside ``frame`` wherever that axis runs.
+SUMMARY_PART = AT_VOLTAGE + tuple(v.name for v in data_file_variables()
+                                  if not v.dims)
 
 
 #: THE FRAME PART'S ATTRIBUTES THAT HOLD RECORDS (:func:`fill_data_file`
 #: below) -- written as JSON text and read back as the blocks they hold by
 #: the data file's one list of them (`transport.datafile.RECORD_ATTRS`).
-RECORD_ATTRS = ("structure_rows", "frame_warnings", "average_assumptions")
+RECORD_ATTRS = ("frame_warnings", "average_assumptions")
 
 
 def fill_data_file(values: Dict[str, Any], attrs: Dict[str, Any],
                    structure, average: Dict, biases: List[float],
                    index: Callable[[float, List[float]], int]) -> None:
-    """Fill the data file's frame part, in place: each frame's rows -- the
-    vocabulary's numbers in their own variables, the fill value where a
-    frame states none, and every row as written in ``frame_rows`` -- the
-    frames' average at each voltage and why it is none there
-    (``index`` placing a voltage on ``biases``), the vocabulary's
-    structure rows -- a number a variable of no dimension, the fill value
-    where the set states none or writes no number; a name an attribute, as
-    text -- ``info.vibration`` where stated, every row as written, what is
-    said of the weights, their sum and its tolerance, and what the average
-    assumes."""
+    """Fill the data file's frame part, in place: each frame's ``weight``,
+    the fill value where a frame states none; the frames' average at each
+    voltage and why it is none there (``index`` placing a voltage on
+    ``biases``); what is said of the weights, their sum and its tolerance,
+    and what the average assumes."""
     from .frameset import read
     rows = read(structure) if structure is not None else None
     if rows is not None:
-        check_units(rows)
-        for f, frame in enumerate(rows.frames):
-            values["frame_rows"][f] = list(frame)
-            for r in FRAME_ROWS:
-                values[r.name][f] = _or_nan(rows.value(r.name, f))
+        for f in range(len(rows.frames)):
+            values[WEIGHT_ROW][f] = _or_nan(rows.value(WEIGHT_ROW, f))
     # WHY AN AVERAGE IS NONE, at each voltage: the block's reason at every
     # one, or the voltage's own.
     if average.get("why"):
@@ -899,19 +443,7 @@ def fill_data_file(values: Dict[str, Any], attrs: Dict[str, Any],
     for e in average.get("at") or ():
         copy_stated(e, averaged, (index(e["bias_v"], biases),), values)
     if rows is not None:
-        for r in STRUCTURE_ROWS:
-            v = rows.value(r.name)
-            if not r.text:
-                values[r.name][...] = _or_nan(v)
-            elif v is not None:
-                attrs[r.name] = str(v)
-        info = (structure.info or {}).get(INFO_KEY)
-        if isinstance(info, dict):
-            for k in ("run", "result_sha256"):
-                attrs[f"vibration_{k}"] = str(info.get(k) or "")
-        # EVERY ROW AS WRITTEN, and what is said of the weights.
-        attrs["structure_rows"] = list(rows.structure)
-        attrs["frame_warnings"] = warnings_of(rows)
+        attrs["frame_warnings"] = list(rows.warnings)
         if rows.weights is not None:
             values["weight_sum"][...] = float(average.get("weight_sum"))
             values["weight_tolerance"][...] = float(average.get("tolerance"))
@@ -919,46 +451,49 @@ def fill_data_file(values: Dict[str, Any], attrs: Dict[str, Any],
                 average.get("assumptions") or ())
 
 
-def reaveraged(path, *, temperature_k, swing_quanta=0.0) -> Dict[str, Any]:
-    """A FRAME SET'S TRANSPORT CALCULATION AVERAGED OVER ANOTHER MOTION, from
-    its data file ``path`` (`transport.datafile.read_data_file`) --
-    ``postprocess.reaveraged``'s question, answered here (its words there;
-    `science/vibrational-averaging.md` § 5.4): each frame weighted by
-    :func:`motion_weights` from its position along the mode alone, each
-    voltage by the record's own rule (:func:`at_voltage`) with those weights.
-    Nothing is computed again and nothing is written; refused by name as
-    :func:`motion_weights` refuses (:class:`ReaverageError`), and a data
-    file of another schema (`transport.datafile.DataFileError`)."""
+def averaged_at(data_file, weights: Sequence[float]) -> Dict[str, Any]:
+    """A TRANSPORT CALCULATION'S FRAMES AVERAGED AT WEIGHTS A CALLER GIVES,
+    from its data file ``data_file`` (`transport.datafile.read_data_file`;
+    `engines/transport.md` § 2a.12): ``weights`` one per frame, frame 0
+    first; each voltage by the record's own rule (:func:`at_voltage`) -- a
+    voltage whose points are not all done left out, its reason said, as
+    the record's average is.  Answers ``{bias_v, energy_ev, transmission
+    (voltage x energy), conductance_g0, conductance_change_percent (each
+    per voltage, NaN where none), said, assumptions}`` -- transport's own
+    assumptions beside the numbers, as the record's average states them
+    (:data:`ASSUMPTIONS`); nothing is computed again and
+    nothing is written.  Refused by name: weights not one per frame, or not
+    numbers (:class:`AverageError`); a data file of another schema
+    (`transport.datafile.DataFileError`)."""
     import numpy as np
     from .transport.datafile import (STRUCTURE_GROUP, SUMMARY_GROUP,
                                      read_data_file)
-    groups = read_data_file(path)["groups"]
-    # THE FRAMES' ROWS ARE THE JUNCTION'S, the points' figures the
-    # summary's (`engines/transport.md` § 2a.12, *The calculation as
-    # groups*).
+    try:
+        given = np.asarray(weights, dtype=float).ravel()
+    except (TypeError, ValueError):
+        given = None
+    groups = read_data_file(data_file)["groups"]
+    # THE FRAMES ARE THE JUNCTION'S, the points' figures the summary's
+    # (`engines/transport.md` § 2a.12, *The calculation as groups*).
     data = {**groups[STRUCTURE_GROUP]["variables"],
             **groups[SUMMARY_GROUP]["variables"]}
 
     def value(name):
-        got = data.get(name)
-        return None if got is None else np.asarray(got["data"])
-
-    def scalar(name):
-        got = value(name)
-        return float(got) if got is not None and got.size == 1 else None
-    q = value("q_amu12_ang")
-    got = motion_weights(
-        q if q is not None else [], temperature_k=temperature_k,
-        swing_quanta=swing_quanta, frequency_cm1=scalar("frequency_cm1"),
-        zero_point_amplitude_amu12_ang=scalar(
-            "zero_point_amplitude_amu12_ang"))
-    weights = list(got["weights"])
-    n = len(weights)
+        return np.asarray(data[name]["data"])
+    n = int(value("frame").size)
+    if given is None or given.size != n or not np.isfinite(given).all():
+        raise AverageError(
+            f"the data file holds {n} frames: the weights are one finite "
+            f"number per frame, frame 0 first -- "
+            + (f"a {type(weights).__name__} given" if given is None
+               else f"{given.size} given" if given.size != n
+               else "not every one a finite number"))
+    given = [float(w) for w in given]
     bias = [float(v) for v in value("bias_v")]
     energy = [float(e) for e in value("energy_ev")]
     curves = np.asarray(value("transmission"), dtype=float)
     g = np.asarray(value("conductance_g0"), dtype=float)
-    done = np.asarray(value("done")) == 1
+    done = value("done") == 1
     # THE DONE POINTS AS THE RECORD HOLDS THEM, each on the file's one grid,
     # its conductance ``None`` where the file keeps none.
     points = [{"frame": f, "bias_v": v, "energy_ev": energy,
@@ -966,16 +501,16 @@ def reaveraged(path, *, temperature_k, swing_quanta=0.0) -> Dict[str, Any]:
                "conductance_g0": (float(g[f, b]) if np.isfinite(g[f, b])
                                   else None)}
               for b, v in enumerate(bias) for f in range(n) if done[f, b]]
-    said = list(got["said"])
+    said: List[str] = []
     transmission = np.full((len(bias), len(energy)), np.nan)
     conductance = np.full(len(bias), np.nan)
     change = np.full(len(bias), np.nan)
     from .transport.stages import same_volts
     for b, v in enumerate(bias):
         # EACH VOLTAGE BY THE RECORD'S RULE, with these weights: no value
-        # where it has none, its reason said (`engines/transport.md`
-        # § 2a.12) -- the file's own axis, so a voltage is its own index.
-        at = at_voltage(v, n, weights, points, [], same_volts)
+        # where it has none, its reason said -- the file's own axis, so a
+        # voltage is its own index.
+        at = at_voltage(v, n, given, points, [], same_volts)
         for why in (at["why"], at["conductance_why"]):
             if why:
                 said.append(f"at {volts_words(v)}: {why}")
@@ -985,21 +520,13 @@ def reaveraged(path, *, temperature_k, swing_quanta=0.0) -> Dict[str, Any]:
             conductance[b] = at["conductance_g0"]
         if at["conductance_change_percent"] is not None:
             change[b] = at["conductance_change_percent"]
-    return {"motion": got["motion"],
-            "frames": [{"frame": f, "q_amu12_ang": float(q[f]),
-                        "weight": float(weights[f])} for f in range(n)],
-            "weights": weights, "reach": got["reach"],
-            "bias_v": bias,
-            "energy_ev": energy,
+    return {"bias_v": bias, "energy_ev": energy,
             "transmission": transmission, "conductance_g0": conductance,
-            "conductance_change_percent": change, "said": said}
+            "conductance_change_percent": change, "said": said,
+            "assumptions": list(ASSUMPTIONS)}
 
 
-__all__ = ["ASSUMPTIONS", "AverageError", "FRAME_ROWS", "INFO_KEY",
-           "RECORD_ATTRS", "SUMMARY_PART",
-           "MASS_CHANNEL", "ROWS", "ReaverageError", "Row", "STRUCTURE_ROWS",
-           "masses_of", "mass_numbers",
-           "answer", "at_voltage", "average_block", "average_said",
-           "citation_block",
-           "data_file_variables", "fill_data_file", "motion_weights",
-           "reaveraged", "summary_lines", "warnings_of", "with_meanings"]
+__all__ = ["ASSUMPTIONS", "AT_VOLTAGE", "AverageError", "RECORD_ATTRS",
+           "SUMMARY_PART", "answer", "at_voltage", "average_block",
+           "average_said", "averaged_at", "citation_block",
+           "data_file_variables", "fill_data_file", "summary_lines"]

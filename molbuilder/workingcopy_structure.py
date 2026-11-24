@@ -34,7 +34,9 @@ the task hand-over doors -> ``files``/``write`` · the PySCF script, from
 inside its run -> ``write_moved`` (imported from ``mb_pyscf.pyz``) · the parse
 registry's structure readers -> ``load`` (``parse/coords``) · the paste and
 the upload (``web/blueprints/_shared.structure_from_text``) ->
-``read_document``.
+``read_document`` · a cited pair against a calculation's record of it --
+the transport composition (``transport.compose``) and the vibration frame
+sets' words (``vibration_frames.said_of``) -> :func:`pair_files_changed`.
 
 Layer: L2 — reuses `structure` (L1) + the `sidecars.molstruct` write/read stack.
 """
@@ -56,7 +58,7 @@ try:                                        # inside molbuilder
     from .structure import REMAPPED_NOT_EDITED, Structure
     from .sidecars import molstruct
     from .structure_pair import GeometryChangedError
-    from .persist import stage_bytes, text_of
+    from .persist import sha256_of, stage_bytes, text_of
     from . import runrecord as _runrecord
     from .runfiles import PAIRED_SUFFIX
 except ImportError:                         # beside a job, in mb_pyscf.pyz
@@ -65,7 +67,8 @@ except ImportError:                         # beside a job, in mb_pyscf.pyz
     from structure import REMAPPED_NOT_EDITED, Structure
     import molstruct
     from structure_pair import GeometryChangedError
-    from persist import stage_bytes, text_of  # type: ignore[no-redef]
+    from persist import (  # type: ignore[no-redef]
+        sha256_of, stage_bytes, text_of)
     import runrecord as _runrecord  # type: ignore[no-redef]
     from runfiles import PAIRED_SUFFIX  # type: ignore[no-redef]
 
@@ -202,6 +205,26 @@ def pair_atom_index_map(geometry: Path, payload: dict, *,
         return AtomIndexMap.assumed_user(
             n, order_not_stated_said(geometry.name))
     return None if listing else AtomIndexMap.of_engine_record(None, n)
+
+
+def pair_files_changed(path, pinned) -> List[str]:
+    """THE PAIR'S FILES NOT AS PINNED: the names of the pair at ``path``'s
+    two files -- its ``.xyz`` and its sidecar -- whose bytes are not those
+    ``pinned`` (``{file name: sha256}``, a calculation's record of them)
+    states: changed since, gone, or never pinned.  The one comparison every
+    reader of a cited pair against its record asks -- a transport
+    calculation's composition, which refuses on it, and the vibration frame
+    sets' words, which say it (`engines/transport.md` § 3.1, § 3.8.1)."""
+    pinned = dict(pinned or {})
+    changed: List[str] = []
+    for f in (Path(path), molstruct.sidecar_path_for(Path(path))):
+        try:
+            same = pinned.get(f.name) == sha256_of(f)
+        except OSError:
+            same = False
+        if not same:
+            changed.append(f.name)
+    return changed
 
 
 def pair_engine_listing(sidecar: Path) -> "Optional[bool]":

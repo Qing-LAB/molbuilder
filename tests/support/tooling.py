@@ -179,7 +179,7 @@ def browser_plugin(config) -> bool:
 def browser_fixtures_asked(item) -> frozenset:
     """The browser plugin's fixtures ``item`` asks for, directly or through
     another fixture -- not a name the test parametrizes itself, which is a
-    value of its own (`test_frame_set_units` parametrizes a ``page``)."""
+    value of its own (`test_frame_set_meanings` parametrizes a ``page``)."""
     own = set(getattr(getattr(item, "callspec", None), "params", {}) or {})
     return frozenset((set(getattr(item, "fixturenames", ())) - own)
                      & BROWSER_FIXTURES)

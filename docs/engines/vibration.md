@@ -1921,7 +1921,7 @@ that exists:
 | exists | reused for |
 |---|---|
 | both eigenvector forms and the zero-point amplitude of every mode (§ 6.3) | the frames and the modes' character |
-| the frame set — one multi-frame pair: today a mode's own thermal set (`spectra.mode_frames`); from R3d2b2b written by the motion toolkit — a mode's own set in any state, snapshots of every mode, or a set the person builds — each frame's weight and the maker's rows in its own (③; `engines/vibration-frames.md` § 5; `engines/transport.md` § 2a.9, V1.25) | the one interface between a vibration and every run along its modes |
+| the frame set — one multi-frame pair: today a mode's own thermal set (`spectra.mode_frames`); from R3d2b2b2 written by the motion toolkit — a mode's own set in any state, snapshots of every mode, or a set the person builds — each frame's weight and the maker's rows in its own (③; `engines/vibration-frames.md` § 5; `engines/transport.md` § 2a.9, V1.25) | the one interface between a vibration and every run along its modes |
 | the axis rule — a stage carries a sub-level for each axis it varies over (`engines/transport.md` § 2a.11) | a level per frame inside one run, the shared runs once |
 | the job's own finish, a bundle that travels (§ 5.5, I22, I23) | each frame's electronic result, written by its own job |
 | `summarize` over results that exist — nothing lost, nothing copied, matching by shape (§ 5.9, I25) | the response of each mode across its frames |
@@ -2382,7 +2382,7 @@ use, in the bundle; nothing of their own but the verb that walks the table:
 | reads `.FC` → the Hessian, and $\delta$ | `parse/engines/siesta_fc.py` (`read_fc`, `hessian_from_fc`) | the displacement sweep (§ 5.9) |
 | the modes | `spectra/vibrational_analysis.py` → `normal_modes.vibrational_modes`, the analysis the finish runs | the PySCF route, its `normal_modes.vibrational_modes` (§ 4.5) |
 | which modes | `spectra/selection.select_modes`, the one selector, on *Raman for* as the deck's `vibration` block carries it (§ 4) | the PySCF route; it travels in both bundles |
-| the frames $R_0 \pm \delta Q\cdot L$ — $L$ over every atom, zero on held, $\delta Q$ from the largest atom's move | `vibration.displaced` | the frame-set maker (`spectra.mode_frames` today, the motion toolkit's from R3d2b2b; § 5.10 ③) |
+| the frames $R_0 \pm \delta Q\cdot L$ — $L$ over every atom, zero on held, $\delta Q$ from the largest atom's move | `vibration.displaced` | the frame-set maker (`spectra.mode_frames` today, the motion toolkit's from R3d2b2b2; § 5.10 ③) |
 | the coordinates file | `siesta/deck_lines.coordinates_rows` | every SIESTA deck (`siesta/input.py`) and TranSIESTA's (`transport/transiesta.py`) |
 | a call folder: made, stamped, the phase folder's files copied | the opener's travelling core — `calcdirs.record` with `paths`, and the copier `planned.bring` | `materialize.open_run` and `bring_files` on this machine |
 | every file's name — the seed, the output, the index | `runfiles.compose` / `RunNames` | every writer and reader of a run's files |
@@ -3251,7 +3251,7 @@ or `chemistry.atomic_mass`'s for a file before v7, which states none.
 temperature, are views too** — each asked with its inputs and derived by one
 function, never stored: `spectra.infrared.infrared_view`, from
 `partial_charges`, for a direction and a partition (§ 5.10 ②); and
-`spectra.mode_frames.outermost_move` — from R3d2b2b the motion toolkit's
+`spectra.mode_frames.outermost_move` — from R3d2b2b2 the motion toolkit's
 `outermost_move`, for any state ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
 § 1) — the outermost frames' largest atom move for a rule at a temperature,
 from the mode's zero-point amplitude and its pattern
@@ -3507,7 +3507,7 @@ derivatives are analytic, § 5.9.)
 
 § 5.10 ③'s maker reads the result alone — the base structure with its
 labels and box, the masses, the modes. The set's `vibration_result_sha256`
-row — `info.vibration.result_sha256` in a set written before R3d2b2b — the
+row — `info.vibration.result_sha256` in a set written before 2.81.0 — the
 sha256 of the result's JSON bytes, says which file it was made from; like
 every row of a frame set it is the maker's, carried and shown, and no
 calculation compares it ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
@@ -3572,7 +3572,7 @@ column its own (I1: a result lists its atoms by user index), the engine
 column from its run's deck where the deck answers, and otherwise not known,
 said — and never rewritten: its JSON's hash is named by its
 data file and by every frame set made from it (its `vibration_result_sha256`
-row; `info.vibration` in a set written before R3d2b2b).
+row; `info.vibration` in a set written before 2.81.0).
 
 **The structure has one serialiser**: `/structure` holds the arrays an
 analysis reaches for and `Structure.to_dict(view=False)` whole — the
@@ -3713,14 +3713,13 @@ snapshots, and the one view a person computes with, `Vibration` and its
 `Mode`s; the thermochemistry's sums take the occupation from it, and
 `spectra/derived.py` states the derived values a result carries — from v15
 the record of § 3 — their mechanics the module's (§ 6.6). **Still to come
-into it**: the probe (§ 4, R3d2c). The transport side's re-average still
-computes its own weights (`frame_average.motion_weights`) until the motion
-toolkit's `weights_for_set` replaces it, `weights_at`'s caller (R3d2b2b,
-[`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 9). The frame-set maker's `outermost_move` and `at_temperature` — a mode's
+into it**: the probe (§ 4, R3d2c). A frame set's re-average asks the
+module's `weights_at` through the motion toolkit's `weights_for_set`
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 7). The frame-set maker's `outermost_move` and `at_temperature` — a mode's
 own thermal set's numbers, not a mode's mechanics — go with the rest of
 `spectra/mode_frames.py` to the motion toolkit's own module,
 `vibration_frames` ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
-§ 1; [`plans/plan.md`](?doc=plans/plan.md) § 2).
+§ 1; R3d2b2b2, [`plans/plan.md`](?doc=plans/plan.md) § 2).
 
 #### 3. The per-mode record
 
@@ -3933,12 +3932,12 @@ state it samples; the displacement and its projection back — and, end to
 end, a real PySCF H₂ run against CODATA's constants: the bond's r.m.s.
 $\sqrt{\hbar/2\mu\omega}$ from the file's frequency and masses, each atom
 moving half of it, and the projection giving $Q_{\mathrm{zp}}$ back. Each is
-seen failing on the release before. From R3d2b2b `postprocess.outermost_move`
-takes any state's arguments as its rule moves into the motion toolkit (today
-a thermal state's alone), and `postprocess.reaveraged` takes any state's
-arguments, joining the toolkit's weights for the set's rows and transport's
-averaging door, and says the share beyond the frames where today it refuses
-([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 7). The
+seen failing on the release before. `postprocess.reaveraged` takes any
+state's arguments, joining the toolkit's weights for the set's rows and
+transport's averaging door, and says the share beyond the frames
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 7); from
+R3d2b2b2 `postprocess.outermost_move` takes any state's arguments as its
+rule moves into the motion toolkit (today a thermal state's alone). The
 snapshots' tests are the motion toolkit's (§ 8 there). The tests: `tests/test_vibration_mechanics.py` — H₂'s
 zero-point amplitude and bond move, a spring between two masses through the
 road's diagonalisation, each state's density, distribution, moments, zeros,

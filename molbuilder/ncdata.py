@@ -46,8 +46,8 @@ USED-BY a calculation's runs and their steps (`stepsdata`), the transport data f
         TBtrans data file and its digest (`parse.engines.tbtrans_nc`); a
         relaxation's ``.MD.nc`` (`parse.engines.siesta_mdnc`) and SIESTA's
         SCF columns (`parse.engines.siesta_grammar`); the atom index
-        map's reader of a data file (`atom_index`); a frame set's rows in the
-        transport data file (`frame_average`)
+        map's reader of a data file (`atom_index`); a frame set's weights
+        and average in the transport data file (`frame_average`)
 
 **Encoding, so a round trip is exact**: a number's fill is NaN, a text's the
 empty string, an integer's its stated fill; a boolean is an ``int8`` with
@@ -1132,7 +1132,8 @@ def structure_vars(frames: bool = False) -> Tuple[Var, ...]:
              "coordinates") + ", in the file's atom order"),
         Var("mass_amu", (ATOM_AXIS,), "given", "amu", "the atom's mass",
             "the mass the calculation used, as its result or its structure "
-            "states it; the fill value where neither does"),
+            "states it; the fill value where neither does, or where the "
+            "calculation uses none (a transport calculation)"),
         Var("held", (ATOM_AXIS,), "given", "1", "whether the atom was held",
             "the structure's frozen_atoms label: 1 held, 0 free",
             dtype="i1", flag=True),

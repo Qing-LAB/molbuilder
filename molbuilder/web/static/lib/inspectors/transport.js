@@ -31,6 +31,7 @@ import { molviewDoors } from "../projects/molview-doors.js";
 import { dirname, join } from "../path-utils.js";
 import { ALL, ONE, frameAxisControl } from "../frame-axis.js";
 import { frameWords, pointWords } from "../results/point-words.js";
+import { renderFrameSet } from "../frameset/card.js";
 // THE ONE READER of the server's answers (ui-contract.md § 12); named apart
 // from the digest card's own `ask`, its poll.
 import { ask as askServer } from "../server.js";
@@ -252,6 +253,18 @@ const WORKSPACE_TAG = "results:transport";
         row.appendChild(curves);
         wrap.appendChild(row);
 
+        /* THE FRAME SET THE CALCULATION CITES (`web/results.md` § 2.5):
+         * the one frame-set card, from the record answer's `frame_set` and
+         * the words and provenance beside it (`frame_set_said`); a card
+         * only for several frames. */
+        if (state.nFrames > 1 && state.frameSet) {
+            const sets = _card("Frame set", "transport-frameset-card");
+            const fs = _el("div", "frameset-card");
+            sets.appendChild(fs);
+            renderFrameSet(fs, state.frameSet, state.frameSetSaid);
+            wrap.appendChild(sets);
+        }
+
         state.nodes = {
             te: _el("div", "transport-plot plot-box"),
             eig: _el("p", "transport-note"),
@@ -293,7 +306,7 @@ const WORKSPACE_TAG = "results:transport";
         panel.appendChild(_el("p", "transport-note", rec.treatment_note));
         panel.appendChild(state.nodes.te);
         panel.appendChild(state.nodes.eig);
-        /* THE MODE'S AVERAGE, said under the family in *all frames*: the
+        /* THE FRAMES' AVERAGE, said under the family in *all frames*: the
          * record's numbers, never worked out here (§ 2a.12). */
         panel.appendChild(state.nodes.avg);
     }
@@ -1001,7 +1014,7 @@ const WORKSPACE_TAG = "results:transport";
 
         /* T(E): one frame -- a curve per voltage, the selected one bold, its
          * eigenchannels beneath; all frames -- a curve per frame at the
-         * selected voltage, the frame bar's bold, and the mode's average
+         * selected voltage, the frame bar's bold, and the frames' average
          * dashed beside them (`web/results.md` § 2.5). */
         const te = [];
         state.nodes.avg.textContent = "";
@@ -1019,13 +1032,13 @@ const WORKSPACE_TAG = "results:transport";
             const a = (state.average.at || []).find((e) => e.bias_v === state.bias);
             if (a && Array.isArray(a.transmission)) {
                 te.push({ x: a.energy_ev, y: a.transmission, mode: "lines",
-                          name: "mode average", tag: "average_transmission",
+                          name: "frames' average", tag: "average_transmission",
                           line: { color: t.ink, width: 2, dash: "dash" } });
             }
             /* THE RECORD'S NUMBERS for the average, or why there is none. */
             state.nodes.avg.textContent = a && a.conductance_g0 !== null
                     && a.conductance_g0 !== undefined
-                ? "Mode average at " + pointWords(null, n, state.bias)
+                ? "The frames' average at " + pointWords(null, n, state.bias)
                   + ": ⟨G⟩ = " + _fmt(a.conductance_g0, 4, false) + " G0 — "
                   + frameWords(0, n) + "'s "
                   + _fmt(a.base_conductance_g0, 4, false) + " G0, "
@@ -1035,8 +1048,8 @@ const WORKSPACE_TAG = "results:transport";
                       : "no change stated: " + (a.conductance_why || ""))
                   + "; the weights sum to " + _fmt(state.average.weight_sum, 6, false)
                   + ", checked to " + state.average.tolerance
-                  + ((state.average.warnings || []).length
-                     ? " (" + state.average.warnings.join(" ") + ")" : "")
+                  /* WHAT IS SAID OF THE WEIGHTS is the frame-set card's
+                   * (`web/results.md` § 2.5). */
                   + ".  It assumes: "
                   + (state.average.assumptions || []).join(" ")
                 : ((a && (a.why || a.conductance_why)) || state.average.why || "");
@@ -1098,7 +1111,7 @@ const WORKSPACE_TAG = "results:transport";
              * spin; a non-polarised run's one curve is each spin's, ↑ = ↓ --
              * the channel G = G₀·T(E_F) reads, half its 2T total; under
              * "all frames" a polarised run draws (T↑ + T↓)/2, the transmission
-             * the mode's average is of. */
+             * the frames' average is of. */
             const tTitle = !spinRun ? "T (each spin, ↑ = ↓)"
                 : (all("te") ? "(T↑ + T↓)/2" : "T");
             _plot(state.nodes.te, te, { ...axes,
@@ -1516,6 +1529,10 @@ const WORKSPACE_TAG = "results:transport";
                                         + a.error);
                     }
                     rec = a.body.record;
+                    /* THE CITED FRAME SET AND ITS WORDS, beside the record
+                     * (`/api/transport/record`). */
+                    state.frameSet = a.body.frame_set || null;
+                    state.frameSetSaid = a.body.frame_set_said || null;
                 } catch (e) {
                     if (state.disposed) return;
                     if (ctx && ctx.showError) ctx.showError(String(e));

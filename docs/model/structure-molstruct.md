@@ -525,7 +525,7 @@ one more reason the frames do not travel without it.
 **What is particular to one frame** — its displacement, its weight in an
 average — is the structure's `customized` section, one set of rows a frame
 (the mode the whole set samples is among the structure's own rows) (`model/structure.md` § 2.2d), never `info`. The rows are written by what makes
-the frame set — the motion toolkit (from R3d2b2b; the frame generator, `spectra.mode_frames`, until then), a person's script, through
+the frame set — the motion toolkit (from R3d2b2b2; the frame generator, `spectra.mode_frames`, until then), a person's script, through
 `Structure.set_customized(…, frame=i)` — and never in the browser, which
 shows a frame set's rows read-only at the displayed frame. On the Molbuilder
 tab, which holds one frame, a person may add, change or remove a row of the

@@ -509,7 +509,7 @@ button.danger:disabled {
 
 /* ---- Number tables ------------------------------------------------
  * Numbers in columns, so they compare by eye -- the transport report's points
- * and rungs, the frame-set card on the Transport tab and Task setup.  One
+ * and rungs, the frame-set card on the Transport tab, Task setup and the Results tab.  One
  * look; each table's own class aligns its columns. */
 .num-table {
     border-collapse: collapse;

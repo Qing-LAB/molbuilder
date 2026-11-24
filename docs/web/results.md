@@ -645,6 +645,9 @@ colour a token, the presenter owning its sheet (`lib/inspectors/transport.css`):
 │ │ the frame bar when there          │ │ I–V: the curve, its points       │ │
 │ │ are several frames                │ │ clickable, the table below it    │ │
 │ └───────────────────────────────────┘ └──────────────────────────────────┘ │
+│ ┌ Frame set (several frames only) ────────────────────────────────────────┐ │
+│ │ what the set is, its rows in words, where it came from; a row per frame │ │
+│ └─────────────────────────────────────────────────────────────────────────┘ │
 │ ┌ Convergence [ seed | electrode L | electrode R | device ] ─────────────┐ │
 │ │ each rung's SCF: energy and residuals per iteration; the device's two   │ │
 │ │ phases — periodic start, then NEGF — as separate traces; its NEGF E_F,  │ │
@@ -806,7 +809,7 @@ calculation holds several frames:
 
 | chart | *one frame* — the frame bar's | *all frames* — a legend entry each |
 |---|---|---|
-| T(E) | that frame's curve at each voltage, the selected voltage bold — as for one structure | every frame's T(E) at the selected voltage; beside them, dashed, the frames' average at it when every frame states a weight (`record.average`), and under the card the averaged conductance, its change from frame 0's, the weights' sum and the assumptions |
+| T(E) | that frame's curve at each voltage, the selected voltage bold — as for one structure | every frame's T(E) at the selected voltage; beside them, dashed, the frames' average at it when every frame states a weight (`record.average`), and under the card the averaged conductance, its change from frame 0's, the weights' sum and the assumptions — what is said of the weights is the frame-set card's (below) |
 | DOS | that frame's total, regions, leads and your selections, at the selected voltage | every frame's total DOS at the selected voltage |
 | I–V | that frame's curve, the selected voltage marked | one curve per frame |
 | convergence, the device | that frame's device run at the selected voltage | every frame's device SCF at the selected voltage, on one axis |
@@ -819,16 +822,28 @@ the same way and open the report at that point. A legend entry clicked hides
 its curve — Plotly's own legend, nothing built. **The selected frame's
 `customized` rows** are MolView's Info page's, which follows the frame bar
 ([`molview.md`](?doc=web/molview.md) § 6.4) — never a second copy here.
-**Where the frame set came from** *(to build, R3d2b2 — today the Results tab
-draws no frame-set card)*: a frame-set card the Results tab draws for a cited
-set, the Transport tab's (`lib/frameset/card.js`), with its provenance line —
-read from the cited pair at the record's path, a vibration's set's
-`vibration_run` and `vibration_result_sha256` rows, or an older set's
-`info.vibration` — and said when either file of the pair, its `.xyz` or its
-`.molstruct.json`, no longer matches the sha256 the record pinned for it; the
-transport blueprint asks it of the toolkit,
-`vibration_frames.said_of(pair_path, recorded_files)` with the record's
-`files` mapping, and `/api/transport/record` carries it as `frame_set_said`
+**The frame set and where it came from**: for a cited set of several
+frames, a *Frame set* card below the device and the curves — the Transport
+tab's (`lib/frameset/card.js`): what the set is (*3 frames of one mode*), its
+rows in the vibration frame sets' words where they speak for a row, else by
+name and unit as written, a row the vocabulary marks as prose on its own
+line, a mode's own set written before 2.81.0 its harmonic assumptions in the
+toolkit's words, a table of each frame's rows numbered as the frame bar
+numbers them, and its provenance line — a vibration's set's `vibration_run`
+and `vibration_result_sha256` rows, said there once, or an older set's
+`info.vibration` — every word of the frames the calculation ran, so a pair
+moved or deleted since takes nothing from the card; with what is said of
+the weights, the one place the report says it, and, in the warning tone,
+when either file of the cited pair at the record's path, its `.xyz` or its
+`.molstruct.json`, is not as the record pinned it — the words of an older
+set and of a changed pair are
+[`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 6's,
+their one home. Its data is `/api/transport/record`'s
+`frame_set` — the composed junction's frames and rows as the calculation ran
+them (`frame_average.answer`) — and `frame_set_said`, which the transport
+blueprint asks of the toolkit, `vibration_frames.said_of(pair_path,
+recorded_files, structure=)` with the record's `files` mapping and the
+composed junction
 ([`engines/transport.md`](?doc=engines/transport.md) § 3.8.1).
 **The PDOS of a selection** is asked at the selected frame and voltage
 (`/api/transport/pdos`, its `frame`) — once the frame has settled: while

@@ -482,7 +482,7 @@ structure's `customized` rows) and, per frame, its coordinates and its
 construction — the same atoms in the same order, the same species, the same
 cell, each frame's rows saying what it is (a displacement along a normal mode,
 `engines/transport.md` § 2a.9). It is MADE by code that understands this,
-through the doors below — the motion toolkit (from R3d2b2b; the frame
+through the doors below — the motion toolkit (from R3d2b2b2; the frame
 generator, `spectra.mode_frames`, until then), a person's script. **It is never
 edited**: nothing moves atoms, adds or removes them, or rewrites coordinates in
 a frame set; the browser views one and the Molbuilder tab loads one frame of it
@@ -534,7 +534,10 @@ frames from 0, as MolView's does (`frame_at(0)`, `frame=0`,
 included**: a transport point's frame level is `f001` for the frame of index 1
 (`engines/transport.md` § 2a.11, `paths.frame_token`, a vibration's optical
 calls' too). What a person reads counts from 1: every message, on the page and
-in the terminal alike — *frame 2 of 3* (`structure.frame_words`) — and the UI's
+in the terminal alike — *frame 2 of 3* (`structure.frame_words`; the
+travelling module `vibration`, which imports numpy and the constants alone,
+spells its own messages' frames the same way, a test holding the two one) —
+and the UI's
 own display — the frame bar's `1 / F`, the Molbuilder tab's frame picker, the
 Customized heading's *Frame 2 of 3* — through MolView's `toDisplay` /
 `fromDisplay` (`web/molview.md` § 11.5); nothing else writes a `+ 1`, those two
@@ -576,7 +579,7 @@ never written into the set.
 **Frame 0 is the set's reference**: the geometry a calculation measures
 each frame's change from ([`engines/transport.md`](?doc=engines/transport.md)
 § 2a.12). What a maker puts there is the maker's; every set the motion
-toolkit writes has the relaxed geometry there (from R3d2b2b; today's frame
+toolkit writes has the relaxed geometry there (from R3d2b2b2; today's frame
 generator's sets too)
 ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 5, the
 rule's home).
@@ -584,11 +587,9 @@ rule's home).
 **Every other row is its maker's** — the structure's rows and each frame's:
 carried exactly as written into the calculation's record and data file,
 never computed from and never checked by the calculation (`frameset.read`,
-the one reader) *(from R3d2b2b; until then a vibration vocabulary name
-written with another unit is refused, `frame_average.check_units`)*. The
+the one reader). The
 summary `summarize` prints, transport's, says each row by its name, value and
-unit as written, a whole number whole *(from R3d2b2b; until then the
-vocabulary's words)*; the pages — above transport and the toolkit both — say
+unit as written, a whole number whole; the pages — above transport and the toolkit both — say
 a row in the plain words the vibration maker's vocabulary gives a name it
 knows, where the row's unit is the vocabulary's or it states none, and any
 other by its name and unit as written ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
@@ -601,9 +602,7 @@ reads what it reads of every structure it cites** — transport frame 0's
 (`info.relaxation`), [`engines/transport.md`](?doc=engines/transport.md)
 § 3.1 — **and none of a maker's own keys or channels** (`info.sampling`, an
 older set's `info.vibration`, `mass_amu`); its record cites the pair by its
-path and sha256 *(from
-R3d2b2b; until then the record's frame set also carries `info.vibration` and
-the `mass_amu` channel)*. What a maker wants a calculation's record to carry
+path and sha256. What a maker wants a calculation's record to carry
 it writes as rows — a vibration's run and result as `vibration_run` and
 `vibration_result_sha256`.
 
@@ -619,7 +618,9 @@ coordinate, measured with which masses. **How the frames were made is stated
 as rows of their own** — the maker's `sampling_rule` and its parameters — and
 which masses a coordinate is measured with, beside the `mass_amu` channel
 that holds them. The one reader (`frameset.read`) carries every row's note
-as written, a frame row read with the first meaning any frame writes; a row
+as written, a frame row read with the first meaning any frame writes — the
+one rule, `FrameRows.meaning(name, of_frames=True)`, which every reader of a
+row's meaning asks; a row
 the vibration maker's vocabulary names, written without one, is said so by
 the toolkit when it reads its own sets — a warning, never a refusal. **A
 citation carries a row whole** — name, value, unit and note: a transport
@@ -925,6 +926,17 @@ class StructureCodec:                       # L2 (may use the L2 sidecar codec)
         2026-08-03 -- raising here made such a file unopenable and therefore
         unfixable, since the Cell page cannot be reached without the
         structure on screen)."""
+
+
+def pair_files_changed(path, pinned) -> list[str]:   # beside the codec
+    """THE PAIR AGAINST ITS RECORD. The names of the pair at `path`'s two
+    files -- its .xyz and its sidecar, by the pairing rule -- whose bytes
+    are not those `pinned` ({file name: sha256}) states: changed since,
+    gone, or never pinned. The one comparison every reader of a cited pair
+    against its record asks: a transport calculation's composition, which
+    refuses on it, and the frame-set card's words, which say it
+    (`engines/transport.md` § 3.1; the words, `engines/vibration-frames.md`
+    § 6)."""
 ```
 
 > **The rule this shape exists to make checkable:** *every structure↔bytes

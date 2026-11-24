@@ -1269,10 +1269,12 @@ const WORKSPACE_TAG = "transport";
             meta.hidden = false;
             meta.replaceChildren(window.molbuilder.dom.codeWords(described.summary || ""));
         }
-        /* WHAT ITS FRAMES ARE (transport.md § 3.8.1), by the one card. */
+        /* WHAT ITS FRAMES ARE (transport.md § 3.8.1), by the one card, in
+         * the words the answer carries beside them. */
         var fsHost = _$("transport-junction-frameset");
         import("../frameset/card.js").then(function (mod) {
-            mod.renderFrameSet(fsHost, described.frame_set || null);
+            mod.renderFrameSet(fsHost, described.frame_set || null,
+                               described.frame_set_said || null);
         });
         /* WHAT THE COMPOSITION MEASURED -- each lead's measurements, the
          * orientation warning, a refusal -- through the one renderer

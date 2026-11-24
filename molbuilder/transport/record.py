@@ -10,7 +10,7 @@ by the binary's own rule, :func:`joined_currents`).  Both formats were pinned ag
 a REAL 5.4.2 run (the carbon-chain live walk, 2026-08-29).
 
 What lands on disk is ONE file at the calculation root,
-``<label>.transport.json`` (``molbuilder/transport-result@18``): T(E)
+``<label>.transport.json`` (``molbuilder/transport-result@19``): T(E)
 per point -- a frame and a voltage -- the I–V table per frame, the frames'
 average, their post-process's (`frame_average.average_block`), the junction's TOTAL
 current, with the
@@ -994,8 +994,9 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
 
     **THE FRAMES' ROWS ARE READ THROUGH THEIR ONE DOOR** (`frameset.read`):
     the record carries the frames' average at each voltage, at every frame's
-    stated weight, where every frame states one, the structure's rows beside
-    it as written -- the frames' post-process, `frame_average.average_block`.
+    stated weight, where every frame states one -- the frames' post-process,
+    `frame_average.average_block` -- and the frame set it cites, its rows as
+    written (`frame_average.citation_block`).
 
     Reads each point's LATEST attempt, its state the status door's row
     (`runstatus.jobset_status`), the run door's (`runs.concluded`) for a
@@ -1307,7 +1308,8 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         average = (average_said if partial else average_block)(
             frames_had(calc) if junction is not None or junction_unread
             else None, frame_set,
-            points_out, pending + not_run + failed, same_volts)
+            points_out, pending + not_run + failed, same_volts,
+            unread=junction_unread)
     except AverageError as exc:
         raise RecordError(str(exc)) from exc
     provenance = read_provenance(base)
@@ -1379,9 +1381,8 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
                   or [None], polarized),
         # THE FRAMES' AVERAGE at each voltage -- their post-process's
         # (`frame_average`, § 2a.12) -- and the frame set it is taken over,
-        # cited whole: its rows with their meanings, the vibration, the
-        # masses in the user order (`model/overview.md` § 2.2a), the pair
-        # and its sha256; null for one structure.
+        # cited: the pair and its files' sha256, its rows as written with
+        # their meanings; null for one structure.
         "average": average,
         "frame_set": citation_block(
             junction.restored() if junction is not None else None,
@@ -1812,8 +1813,9 @@ def iv_table_text(record: Dict) -> str:
     """The printed deliverable: one row per point -- its frame's token,
     G(E_F), the junction's total current, and the figure TBtrans printed --
     then what the current is, in the record's words (:data:`CURRENT_MEANS`),
-    and the frames' average at each voltage, or why there is none (their
-    post-process's, `frame_average.summary_lines`)."""
+    and the frames' average at each voltage, or why there is none, and the
+    frame set's rows as written (their post-process's,
+    `frame_average.summary_lines`)."""
     lines = [f"transport record — {record['label']}: "
              f"{len(record['points'])} point(s)"
              + (f", {len(record['pending'])} not ended"
@@ -1867,7 +1869,8 @@ def iv_table_text(record: Dict) -> str:
     lines.append(f"  {record['low_bias_said']}")
     lines.append(f"  {record['treatment']}: {record['treatment_note']}")
     from ..frame_average import summary_lines
-    lines.extend(summary_lines(record.get("average") or {}))
+    lines.extend(summary_lines(record.get("average") or {},
+                               record.get("frame_set")))
     frames = record.get("fermi_frames")
     if frames and frames.get("note"):
         lines.append(f"  E_F: {frames['note']}")

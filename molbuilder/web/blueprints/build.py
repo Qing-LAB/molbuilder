@@ -58,6 +58,7 @@ from ._shared import (
     stated_params as _stated_params,
     catalogue_to_form_schema as _catalogue_to_form_schema,
     engine_key_for as _engine_key_for,
+    frame_set_said,
     issues_to_json as _issues_to_json,
     ok_structure_response,
     struct_from_body as _struct_from_body,
@@ -2445,11 +2446,13 @@ def api_task_setup_folder():
         # (`transport/record.py` TREATMENT_NOTE; `task-setup.md` § 3).
         "treatment": task.treatment if task is not None else None,
         "treatment_note": _treatment_note(task),
-        # WHAT THE CITED JUNCTION'S FRAMES ARE -- the count and, for a mode's
-        # set, its definition -- by the describe door's own helper
-        # (`frame_average.answer`; `engines/transport.md` § 3.8.1); null
-        # for every other kind.  The "What came over" card draws it.
-        "frame_set": _folder_frame_set(task, folder),
+        # WHAT THE CITED JUNCTION'S FRAMES ARE -- the count and the rows as
+        # written -- by the describe door's own helper
+        # (`frame_average.answer`; `engines/transport.md` § 3.8.1), and the
+        # page's words for them and where the set came from
+        # (`frame_set_said`); null for every other kind.  The "What came
+        # over" card draws them.
+        **_folder_frame_set(task, folder),
         # THE MACHINE IT IS SET TO -- its first prep's, read from its copy
         # of the record, or null before that (`configuration.md` M-3): the
         # page shows it fixed rather than offering a choice that can only be
@@ -2605,31 +2608,39 @@ def _folder_ladder(calc) -> dict:
                 "steps": []}
 
 
-def _folder_frame_set(task, folder):
-    """The cited junction's frames, as the describe door answers them
-    (`frame_average.answer`), for a description of a kind that cites its
-    structure (the kind table's ``description.cites`` -- a transport
-    calculation's junction); ``None`` for every other kind.  A citation that
-    does not read says why, in its words -- the folder still opens."""
+def _folder_frame_set(task, folder) -> Dict[str, Any]:
+    """``{frame_set, frame_set_said}``: the cited junction's frames, as the
+    describe door answers them (`frame_average.answer`), for a description
+    of a kind that cites its structure (the kind table's
+    ``description.cites`` -- a transport calculation's junction), and the
+    page's words for them (`_shared.frame_set_said`); each ``None`` for
+    every other kind.  A citation that does not read says why, in its words
+    -- the folder still opens."""
     from molbuilder.kind_table import description_part, kind as _kind
+    none = {"frame_set": None, "frame_set_said": None}
     cites = _kind(task.calculation).description.cites if task else None
     if not cites:
-        return None
+        return none
     from molbuilder.projects import find_projects_root
     cited_frames = description_part(str(task.calculation), "cited_frames")
     cited_at = ((getattr(task, "slots", None) or {}).get(cites))
     if not cited_at:
-        return None
+        return none
     # THE CALCULATION'S OWN TREE, as prep resolves the same citation
     # (`projects.find_projects_root`), never the server's.
     tree = find_projects_root(pathlib.Path(folder))
     if tree is None:
-        return {"n_frames": None, "definition": None,
-                "why": f"{folder} is in no projects tree, so its citation "
-                       f"{cited_at} names nothing"}
+        return {"frame_set": {
+            "n_frames": None, "definition": None,
+            "why": f"{folder} is in no projects tree, so its citation "
+                   f"{cited_at} names nothing"}, "frame_set_said": None}
     # ...ITS FRAMES, by the kind's own reading of its citation (its
-    # ``cited_frames`` part).
-    return cited_frames(str(cited_at), tree)
+    # ``cited_frames`` part), and their words.
+    frames = cited_frames(str(cited_at), tree)
+    return {"frame_set": frames,
+            "frame_set_said": frame_set_said(
+                cited_at, tree, n_frames=frames.get("n_frames"))
+            if frames.get("n_frames") else None}
 
 
 def _folder_set_to(folder):

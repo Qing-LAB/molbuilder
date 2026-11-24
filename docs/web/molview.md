@@ -1697,7 +1697,8 @@ statement it is.
 frame's** *(W39, user 2026-09-27; `archive/2026-10-09-plan-consolidation.md` § 5z.8 F, 2026-10-09)*.  Below the
 `info` entries the page shows the structure's `customized` rows
 ([`model/structure.md`](?doc=model/structure.md) § 2.2d) — one row each, name,
-value, unit and note — and, on a structure of several frames, **the displayed
+value, unit and note, no unit shown for the dimensionless `1` a row of no
+unit is written with — and, on a structure of several frames, **the displayed
 frame's rows** under its number (*frame 2 of 7*), following the frame bar: a
 frame change redraws that section alone, through `onFrameChange` (§ 6.4).
 Unlike `info`, a row IS the structure — it says what the structure is for a
@@ -1706,7 +1707,7 @@ and gated like every edit (§ 9.4): on a viewer that saves its structure — the
 Molbuilder tab, which holds one frame — a person adds, changes or removes a row,
 of the structure or of its frame, and the edit is recorded on the history; on
 every other viewer the section reads only. A frame set's rows are written by
-what made the set — the motion toolkit (from R3d2b2; the frame generator, `spectra.mode_frames`, until then), a person's script through
+what made the set — the motion toolkit (from R3d2b2b2; the frame generator, `spectra.mode_frames`, until then), a person's script through
 `Structure.set_customized(…, frame=i)` — never in the browser.
 
 **`info` is not core data.**  § 9.4's one question — *does this change

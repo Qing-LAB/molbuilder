@@ -1163,7 +1163,7 @@ $$
 $x_{\mathrm{out}}$ the rule's outermost node (§ 5.1: $\sqrt{3/2}$ for three
 frames, 2.0202 for five, 2.6520 for seven); $\max_A\lvert\mathbf L_A\rvert$ is
 `vibration.largest_move`, the one a Raman phase's $\pm\delta Q$ rests on too
-(`spectra.mode_frames.outermost_move` asks it; from R3d2b2b the motion
+(`spectra.mode_frames.outermost_move` asks it; from R3d2b2b2 the motion
 toolkit's `outermost_move`, for any state). Each frame states its own largest
 single-atom move beside it — the check a person reads against a bond length.
 
@@ -1364,9 +1364,12 @@ $$
 $$
 
 is **exact whenever $T(q)$ is a polynomial of degree $m-1$ or less** over the
-motion. Frames placed for the motion itself do better — degree $2m-1$ — so at
-the set's own temperature, with no swing, the set's own weights are the
-answer, and these reproduce them.
+motion — degree $m$ for an odd number of symmetric frames and a symmetric
+motion, the odd average $\langle q^m\rangle$ vanishing on both. Frames placed for the
+motion itself do better — degree $2m-1$ — so at the set's own temperature,
+with no swing, the set's own weights are the answer, and these reproduce
+them; the toolkit states the degree it checks the weights reproduce
+(`Weights.exact_to_degree`).
 
 **How well — the contact bond of § 4.3**, $T = T_0\,e^{-aq}$ with
 $a\sigma_T = 1$, frames written at the junction's own spread $\sigma_T$ and a
@@ -1387,7 +1390,15 @@ re-averaged to a bell curve of $1.5\sigma$ give 2.0517 against the true
 2.0544 on the contact bond at $a \cdot 1.5\sigma = 1.2$; five, 2.0264; three,
 1.8428.
 
-**What it needs, each said beside the number:**
+**What it needs, each said beside the number** — items 1 and 2 for
+frames placed for another motion; frames placed for the motion itself — its
+own rule, or a set whose written weights are the motion's, an even rule's
+set with its frame 0 at weight 0 among them — are the rule they were written
+with, and neither is said of them (counted on every frame, so frames placed
+for another motion whose weights happen to fall on a shorter rule of this
+one, a node at weight 0, are still said of); item 3 for any frames; item 4
+said by no rule of the weights' -- the person's to see in the frames' own
+values:
 
 1. **Frames that reach the motion.** The part of the motion beyond the
    outermost frames is averaged by values the frames never computed. **The
@@ -1401,7 +1412,8 @@ re-averaged to a bell curve of $1.5\sigma$ give 2.0517 against the true
    and up to the curvature a swing and a bell curve of the same spread agree
    (§ 2a.3); with three, the re-averaged number is said to be blind to the
    shape.
-3. **A weight below zero** says the frames do not suit the motion's shape
+3. **A weight below zero** — past rounding: a weight that is zero in exact
+   arithmetic is none — says the frames do not suit the motion's shape
    well — the seven-frame row at $Q_0 = 3\sigma_T$ weights its middle frame
    at −1.0 and its second pair at −0.18 each, since a swing that wide spends
    little time near the middle, and is still within 2 % on the contact bond.
@@ -1587,7 +1599,8 @@ state, +128 % warm against it, the excitation's own.
 **From two sets, or one set re-weighted.** The two states' averages come
 best from two sets, each placed by its own state's rule and exact to degree
 $2m - 1$. One set's results re-weighted to the other state (§ 5.4) are exact
-only to degree $m - 1$: on the stiff example, three frames give +77 % (the
+only to degree $m - 1$ ($m$ for an odd number of symmetric frames and a
+symmetric state): on the stiff example, three frames give +77 % (the
 thermal set re-weighted to the drive) or +92 % (the driven set re-weighted to
 the thermal state) against the true +126 % (the cold default against the
 thermal state — the two states these sets sample); five frames +119 % or

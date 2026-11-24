@@ -7,9 +7,10 @@ ROLE    one NetCDF-4 file per transport calculation, in groups -- the
         junction, each stage that runs once, each point and its device run,
         and a summary across the points (`engines/transport.md` § 2a.12,
         *The calculation as groups*): every point's raw outputs beside what
-        molbuilder derives from them, each frame's rows beside its values
+        molbuilder derives from them, each frame's weight beside its values
         and the frames' average -- that part the frames' post-process's
-        (`frame_average`) -- each variable stating its units, its long name,
+        (`frame_average`), every other row of a frame set its maker's,
+        carried in the junction's ``structure_json`` -- each variable stating its units, its long name,
         its definition and, for a raw one, the file it was read from.  The
         variables are :data:`VARIABLES`, one table the writer fills and the
         reader reads, each placed by :func:`_home` and :data:`SUMMARY`;
@@ -21,8 +22,9 @@ ROLE    one NetCDF-4 file per transport calculation, in groups -- the
 USED-BY `jobset summarize task`, beside `record.write_record`; an export
         (`transport.export`), which hands the bytes out; a person's script
         through `postprocess.read_transport_data`; the PDOS from the files
-        (`tbtnc.pdos_from_files`) and the re-average
-        (`frame_average.reaveraged`) -- each reading through
+        (`tbtnc.pdos_from_files`), the frames averaged at weights given
+        (`frame_average.averaged_at`) and a frame set's rows
+        (`postprocess.frame_rows`) -- each reading through
         :func:`read_data_file`
 
 **One shape for every transport calculation** (user, 2026-10-10: "doing a
@@ -32,8 +34,9 @@ structure at one voltage is a 1 x 1 grid, never another layout.  A point not
 done is the fill value, with ``done`` 0 -- a gap, never filled in.  The JSON
 record is the report -- `summarize` writes it for the command line, and the
 Results tab composes the same record on read; this file is the same results
-for analysis -- an average, a slope along a frame row, a comparison of
-two calculations is a line of xarray on it.
+for analysis -- an average, a slope along a frame's row (read from the
+junction's structure, `postprocess.frame_rows`), a comparison of two
+calculations is a line of xarray on it.
 """
 from __future__ import annotations
 
@@ -61,7 +64,7 @@ from .window import window_rung
 
 #: The file's schema, stated in it: an older file is refused by its
 #: version, and `summarize task` writes it again.
-DATA_SCHEMA = "molbuilder/transport-data@13"
+DATA_SCHEMA = "molbuilder/transport-data@14"
 
 
 #: THE FILE'S GROUPS by name (`engines/transport.md` § 2a.12, *The
@@ -175,7 +178,7 @@ def _variables() -> Tuple[Var, ...]:
         coordinate("eigenchannel", more=(
             "as many as its files hold, those it was asked for (TBT.T.Eig), "
             "each spin channel's; none where no file is read")),
-        # THE FRAMES' POST-PROCESS: their rows and their average
+        # THE FRAMES' POST-PROCESS: each frame's weight and their average
         # (`frame_average`).
         *data_file_variables(),
         Var("transmission_by_spin", ("frame", "bias_v", "spin", "energy_ev"),
@@ -533,18 +536,15 @@ def _home(var: Var) -> str:
     over ``rung``; a point's over ``frame`` and ``bias_v`` -- its device
     run's where it is ``device_*`` -- the summary gathering those
     :data:`SUMMARY` names besides; the summary's what it names of the rest;
-    the junction's over its axes alone, or a number of the frame set's
-    (`frame_average.STRUCTURE_ROWS`).  A variable no rule places is
+    the junction's over its axes alone.  A variable no rule places is
     refused, naming it -- never laid in a group by default."""
-    from ..frame_average import STRUCTURE_ROWS
     if "rung" in var.dims:
         return "stage"
     if "frame" in var.dims and "bias_v" in var.dims:
         return "device" if var.name.startswith(_PREFIX["device"]) else "point"
     if var.name in SUMMARY:
         return "summary"
-    if (var.dims and set(var.dims) <= _STRUCTURE_AXES) or (
-            not var.dims and var.name in {r.name for r in STRUCTURE_ROWS}):
+    if var.dims and set(var.dims) <= _STRUCTURE_AXES:
         return "structure"
     raise ValueError(f"the data file's variable {var.name} has no group: "
                      f"engines/transport.md § 2a.12 names one first")
@@ -649,7 +649,7 @@ def data_file_bytes(calc, record: Dict, *,
     :class:`DataFileError` names what does not lay out on one grid, and a
     composed junction that does not read, in its reader's words."""
     from .. import __version__
-    from ..frame_average import fill_data_file, with_meanings
+    from ..frame_average import fill_data_file
     from ..ncdata import NC_LOCK, as_bytes, empty, in_memory, state
     from .compose import recorded_junction
     from .rung import compose_refusals
@@ -796,12 +796,11 @@ def data_file_bytes(calc, record: Dict, *,
                               "orbital_m", "orbital_zeta", "orbital_type")):
         values[name][:] = [row[k] for row in basis]
     # THE JUNCTION WHOLE through the framework's one structure door, the
-    # user order's, as the restored junction states it, its masses the
-    # frame set's as numbers (`frame_average.mass_numbers`).
-    from ..frame_average import mass_numbers
+    # user order's, as the restored junction states it -- no masses: a
+    # transport calculation uses none, and a frame set's are its maker's,
+    # in ``structure_json`` (`model/datafiles.md` § 9.1).
     values.update(structure_values(
         junction.to_dict() if junction is not None else None, atoms,
-        masses=mass_numbers(junction) if junction is not None else None,
         frames=n_frames))
     if junction is not None:
         from .record import device_regions
@@ -911,8 +910,8 @@ def data_file_bytes(calc, record: Dict, *,
         if slot.get(key) is not None:
             attrs[f"citation_{key}" if key != "citation" else "citation"] = (
                 str(slot[key]))
-    # THE FRAMES' PART -- their rows and average, and what is said of
-    # them: the post-process's (`frame_average`).
+    # THE FRAMES' PART -- each frame's weight and their average, and what
+    # is said of them: the post-process's (`frame_average`).
     fill_data_file(values, attrs, junction, average, biases, _index)
     # HOW THE I-V WAS COMPUTED, as the record states it (§ 2a.10).
     attrs["iv_computed"] = str(iv.get("computed") or "")
@@ -952,9 +951,7 @@ def data_file_bytes(calc, record: Dict, *,
                            f"each stage's run named in provenance_chain and "
                            f"each point's in its folder; each variable's "
                            f"source names its file"))
-        # A FRAME ROW'S DEFINITION is its meaning as the set writes it
-        # (`model/datafiles.md` § 2).
-        _write_groups(ds, dims, with_meanings(VARIABLES, junction), values,
+        _write_groups(ds, dims, VARIABLES, values,
                       label=attrs["label"], once=once, biases=biases,
                       n_frames=n_frames, versions=versions,
                       group_words={STRUCTURE_GROUP: {

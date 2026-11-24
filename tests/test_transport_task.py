@@ -297,6 +297,34 @@ def test_a_relaxation_cited_while_going_that_then_ends_is_refused_at_prep(
     assert "new transport calculation" in prep.output, prep.output
 
 
+def test_a_described_calculations_report_opens_before_its_first_prep(
+        tmp_path, monkeypatch):
+    """`web/results.md` § 2.5: the Results tab opens a transport
+    calculation's report from `molbuilder describe` on -- before its first
+    prep composes the junction, the report says so and carries no frame set
+    (`/api/transport/record`: ``frame_set`` and ``frame_set_said`` null).
+    THE SILENT FAILURE: a report answering an error page from a Save until
+    the first prep, and every poll after it (2.81.0's first build).  The
+    cited relaxation is the road's (`support.road.prepared_here`), going."""
+    from molbuilder.projects import address, projects_root
+    from molbuilder.web.app import create_app
+    from support.road import described, left_in_the_background, prepared_here
+    bundle, run, _names = prepared_here(tmp_path, monkeypatch, "sleep 60;")
+    with left_in_the_background("task", "--stage", "coarse", "--bundle",
+                                bundle):
+        transport = described(projects_root(), calculation="transport",
+                              name="T", structure=address(run),
+                              psml_lib=None)
+        got = create_app(config={}).test_client().get(
+            f"/api/transport/record?path={transport}")
+    assert got.status_code == 200, got.get_json()
+    body = got.get_json()
+    assert body["frame_set"] is None and body["frame_set_said"] is None, body
+    # ...and its average says why there is none (§ 2a.12), every point
+    # still to come.
+    assert body["record"]["average"]["why"], body["record"]["average"]
+
+
 def test_extending_a_finished_calculation_says_its_voltages_as_every_surface_does():
     """`engines/transport.md` § 2a.16, *Extending it*: what the bias control
     says of the finished calculation's voltages, in the one spelling every

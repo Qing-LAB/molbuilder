@@ -102,7 +102,7 @@ def test_a_browser_test_skips_naming_the_command_without_the_browser(
     (`test_pages_no_js_errors`) and through ``browser``
     (`test_inspector_registry_e2e` -- its fixture makes real runs, which the
     rule leaves unmade); and a test that parametrizes a ``page`` value of its
-    own, needing no browser, skipped for one (`test_frame_set_units`).  Fails
+    own, needing no browser, skipped for one (`test_frame_set_meanings`).  Fails
     on the rule keyed on ``page`` alone and on parametrized names counted
     (the browser's reason reported before a need's:
     :func:`test_what_a_test_needs_of_the_machine_skips_by_the_one_rule`)."""
@@ -111,8 +111,8 @@ def test_a_browser_test_skips_naming_the_command_without_the_browser(
         "tests/test_pages_no_js_errors.py",
         "tests/test_inspector_registry_e2e.py::"
         "test_a_file_opens_in_the_viewer_its_kind_names",
-        "tests/test_frame_set_units.py::"
-        "test_a_page_says_the_refusal_where_the_frames_would_be",
+        "tests/test_frame_set_meanings.py::"
+        "test_a_page_opens_whatever_rows_a_set_writes",
         without_the_browser=True)
     assert code == 0, said[-3000:]
     skipped = [(f, why) for f, outcome, why in tests if outcome == "skipped"]
@@ -121,7 +121,7 @@ def test_a_browser_test_skips_naming_the_command_without_the_browser(
         "tests/test_inspector_registry_e2e.py"}, tests
     assert all(THE_COMMAND in why for _, why in skipped), skipped
     assert {f for f, outcome, _ in tests if outcome == "passed"} == {
-        "tests/test_frame_set_units.py"}, tests
+        "tests/test_frame_set_meanings.py"}, tests
 
 
 def test_the_suite_collects_without_the_browser(tmp_path):

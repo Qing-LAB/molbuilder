@@ -2364,7 +2364,10 @@ function mountPanel(doc, card, model) {
             label.textContent = row.name;
             line.appendChild(label);
             const value = el("span", "molviewer-info-value");
-            value.textContent = String(row.value) + (row.unit ? " " + row.unit : "");
+            // NO UNIT FOR THE DIMENSIONLESS "1", the spelling a row of no
+            // unit is written with (engines/vibration-frames.md § 5).
+            value.textContent = String(row.value)
+                + (row.unit && row.unit !== "1" ? " " + row.unit : "");
             if (row.note) value.title = row.note;
             line.appendChild(value);
             if (editable) {

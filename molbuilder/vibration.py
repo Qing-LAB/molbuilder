@@ -36,7 +36,7 @@ ROLE    from what a result states of a mode -- its frequency, whether it is
           their analyses (:class:`Snapshots`, :func:`pooled`).
 USED-BY the result's derived values (`spectra.derived`), the thermochemistry
         (`spectra.normal_modes`), the frame-set maker (`spectra.mode_frames`),
-        the transport average's motion (`frame_average`), the SIESTA
+        the weights for a frame set's rows (`vibration_frames`), the SIESTA
         vibration's Raman displacements (`spectra.siesta_vibration`), the
         spectrum tab's load door (`web.blueprints.spectra`), a result's
         modes (`spectra.results.SpectraResults.vibration`) and the script
@@ -419,19 +419,20 @@ class Frames:
             return ()
         i = int(np.argmax(largest))
         return (f"the outermost frames move an atom by at most "
-                f"{largest[i]:.4f} Å (frame {i}, q = "
+                f"{largest[i]:.4f} Å ({_frame_words(i, len(largest))}, q = "
                 f"{self.q_amu12_ang[i, 0]:+.4f} amu^1/2·Å)",)
 
 
 @dataclass(frozen=True, eq=False)
 class Weights:
-    """The weights for a state of frames placed elsewhere
-    (`engines/vibration-frames.md` § 7; science § 5.4): ``weights`` one per
-    frame, summing to 1; ``beyond`` the share of the state's motion beyond
-    the outermost frames, both sides; ``exact_to_degree`` ``m - 1`` for
-    ``m`` frames placed for another motion; ``said`` the share beyond, each
-    weight below zero, and for three frames that they are blind to the
-    state's shape (for fewer, their degree) -- said, never refused."""
+    """The weights for a state of frames (`engines/vibration-frames.md`
+    § 7; science § 5.4): ``weights`` one per frame, summing to 1;
+    ``beyond`` the share of the state's motion beyond the outermost frames,
+    both sides; ``exact_to_degree`` the degree they reproduce the state's
+    averages to (:meth:`State.weights_at`); ``said`` -- for frames placed for
+    another motion -- the share beyond and, for three frames, that they are
+    blind to the state's shape (for fewer, their degree), and for any frames
+    each weight below zero: said, never refused."""
     weights: np.ndarray
     beyond: float
     exact_to_degree: int
@@ -974,14 +975,20 @@ class State:
                 + self.carried_spread_amu12_ang * z)
 
     # ---- the weights for frames placed elsewhere -------------------------
-    def weights_at(self, q_amu12_ang) -> Weights:
+    def weights_at(self, q_amu12_ang, *, written=None) -> Weights:
         """The weights with which frames at ``q_amu12_ang`` reproduce this
-        state's averages of ``1, Q, ..., Q^(m-1)`` (science § 5.4) -- exact
-        for a response polynomial to degree ``m - 1``; said, never refused:
-        the share of the state's motion beyond the outermost frames, each
-        weight below zero, and for three frames that they are blind to the
-        state's shape (for fewer, their degree); two frames at one position
-        refused by name, no weights separating them."""
+        state's averages of ``1, Q, ..., Q^(m-1)`` (science § 5.4) -- and
+        the degree they reproduce its averages to, ``exact_to_degree``: at
+        least ``m - 1``, one more for an odd number of symmetric frames and
+        a symmetric state, up to ``2m - 1`` where the m frames are the
+        state's own Gauss rule (§ 2b.4).  ``written``, the weights the frames
+        were written with: where this state's are those, the frames were
+        placed for it -- an even rule's prepended frame 0 among them.  For
+        frames placed for another motion, said, never refused: the share of
+        the state's motion beyond the outermost frames, and for three frames
+        that they are blind to the state's shape (for fewer, their degree);
+        a weight below zero, past rounding, for any.  Two frames at one
+        position refused by name, no weights separating them."""
         q = np.asarray(q_amu12_ang, dtype=float).reshape(-1)
         m = q.shape[0]
         if m == 0:
@@ -990,33 +997,65 @@ class State:
             for j in range(i + 1, m):
                 if q[i] == q[j]:
                     raise ValueError(
-                        f"frames {i} and {j} sit at one position, q = "
-                        f"{q[i]:g} amu^1/2·Å: no weights separate them")
+                        f"{_frame_words(i, m)} and {_frame_words(j, m)} sit "
+                        f"at one position, q = {q[i]:g} amu^1/2·Å: no "
+                        f"weights separate them")
         scale = self.spread_amu12_ang or 1.0
         x = q / scale
         a = np.vander(x, m, increasing=True).T
         b = np.array([self.moment(k) / scale ** k for k in range(m)])
         w = np.linalg.solve(a, b)
+        degree = self._degree_reproduced(w, x, scale, m)
+        # THE STATE'S OWN RULE -- its m frames' weights reproduce its
+        # averages as far as a Gauss rule on m frames can -- is no
+        # re-weighting to another motion: science § 5.4's items 1 and 2 (the
+        # share beyond, the blindness) are not said of it; a weight below
+        # zero, item 3, is said of any frames.  Counted on every frame: frames placed for another
+        # motion whose weights happen to fall on a shorter rule of this
+        # state (a node at weight 0) are still said of.
+        own = degree >= 2 * m - 1 or (
+            written is not None
+            and np.allclose(w, np.asarray(written, dtype=float).reshape(-1),
+                            rtol=0.0, atol=_WEIGHT_ROUNDING))
         cdf = np.atleast_1d(self.cdf(np.array([q.min(), q.max()])))
         beyond = float(max(0.0, cdf[0]) + max(0.0, 1.0 - cdf[1]))
         said: List[str] = []
-        if beyond > 0.0:
-            said.append(f"{beyond:.2%} of the state's motion lies beyond the "
-                        f"outermost frames (q from {q.min():+.4g} to "
-                        f"{q.max():+.4g} amu^1/2·Å), averaged by values the "
-                        f"frames never computed")
-        if m == 3:
+        if not own and beyond > 0.0:
+            said.append(f"{100.0 * beyond:.3g} % of the state's motion lies "
+                        f"beyond the outermost frames (q from {q.min():+.4g} "
+                        f"to {q.max():+.4g} amu^1/2·Å), averaged by values "
+                        f"the frames never computed")
+        if not own and m == 3:
             said.append("three frames carry only the curvature: up to it a "
                         "swing and a bell curve of one spread agree, so the "
                         "re-averaged number is blind to the state's shape")
-        elif m < 3:
+        elif not own and m < 3:
             said.append(f"{'one frame is' if m == 1 else 'two frames are'} "
-                        f"exact only to degree {m - 1}")
+                        f"exact only to degree {degree}")
         for i, wi in enumerate(w):
-            if wi < 0.0:
-                said.append(f"frame {i}'s weight is {wi:.4g}, below zero: the "
-                            f"frames do not suit the state's shape well")
-        return Weights(w, beyond, m - 1, tuple(said))
+            if wi < -_WEIGHT_ROUNDING:
+                said.append(f"{_frame_words(i, m)}'s weight is {wi:.4g}, below "
+                            f"zero: the frames do not suit the state's shape "
+                            f"well")
+        return Weights(w, beyond, degree, tuple(said))
+
+    def _degree_reproduced(self, w, x, scale: float, m: int) -> int:
+        """The highest degree ``d`` (``m - 1`` up to ``2m - 1``) to which the
+        weights ``w`` at the scaled positions ``x`` reproduce every average
+        of ``1, x, ..., x^d`` -- each within 1e-9 of the sums it is: a
+        state's own rule reproduces its averages to ~1e-14 of them, and the
+        first degree frames do not reproduce is off by ~4e-5 or more (every
+        state kind, 1 to 9 frames, worked in exact arithmetic, R3d2b2b1's
+        review); the bound sits between them."""
+        degree = m - 1
+        for k in range(m, 2 * m):
+            want = self.moment(k) / scale ** k
+            terms = w * x ** k
+            if abs(float(terms.sum()) - want) > 1e-9 * max(
+                    float(np.abs(terms).sum()), abs(want), 1.0):
+                break
+            degree = k
+        return degree
 
 
 def _swing_phases(amplitude: float, carried_spread: float) -> np.ndarray:
@@ -1047,9 +1086,30 @@ _STATE_NAMED_BY: Dict[frozenset, str] = {
     frozenset(names): kind for kind, names in _STATES}
 
 
+def _frame_words(frame: int, n_frames: int) -> str:
+    """A frame as a message says it, from 1: ``frame 2 of 3`` -- the
+    spelling of `structure.frame_words`, the one spelling of a frame in a
+    message (`model/structure.md` § 2.2e), kept here because this module
+    travels with numpy and the constants alone."""
+    return f"frame {int(frame) + 1} of {int(n_frames)}"
+
+
+#: A WEIGHT WITHIN ROUNDING OF ZERO: a frame the solve weights 0 in exact
+#: arithmetic -- a prepended frame 0, a node the state does not reach --
+#: comes out a few ulps either side of it, never "below zero".
+_WEIGHT_ROUNDING = 1e-12
+
+
 #: WHERE A STATE'S TEMPERATURE CAME FROM (§ 6.11 § 9 item 6,
-#: `engines/vibration-frames.md` § 2's table).
-GIVEN, THE_RECORDS, THE_MOTIONS = "given", "the record's", "the motion's"
+#: `engines/vibration-frames.md` § 2's table) -- a set's for its rows'
+#: weights (`vibration_frames.weights_for_set`, § 7).
+GIVEN, THE_RECORDS, THE_MOTIONS, THE_SETS = (
+    "given", "the record's", "the motion's", "the set's")
+
+#: WHAT HOLDS EACH TEMPERATURE TAKEN, as its refusal names it when it states
+#: none.
+_HOLDERS = {THE_RECORDS: "the record", THE_MOTIONS: "the motion",
+            THE_SETS: "the set"}
 
 
 def _temperature_of(named: frozenset, temperature_k: Optional[float],
@@ -1058,14 +1118,16 @@ def _temperature_of(named: frozenset, temperature_k: Optional[float],
     one table: given, used (:data:`GIVEN`); not given where the arguments
     name a state once a temperature is added (a thermal or classical state),
     ``default`` and its ``source`` (:data:`THE_RECORDS`,
-    :data:`THE_MOTIONS`), a ``default`` of none refused by name; otherwise
-    none -- n quanta, mean quanta, a driven mode, a classical swing alone."""
+    :data:`THE_MOTIONS`, :data:`THE_SETS`), a ``default`` of none refused by
+    name; otherwise none -- n quanta, mean quanta, a driven mode, a
+    classical swing alone."""
     if temperature_k is not None:
         return temperature_k, GIVEN
     if (named not in _STATE_NAMED_BY
             and named | {"temperature_k"} in _STATE_NAMED_BY):
         if default is None:
-            raise ValueError("name a temperature: the record states none")
+            raise ValueError(f"name a temperature: {_HOLDERS[source]} "
+                             f"states none")
         return default, source
     return None, None
 
@@ -1229,10 +1291,9 @@ class ModeState:
         return self.state.draw(size, seed=seed, start=start, phase=phase,
                                mode=self.mode.index_1based)
 
-    def weights_at(self, q_amu12_ang) -> Weights:
-        """The weights for this state of frames placed elsewhere
-        (:meth:`State.weights_at`)."""
-        return self.state.weights_at(q_amu12_ang)
+    def weights_at(self, q_amu12_ang, *, written=None) -> Weights:
+        """The weights for this state of frames (:meth:`State.weights_at`)."""
+        return self.state.weights_at(q_amu12_ang, written=written)
 
     def frames(self, nodes: int = 3) -> Frames:
         """The state's frames (:meth:`State.frames`) with the geometries a
@@ -1489,7 +1550,7 @@ class Vibration:
     and where it came from -- ``read_path`` the file read, as given;
     ``structure`` the structure the result states (its reader fills it);
     ``result_sha256`` the result JSON's, ``run`` and
-    ``relaxation_calculation`` -- filled from R3d2b2b, at the read door and
+    ``relaxation_calculation`` -- filled from R3d2b2b2, at the read door and
     where a run's folder is read (`vibration_frames.vibration_of_run`);
     ``None`` until then."""
     modes: Tuple[Mode, ...]
@@ -2255,6 +2316,7 @@ __all__ = ["checked_temperature_k", "zero_point_amplitude_amu12_ang",
            "force_constant_mdyn_per_ang", "THERMAL", "NUMBER", "SWING", "CLASSICAL",
            "CLASSICAL_SWING", "Frames", "Weights", "State", "state",
            "temperature_of_quanta", "GIVEN", "THE_RECORDS", "THE_MOTIONS",
+           "THE_SETS",
            "ModeState", "Mode", "Vibration", "Drive",
            "Motion", "Estimate", "Parts", "Snapshots", "pooled"]
 

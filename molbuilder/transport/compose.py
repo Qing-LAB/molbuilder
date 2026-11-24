@@ -400,17 +400,16 @@ def frames_moving_the_leads(struct: Structure, path: Path) -> Optional[str]:
 
 def cited_frames(citation: str, tree_root: Path) -> dict:
     """THE FRAMES A JUNCTION CITATION HOLDS, as the describe door answers
-    them (`frame_average.answer_said`) -- the transport kind's
+    them (`frame_average.answer`) -- the transport kind's
     ``cited_frames`` part, Task setup's folder answer's frame set: a cited
     pair's frames, a cited run's none; a citation that does not resolve
     answers why, in its words, so the folder still opens."""
-    from ..frame_average import answer_said
+    from ..frame_average import answer
     try:
         _, cited = resolve_citation(str(citation), tree_root)
     except ComposeError as exc:
         return {"n_frames": None, "definition": None, "why": str(exc)}
-    return answer_said(
-        cited.structure if isinstance(cited, CitedPair) else None)
+    return answer(cited.structure if isinstance(cited, CitedPair) else None)
 
 
 def resolve_citation(citation: str, tree_root: Path
@@ -941,9 +940,8 @@ def _pair_unchanged(cited: CitedPair, provenance, citation: str) -> None:
     (`engines/transport.md` § 3.1) -- refused by name when either changed:
     the seed and the leads ran on what the pair said then, and a frame set
     is a data set, made once by the script that writes it."""
-    pinned = provenance.get("files") or {}
-    changed = [f.name for f in (cited.path, cited.sidecar)
-               if pinned.get(f.name) != sha256_of(f)]
+    from ..workingcopy_structure import pair_files_changed
+    changed = pair_files_changed(cited.path, provenance.get("files"))
     if changed:
         raise ComposeError(
             f"the cited pair {citation!r} has changed since this calculation "

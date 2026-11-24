@@ -951,9 +951,8 @@ below; [`model/parse.md`](?doc=model/parse.md) § 5e); the points without a tran
 `not_run` (said *not run*: its ended walk never started it) or `failed`, in
 their run's words; for a frame set, each point's frame and that frame's
 `customized` rows, the I–V per frame, the frames' average at each voltage
-(§ 2a.12) and the frame set it is taken over, cited whole —
-its rows with their meanings (`frame_set`; until R3d2b2b also the vibration
-and the masses, § 2a.9); the treatment; the provenance slot and the chain — each
+(§ 2a.12) and the frame set it is taken over, cited — the pair and its
+files' sha256, its rows with their meanings (`frame_set`, § 2a.9); the treatment; the provenance slot and the chain — each
 rung's `.gathered-from`; the DFT-NEGF caveat. The PDOS of any atoms, by orbital
 type, is asked of `/api/transport/pdos`. The Results tab composes the record on
 read (`/api/transport/record`); `summarize task` writes the same composition to
@@ -1986,7 +1985,7 @@ Nothing new is invented for it. A `Structure` holds its frames
 0, `frame_at(i)` one frame with the set's one origin; a frame set is made
 through the structure's own doors, by the motion toolkit
 ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md); until
-R3d2b2b the frame generator, `spectra.mode_frames`) or a person's script. So every door that reads one structure reads a multi-frame pair as its
+R3d2b2b2 the frame generator, `spectra.mode_frames`) or a person's script. So every door that reads one structure reads a multi-frame pair as its
 base, and a frame-aware door sees the set. That is what makes the axis
 addable without rework. Citing a pair is § 3.1's second citation kind
 (`compose.classify_citation`).
@@ -2010,7 +2009,7 @@ multi-frame structure pair ([`model/structure.md`](?doc=model/structure.md)
 § 2.2f): the frames, each frame's `weight`, and whatever rows its maker
 wrote — a vibration's sets, the motion toolkit's
 ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 5;
-until R3d2b2b the frame generator's, `spectra.mode_frames`); a person's
+until R3d2b2b2 the frame generator's, `spectra.mode_frames`); a person's
 script, its own. **Transport reads one of them, each frame's
 `weight`** *(the user, 2026-10-18: those rows have "nothing to do with
 fucking get calculation done")* — `⅔, ⅙, ⅙` for a mode's three frames,
@@ -2028,9 +2027,7 @@ transport reads what every structure citation is read by** — frame 0's
 `info.calculation` (required, § 3.1) and a relaxation record of its geometry
 (`info.relaxation`) — **and none of the maker's own keys** (`info.sampling`,
 an older set's `info.vibration`) or its channels; the record's `frame_set`
-cites the pair by its path and sha256
-*(from R3d2b2b; until then the record's `frame_set` also carries
-`info.vibration` and the `mass_amu` channel)*. **Transport never asks what made
+cites the pair by its path and sha256. **Transport never asks what made
 the frames, what their rows mean, or how many there are** — that is the
 maker's: a mode's own set, snapshots of the whole molecule and a set a
 person's script wrote run alike, and how one set's result is weighed against
@@ -2039,9 +2036,10 @@ focused to let user to post-process the results from different vibrational
 mode and decide how they can be weighed")*. **Frame 0 is the set's
 reference**, the geometry each frame's change is measured from (§ 2a.12) —
 the container's rule, [`model/structure.md`](?doc=model/structure.md) § 2.2f.
-Frames that do not each state a weight are a family with no
-average — each frame's curve its own, and the record saying so; nothing is
-refused for that, since what the displacement means is the person's.
+Frames that do not each state a weight have no average — each frame's
+curve its own, and the record saying so; frames that state no rows at all
+are a family, said so (§ 2a.12); nothing is refused for either, since what
+the displacement means is the person's.
 
 #### The displacement rule may be the person's own script — and the promise it makes *(user, 2026-09-23)*
 
@@ -2049,7 +2047,7 @@ The rule that derives the frames is not molbuilder's to own. molbuilder's
 own maker is the motion toolkit
 ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)), which
 reads a vibration run's modes and writes a mode's own set, snapshots of
-every mode, or frames the person built *(to build, R3d2b2b; until then the
+every mode, or frames the person built *(to build, R3d2b2b2; until then the
 frame generator, `spectra.mode_frames`, writes a mode's own thermal set)*. But the person may also supply **a
 script of their own** that takes the base structure and writes the frames;
 then the script is the rule, it is recorded beside the frames exactly as the
@@ -2062,7 +2060,7 @@ structure's own doors (`with_frames`, `set_customized`) and the codec's writer
 (`model/structure.md` § 2.2e): a file another tool writes carries no sidecar,
 and its comment line is never metadata (§ 2.3). So the
 frame set is the **interface between the vibration work and transport**: the
-motion toolkit writes it from a vibration's modes (from R3d2b2b; the frame
+motion toolkit writes it from a vibration's modes (from R3d2b2b2; the frame
 generator until then), a person's script writes
 the same file from anything, and transport reads one shape and knows nothing
 about modes.
@@ -3052,17 +3050,16 @@ with transport's own assumptions beside the numbers, said of frames — each
 frame a static geometry the electrons cross fast, the same weights at every
 voltage, each frame its own ground state, the DFT alignment, the electrodes
 unmoved ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
-§ 7, items 2–6) *(from R3d2b2b; until then also a harmonic mode's, where the
-set states a mode)*; the maker's own — the harmonic modes, the states, a
+§ 7, items 2–6), stated where an average is taken; the maker's own — the harmonic modes, the states, a
 finite set's statistics — are its `assumptions` row, carried as written with
 the set's rows ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
-§ 5) — and **the frame set the average is taken over, cited whole** — the
+§ 5) — and **the frame set the average is taken over, cited** — the
 record's `frame_set`: the structure's rows as written, each with its
 meaning — a vibration's sets name the run and the result they came from in
 their own rows ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
 § 5), an older set in its `info.vibration`, which the page reads from the
-cited pair (§ 3.8.1) *(from R3d2b2b; until then the record carries it)* — and
-the pair cited with its sha256
+frames it draws (§ 3.8.1) — and
+the pair cited with its files' sha256
 ([`model/structure.md`](?doc=model/structure.md) § 2.2f) — so the average
 says, in the record itself, what its maker says the weights stand for;
 `null` where the citation is no frame set, one structure, as the average
@@ -3077,36 +3074,36 @@ beside its rows; so is **an average over another motion than the set's** —
 the motion toolkit gives a mode's own set's weights for another state from
 each frame's coordinate ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
 § 7), and **transport's own door averages its data file's frames at weights a
-caller gives**: `frame_average.averaged_at(data_file, weights)` *(from
-R3d2b2b: today's `frame_average.reaveraged`'s loop over the file, kept
-transport's)*, the weights one per frame, frame 0 first — each voltage by the
+caller gives**: `frame_average.averaged_at(data_file, weights)`, the
+weights any finite numbers — a list, an array, numpy's own — one per frame,
+frame 0 first, refused by name where they are not one finite number per
+frame, naming how many it was given or the kind it was given (a
+`Weights` handed whole, say, not its `.weights`) — each voltage by the
 record's own rule (`frame_average.at_voltage`), a voltage whose points are
 not all done left out, as the record's average is — answered `{bias_v,
-energy_ev, transmission, conductance_g0, conductance_change_percent, said}`;
-`postprocess.reaveraged` joins the two and adds nothing — never written into
+energy_ev, transmission, conductance_g0, conductance_change_percent, said,
+assumptions}`, `assumptions` transport's own, beside the numbers as the
+record's average states them; `postprocess.reaveraged` joins the two, its
+`assumptions` transport's then the set's, for the state it was written
+for
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 7) —
+never written into
 the record. **The weights are read as
 written** (`model/structure.md` § 2.2f): their sum and the tolerance are stated beside the average,
 and a sum off 1 by more than `10⁻⁶` is warned of in the record (`warnings`),
-never refused. Frames that do not each state a weight are a family with no
-average, said so. Comparing two sets — the same mode at another rule
+never refused. Frames that do not each state a weight have no average, said
+so; frames that state no rows at all are a family, said so — *the frames
+state no rows — a family: no average; each frame's curve is its own point*
+— told apart from a composed junction that does not read, whose frames are
+counted but not read. At E_F the change in per cent is of frame 0's
+conductance, none where frame 0's is zero, said (*frame 1 of 3's
+conductance is zero*); `summarize` prints each voltage's averaged
+conductance *against frame 1 of 3's*. Comparing two sets — the same mode at another rule
 (`vibrational-averaging.md` § 5.3), a driven set against its baseline — is
 the person's. A point not done is a gap in
 the family and the average at that voltage waits for it — never computed from
 the frames that happen to be there. Every frame is named by its index:
 *frame 2 of 3* is `f001` (`model/structure.md` § 2.2e).
-
-**Transport's own visible changes in R3d2b2b** *(to build;
-[`plans/plan.md`](?doc=plans/plan.md) § 2 — the toolkit's are
-[`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 9)*: the
-data file at `transport-data@14` — the vocabulary's frame variables, its
-root attributes (`sampling_rule`, `mass_source`, `vibration_*`) and
-`/structure`'s `mass_amu` gone, so the CSV export's columns change
-([`model/datafiles.md`](?doc=model/datafiles.md) § 9.1); the record's
-`average` block without the vocabulary's keys and its `frame_set` without
-`vibration` and `mass_amu`, a schema step; the describe answer without
-`mode`, `masses_amu` and `vibration`; the rows' unit check gone; `summarize`
-printing each row by its name, value and unit as written; transport's own
-assumptions said of frames, not of a mode; `frame_average.averaged_at`.
 
 **The data file, `<label>.transport.nc`** *(user, 2026-10-10: "doing a
 derivative is trivial if the result are saved with these parameter and
@@ -3119,8 +3116,8 @@ pair the last `summarize` wrote:
 the JSON is the report — what `summarize` writes for the command line, the
 Results tab composing the same record on read — and the data file is the same
 results on their grid, for analysis — every point's raw outputs beside
-what molbuilder derives from them, each frame's rows beside its values, and
-each variable saying what it is. NetCDF-4, written with
+what molbuilder derives from them, each frame's weight beside its values and
+its rows in the junction's structure, and each variable saying what it is. NetCDF-4, written with
 `netCDF4` (declared in the molbuilder env), read by any NetCDF
 reader — xarray, netCDF4, sisl — and by molbuilder's own door
 (`transport/datafile.py`). It is one of the data-file framework's files
@@ -3134,7 +3131,7 @@ that each calculation has its own group, so it can separate them and look at
 each data set carefully … to access the IV curve, the user could decide to
 take individual points from each calculation group, or … just go for the
 summary and then look at the final. This should be consistent and coming
-from the same result")* — schema `molbuilder/transport-data@13`. The file
+from the same result")* — schema `molbuilder/transport-data@14`. The file
 is the calculation's ladder: the junction,
 each stage that runs once, each point — its device run and its transmission —
 and a summary that gathers across the points what is compared between them.
@@ -3144,7 +3141,8 @@ records; `/structure` — the junction as the calculation composed it,
 **listed by user index** ([`model/overview.md`](?doc=model/overview.md)
 § 2.2a, I1), in the structure layout every data file shares
 ([`model/datafiles.md`](?doc=model/datafiles.md) § 3a) with the junction's
-own regions, basis orbitals and frame rows; `/stages/<stage>` — each stage
+own regions, basis orbitals and each frame's `weight` — the set's other rows
+in its `structure_json`; `/stages/<stage>` — each stage
 that runs once (`seed`, `electrode_L`, `electrode_R`); `/points/<point>` —
 **each point the description asks for, done or not**, named as its folders
 are (`/points/v0.2`; a frame set's `/points/f003/v0.2`, `task.bias_token`,
@@ -3195,13 +3193,11 @@ variable), in each group that runs over it — so a reader selects by value,
 `transmission.sel(bias_v=0.2)`. **The labels of an axis's points are
 coordinates beside it**, and go with the axis into each group that runs
 over it. **The frame set's rows are the maker's, carried as the structure
-carries them** *(from `transport-data@14`, R3d2b2b; @13 lays out a mode's
-set's rows by transport's own table of them as labels beside `frame`,
-`model/datafiles.md` § 9.1)*: `/structure`'s `structure_json` is the composed
+carries them**: `/structure`'s `structure_json` is the composed
 junction whole, and it already holds the structure's rows and every frame's,
 each with its unit and its meaning — so the file writes them nowhere a second
 time, and its own variables, and its naming and unit rules, are untouched.
-`weight` stays the frames' part's label beside `frame`, in every group over
+`weight` is the frames' part's label beside `frame`, in every group over
 that axis, with `weight_sum` and `weight_tolerance` beside the average. A
 person reads the rows through the structure's own door, in one call —
 `postprocess.frame_rows(data_file)`, a row read along the frames then one line
@@ -3315,7 +3311,7 @@ runs over, its kind, its units and what it is: [`model/datafiles.md`](?doc=model
 `definition` and, for a raw one, `source`, the file it was read from
 ([`model/datafiles.md`](?doc=model/datafiles.md) § 2, § 9.0) — and the file
 says what it is (§ 2b): its `title`, each group's own, its `schema`
-(`molbuilder/transport-data@13`), the molbuilder that wrote it, and its
+(`molbuilder/transport-data@14`), the molbuilder that wrote it, and its
 `source` — the engine and its version that computed it, as the runs' own
 outputs state it (*the user, 2026-11-16: "transport can also save siesta
 version where appropriate in the meta data"*): *computed by SIESTA 5.4.2 in
@@ -4400,7 +4396,7 @@ user, 2026-10-25: "when citing a multi frame calculation, first frame result
 is used ... same checking for validate if this reuse is correct should still
 be in place"; "One rule: reuse completes".)* The first frame of a frame set is its
 reference, the relaxed geometry for every set the motion toolkit writes
-(from R3d2b2b; today's frame generator's sets have it there too, their odd
+(from R3d2b2b2; today's frame generator's sets have it there too, their odd
 rules' node at 0) ([`model/structure.md`](?doc=model/structure.md) § 2.2f).
 
 **A run copied in is a launched run of this calculation**, its launch record
@@ -4961,12 +4957,14 @@ be tell user what not to do")*: a new or changed frame set is a new file,
 cited by a new transport calculation (`molbuilder describe`). The pair's two files
 are pinned by their sha256 in `slot-provenance.json`, as a cited run's files
 are, and a pair edited all the same is refused by name at the next prep,
-saying so. A frame set's
+saying so — the one comparison of a pair with its record,
+`workingcopy_structure.pair_files_changed` (a file changed since, gone, or
+never pinned), which the pages' frame-set card asks too, to say it (§ 3.8.1).
+A frame set's
 per-frame promises (§ 2a.9) are checked at this door, frame by frame, naming
 the frame, before anything runs; its rows are carried as written, nothing
-checked of them ([`model/structure.md`](?doc=model/structure.md) § 2.2f)
-*(from R3d2b2b; until then a mode's vocabulary name written with another unit
-is refused, `frame_average.check_units`)* — the electrode atoms' stillness is
+checked of them ([`model/structure.md`](?doc=model/structure.md) § 2.2f) —
+the electrode atoms' stillness is
 this door's own check (`compose.frames_moving_the_leads`, § 2a.9), said,
 never a stop. The pair's axis kinds are its own across the transport axis, and z
 is transport (§ 5 I8). The principal-layer condition is TranSIESTA's own
@@ -5477,10 +5475,17 @@ says the refusal describe gives, and the citation held stays held.
 
 **A frame set says what each frame is** *(Q17-f2)* — under the meta line,
 the frame-set card, one renderer for every page that shows a citation's
-frames (this card, Task setup's echo — `web/task-setup.md` § 3): the
-structure's rows, each with its value and unit (*Mode 6 · Frequency 2548.37
-cm⁻¹ · Zero-point amplitude 0.0813 amu½·Å · …* for a mode's own set; *Sampling
-rule monte-carlo · Snapshots 64 · Seed 20261123 · …* for snapshots) — a whole
+frames (`lib/frameset/card.js`: this card, Task setup's echo —
+`web/task-setup.md` § 3 — and the Results tab's report,
+[`web/results.md`](?doc=web/results.md) § 2.5): what the set is, before its frames are counted — *3 frames
+of one mode*, *65 frames, the relaxed geometry and its snapshots*, else *N
+frames* — and the
+structure's rows, each with its value and unit, in the order the set writes
+them (*Masses standard atomic weights · Sampling rule gauss-hermite · Nodes 3
+· Mode 6 · Frequency 2548.37 cm⁻¹ · Zero-point amplitude 0.0813 amu½·Å · …*
+for a mode's own set as today's generator writes it, its provenance rows on
+a line of their own, below; *Sampling rule monte-carlo · Snapshots 64 · Seed
+20261123 · …* for snapshots) — a whole
 number shown whole, never rounded to its leading figures — and a table, a row per frame, numbered as the frame bar numbers
 them (1 … F), each frame's rows a column under its words and unit
 (*Displacement (Å)*, *Weight*); the name the file stores each under, its
@@ -5490,30 +5495,45 @@ the stored name one hover away)*. The page — above transport and the motion
 toolkit both — says a row in the toolkit vocabulary's words and page unit
 where the vocabulary knows its name and the row's unit is the vocabulary's
 or it states none ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 5.1);
-any other row by its name and unit as written; what is said of the weights
-stands beneath. **The card also says where a vibration's set came from**: its
-`vibration_run` and `vibration_result_sha256` rows, or an older set's
-`info.vibration` (`run`, `result_sha256`), read from the cited pair at the
-record's path; a pair either of whose files — the `.xyz` or the
-`.molstruct.json` — no longer matches the sha256 the record pinned for it is
-said so, its provenance shown as the pair now states it. For frames
+any other row by its name and unit as written; a row the vocabulary marks
+as prose — a maker's `assumptions`, a snapshot set's `set_apart_modes` — on
+its own line beneath them; what is said of the weights and of the pair
+stands under the table, in the warning tone every surface gives a warning
+([`web/ui-contract.md`](?doc=web/ui-contract.md) § 5). **The card also says where a vibration's set came from** —
+*From the vibration run P/spectrum/V/01_freq/run-0 · its result's sha256
+3f9a…*, the whole hash on hover: its
+`vibration_run` and `vibration_result_sha256` rows — said there once, not
+on the set's line — or an older set's
+`info.vibration` (`run`, `result_sha256`). **The words, what the set is,
+an older set's assumptions and where it came from are of the frames the
+page draws** — the composed junction on the Results tab and in the reuse
+answer, the citation as read at the describe door, the pair read now at
+Task setup — so a pair moved or deleted after the calculation ran takes
+nothing from its card; a cited pair no longer as the record pinned it, and
+a mode's own set written before 2.81.0, which states no `assumptions` row
+(*Assumptions: Harmonic modes: …* drawn for it), are said as
+[`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 6 says
+— its one home; an older set's record and `summarize` carry its rows as
+written. For frames
 stating no rows, *N frames — a family: each frame's curve its own, no
-average*; for one structure, nothing. The data is the describe door's
+average*, and what is said of the pair beneath; for one structure, nothing. The data is the describe door's
 `frame_set` — `{n_frames, definition}`, the definition transport's
 `frame_average.answer`, the rows as written — joined in the web layer with
-the toolkit's words and the pair's provenance
-(`vibration_frames.said_of(pair_path, recorded_files)`, the record's `files`
-mapping, [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
-§ 6), each answer carrying it as `frame_set_said` — asked by the transport
-blueprint for the describe door and `/api/transport/record` (the Results
-tab's frame-set card, new in R3d2b2b, [`web/results.md`](?doc=web/results.md)
-§ 2.5), and by the build blueprint's folder answer for Task setup
-(`/api/task-setup/folder`), since transport's `compose.cited_frames` asks
-nothing of the toolkit *(from R3d2b2b; until then `frame_average.answer` gives
-the words, and no provenance is shown)*, so the card keeps no list.
-`summarize`, which is transport's, prints the rows as written — name, value,
-unit — a whole number whole *(from R3d2b2b; until then `frame_average`'s
-summary lines say the vocabulary's words to six figures)*.
+the toolkit's words and the set's provenance
+(`vibration_frames.said_of(pair_path, recorded_files, structure=)`, the
+record's `files` mapping, `structure` the frames drawn,
+[`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 6), each answer carrying it as `frame_set_said` beside its `frame_set`
+(the blueprints' one helper, `_shared.frame_set_said`) — the transport
+blueprint's describe door, and its `/api/transport/record`, whose
+`frame_set` is the composed junction's frames, its words theirs, the
+pair's files checked against the record's sha256 (the Results tab's frame-set card,
+[`web/results.md`](?doc=web/results.md) § 2.5), and the build blueprint's
+folder answer for Task setup (`/api/task-setup/folder`) — since transport's
+`compose.cited_frames` asks nothing of the toolkit, so the card keeps no
+list. `summarize`, which is transport's, prints the rows as written beneath
+the average — name, value, unit as written, none for the dimensionless `1` —
+a whole number whole.
 
 **The pseudopotential directory is asked for a pair**, on the shared panel:
 the `setup` items a citation asks of the person
@@ -6080,7 +6100,7 @@ list must be hand-swept on every deletion.
 | Kind gate | `validation/transport.py` (`validate_transport_kind`, the kind table's `validator`) | the invariants that must fire on **every** transport prep, keyed on `task.calculation`: I12 (no vacuum where the crystal continues, measured from the lead — § 6.1c); on every rung, TranSIESTA's stop on more than two spin components; on the device, which reads them, the pole energy's 20-pole floor, the temperature's 10 K floor and the bias window's 2.5 kT reach (§ 6.1c) — each of TranSIESTA's stops said as information; on the transmission, its window against the bias window (P2, § 2a.10). § 5 names which holder holds which; the k-point sampling (I7–I9) is the mesh's, [`siesta.md`](?doc=engines/siesta.md) § 6.1 |
 | k-point mesh | `kmesh.py` | every rung's sampling — the shared transverse pair, the open axis's one point, a lead's `electrode_kz`, the transmission's `tbt_k_grid`, the offset on every rung — decided once and read by the writer, the settings gate and the record ([`siesta.md`](?doc=engines/siesta.md) § 6.1) |
 | Record | `transport/record.py` | TBtrans output → `<label>.transport.json` (`summarize task`); a point whose transmission has not run yet reads as **pending**, one its ended walk never started as **not run** — never as a failure |
-| The frames' post-process | `molbuilder/frame_average.py` | outside transport's execution: the frames' average at their stated weights, its summary lines, the data file's frame part, what a page is answered of the frames — every row carried as written (§ 2a.12, § 3.8.1); a mode's vocabulary and the motion weights leave it for the motion toolkit in R3d2b2b (`engines/vibration-frames.md` § 5.1, § 7) — called by the record, the data file and the describe door |
+| The frames' post-process | `molbuilder/frame_average.py` | outside transport's execution: the frames' average at their stated weights, its summary lines, the data file's frame part, what a page is answered of the frames — every row carried as written, none said in words of its own (§ 2a.12, § 3.8.1) — and a data file's frames averaged at weights a caller gives (`averaged_at`); called by the record, the data file, the describe door and `postprocess.reaveraged`. What a vibration's rows mean and how a page says them is the motion toolkit's (`vibration_frames`, [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 5.1, § 6), asked by the web layer, never by transport |
 | Data file | `transport/datafile.py` | the record's composition as `<label>.transport.nc` — every point's raw outputs beside what is derived from them, on one grid, each variable defined (§ 2a.12) — and its reader |
 | The frames' rows | `molbuilder/frameset.py` | the rows as written and each frame's weight (`model/structure.md` § 2.2f), read by the frames' post-process |
 

@@ -1201,7 +1201,7 @@ $R_\nu$, not the junction's formulation.
 | **dielectric function** $\varepsilon$ | the material's response to light; its imaginary part $\varepsilon_2$ is the absorption, its real part $\varepsilon_1$ at zero frequency gives the static polarizability |
 | **the optical calculation** | SIESTA's `OpticalCalculation`: $\varepsilon_2$ from the couplings between its occupied and empty states (§ 3.1) |
 | **static** | at zero frequency — away from the molecule's electronic resonances |
-| **frame set** | a few geometries of the molecule, each its own frame with its weight — one mode's own frames, or snapshots of every mode — written by the motion toolkit (`engines/vibration-frames.md`; from R3d2b2 — until then the frame generator writes one mode's thermal frames) |
+| **frame set** | a few geometries of the molecule, each its own frame with its weight — one mode's own frames, or snapshots of every mode — written by the motion toolkit (`engines/vibration-frames.md`; from R3d2b2b2 — until then the frame generator writes one mode's thermal frames) |
 | **single point** | one SIESTA solution at one fixed geometry, nothing moved |
 | **the `electronic` kind** | the calculation kind that runs a single point at each frame of a frame set — decided, not built; not Raman's route (§ 5) |
 | **the optical phase** | the SIESTA vibration run's phase after its force constants: one single point with the optical calculation per frame — the equilibrium and $\pm\delta Q$ along each selected mode — each a SIESTA call in its own folder of the run ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11) |

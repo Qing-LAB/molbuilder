@@ -1898,7 +1898,8 @@ async function readFolder(projects, dir, opts) {
     _fs.extension = said.extension || null;
     _fs.kind = said.kind || null;
     renderCameOver(task, said.treatment_note, said.frame_set,
-                   said.template && said.template.shared);
+                   said.template && said.template.shared,
+                   said.frame_set_said);
     /* FROM THE ANSWER ALREADY IN HAND (`task-setup.md` § 2.1), and into
      * `_fs`, which `loadFolder` replaces wholesale.  A separate variable
      * here would be a reset somebody has to remember. */
@@ -2120,15 +2121,17 @@ function setCell(i, col, raw) {
  * (`treatment_note`, the folder answer's: the record's one wording of the
  * treatment); and every value shared by every stage, with whose it is
  * (`renderShared`, `template.md` § 6.6 obligation 3). */
-function renderCameOver(obj, treatment, frameSet, shared) {
+function renderCameOver(obj, treatment, frameSet, shared, frameSetSaid) {
     const host = $("ts-facts");
     const card = $("ts-came-card");
     if (!host || !card) return;
     host.textContent = "";
     renderShared(obj ? shared : null);
     /* THE CITED JUNCTION'S FRAMES, by the one card (transport.md § 3.8.1),
-     * from the folder's answer; nothing for one structure or another kind. */
-    renderFrameSet($("ts-frameset"), obj ? frameSet : null);
+     * from the folder's answer and the words beside it; nothing for one
+     * structure or another kind. */
+    renderFrameSet($("ts-frameset"), obj ? frameSet : null,
+                   obj ? frameSetSaid || null : null);
     /* WHICH ROWS IT HAS IS ITS KIND'S ENTRY (`_fs.kind`, task-setup.md
      * § 3): a cited slot's where the kind cites one, each carried field's
      * where the kind carries it, the structure's where it holds one. */

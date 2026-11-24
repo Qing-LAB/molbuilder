@@ -517,7 +517,7 @@ write. A frame set for transport is never made **with `ase`**
 made through molbuilder's own Structure API — the motion toolkit
 ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)), which
 imports with this env's packages and so makes frame sets here, as its example
-notebook does *(both to build, R3d2b2)*, or a person's script, `with_frames` and `set_customized` —
+notebook does *(the writer to build, R3d2b2b2; the notebook, R3d2b2c)*, or a person's script, `with_frames` and `set_customized` —
 written by the codec with its sidecar (`model/structure.md` § 2.2e). A file `ase` writes carries no
 sidecar, and its comment line is never metadata
 ([`model/structure.md`](?doc=model/structure.md) § 2.3), so it reads as atoms

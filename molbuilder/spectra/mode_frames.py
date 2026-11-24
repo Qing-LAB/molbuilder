@@ -1,10 +1,13 @@
 """A MODE'S FRAME SET -- one vibration mode written as one multi-frame
 structure pair a transport calculation cites (`engines/vibration.md`
-§ 5.10 ③; its rows `model/structure.md` § 2.2f; its rule
-`science/vibrational-averaging.md` § 5).
+§ 5.10 ③; its rows the vibration frame sets' vocabulary,
+`engines/vibration-frames.md` § 5.1; its rule
+`science/vibrational-averaging.md` § 5).  To be retired in R3d2b2b2, the
+toolkit's writer taking its place.
 
 MODULE  spectra.mode_frames (L2; the run door, the vibration result's reader, the
-        structure and its codec, numpy)
+        structure and its codec, the vibration frame sets' vocabulary
+        (`vibration_frames`), numpy)
 ROLE    :func:`frameset_from_mode` -- the one generator, and
         :class:`ModeFrames`, what it wrote and what it says;
         :func:`outermost_move` and :func:`at_temperature` -- what a
@@ -196,7 +199,7 @@ def frameset_from_mode(run_folder, *, mode: int, temperature_k: float,
     ``index_1based`` -- written as one multi-frame pair at ``out`` (its
     ``.xyz``), its frames at the ``nodes`` Gauss-Hermite nodes of the
     Gaussian the mode spreads over at ``temperature_k``.  ``root`` is the
-    projects tree the run's folder is stated from in ``info.vibration``.
+    projects tree the run's folder is stated from in its ``vibration_run`` row.
 
     Refused, naming what to do: no run of ours -- or a calculation whose
     description does not read, in its reader's words -- no result in it, a
@@ -204,7 +207,6 @@ def frameset_from_mode(run_folder, *, mode: int, temperature_k: float,
     a temperature that is not a number of kelvin, 0 or more, another rule
     than :data:`NODES`, a pair already at ``out``."""
     from ..chemistry import MASS_SOURCE
-    from ..frame_average import INFO_KEY, MASS_CHANNEL, ROWS
     from ..projects import address
     from ..runfiles import ROLE_SPECTRA
     from ..runs import on_label_at, place_of, run_of
@@ -214,6 +216,8 @@ def frameset_from_mode(run_folder, *, mode: int, temperature_k: float,
     from ..vibration import (mean_quanta, thermal_spread_amu12_ang,
                              zero_point_amplitude_amu12_ang)
     from ..structure import AtomChannel, Structure
+    from ..vibration_frames import (MASS_CHANNEL, ROWS, assumptions_of_a_mode,
+                                    thermal_state_words)
     from ..workingcopy_structure import StructureCodec
 
     nodes = _checked_nodes(nodes)
@@ -303,15 +307,16 @@ def frameset_from_mode(run_folder, *, mode: int, temperature_k: float,
     else:
         said.append(why)
 
-    # THE ROWS, in `model/structure.md` § 2.2f's vocabulary: each with its
-    # unit and its meaning, the row's note, as the vocabulary states them.
+    # THE ROWS, in the vibration frame sets' vocabulary
+    # (`engines/vibration-frames.md` § 5.1): each with its unit and its
+    # meaning, the row's note, as the vocabulary states them.
     masses = [float(v) for v in res.equilibrium_masses_amu]
     built.set_channel(MASS_CHANNEL, AtomChannel(
         "value", {i: v for i, v in enumerate(masses)}))
     vocabulary = {r.name: r for r in ROWS}
 
     def write(name: str, value: Any, frame: Optional[int] = None) -> None:
-        built.set_customized(name, value, unit=vocabulary[name].unit,
+        built.set_customized(name, value, unit=vocabulary[name].unit_spelled,
                              note=vocabulary[name].means, frame=frame)
 
     frames = []
@@ -323,19 +328,26 @@ def frameset_from_mode(run_folder, *, mode: int, temperature_k: float,
     # THE OUTERMOST MOVE, measured on the frames written -- what the person
     # reads against a bond length.
     outermost = max(f["max_atom_displacement_ang"] for f in frames)
-    stated = {"mode_index_1based": int(m.index_1based),
-              "frequency_cm1": float(m.frequency_cm1),
-              "temperature_k": float(temperature_k),
-              "mean_quanta": float(n_quanta),
-              "zero_point_amplitude_amu12_ang": float(q_zp),
-              "max_displacement_ang": outermost,
-              "sigma_amu12_ang": float(sigma),
+    # WHERE THE MODES CAME FROM, as rows a calculation carries with the
+    # others (§ 5): the run's folder and its result JSON's sha256.
+    stated = {"vibration_run": (address(run_folder, root) if root is not None
+                                else str(Path(run_folder).resolve())),
+              "vibration_result_sha256": sha256_of(result),
+              "mass_source": MASS_SOURCE,
+              "assumptions": assumptions_of_a_mode(
+                  thermal_state_words(float(temperature_k))),
               "sampling_rule": SAMPLING_RULE,
               "sampling_nodes": int(nodes),
-              "mass_source": MASS_SOURCE}
-    # IN THE VOCABULARY'S ORDER (`model/structure.md` § 2.2f).
+              "mode_index_1based": int(m.index_1based),
+              "frequency_cm1": float(m.frequency_cm1),
+              "zero_point_amplitude_amu12_ang": float(q_zp),
+              "temperature_k": float(temperature_k),
+              "mean_quanta": float(n_quanta),
+              "spread_amu12_ang": float(sigma),
+              "max_displacement_ang": outermost}
+    # IN THE VOCABULARY'S ORDER (`engines/vibration-frames.md` § 5.1).
     for r in ROWS:
-        if r.where == "structure":
+        if r.where == "structure" and r.name in stated:
             write(r.name, stated[r.name])
     for f, (q, row) in enumerate(zip(qs, frames)):
         measured = {"displacement_ang": float(np.linalg.norm(q * L)),
@@ -347,10 +359,6 @@ def frameset_from_mode(run_folder, *, mode: int, temperature_k: float,
         for r in ROWS:
             if r.where == "frame":
                 write(r.name, measured[r.name], frame=f)
-    built.set_info(INFO_KEY, {
-        "run": (address(run_folder, root) if root is not None
-                else str(Path(run_folder).resolve())),
-        "result_sha256": sha256_of(result)})
 
     # AN ELECTRODE ATOM THE FRAMES MOVE -- written, and said in the words
     # of the one check a transport citation asks of every frame
