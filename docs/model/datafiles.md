@@ -53,7 +53,7 @@ by a second reader: it is that composition on its grid, for analysis.
 | file | what it is | written by | schema | its chapter · its names |
 |---|---|---|---|---|
 | `<label>.transport.nc` | every result of a transport calculation, in groups: the junction, each stage, each point and its device run, and the summary across the points | `jobset summarize task`; an export composes the same file | `molbuilder/transport-data@13` | `engines/transport.md` § 2a.12 · § 9.1 |
-| `<label>.spectra.nc` | a vibration result, beside its JSON — the same payload, tied by the JSON's sha256 | the result's one writer, at every write on both engines | `molbuilder/spectra-data@10` (`@1`–`@9` read as they are) | `engines/vibration.md` § 6.10, *The data file* · § 9.2 |
+| `<label>.spectra.nc` | a vibration result, beside its JSON — the same payload, tied by the JSON's sha256 | the result's one writer, at every write on both engines | `molbuilder/spectra-data@11` (`@1`–`@10` read as they are) | `engines/vibration.md` § 6.10, *The data file* · § 9.2 |
 | `<label>.TBT.digest.nc` (`.TBT_UP` / `.TBT_DN`) | a TBtrans data file's DOS per orbital, k-averaged once and kept | the reading of the `.TBT.nc` beside it | `molbuilder/tbt-digest@5` | `model/parse.md` § 5e · § 9.6 |
 | `<label>.optical.nc` | a SIESTA vibration's optical calls — each frame's ε₂ on the photon energies, its mode, side and geometry, the settings the calls read: the record of the Raman phase so far | the run's own record steps — the force constants', every frame pending, then each optical call's — and its finish | `molbuilder/optical-data@5` (`@1`–`@4` read as they are) | `engines/vibration.md` § 5.11 § 8 · § 9.3 |
 | `<label>.optimization.nc` · `<label>.steps.nc` | a calculation's runs and their steps (§ 9.5): every step its runs finished on one grid — each atom's position and force, its charges where the run printed them, the energy, the stress, the largest force — each step's SCF cycles, and each run's own record: whether it converged, how it ended; an optimization's data file, and a vibration's runs beside its own data files | an export alone (`stepsdata`, through `optimization.export` and `spectra.export`), never into the calculation | `molbuilder/run-steps@1` | `engines/optimization-postprocessing.md` § 6, `engines/vibration-postprocessing.md` § 1 · § 9.5 |
@@ -181,7 +181,7 @@ there, in the change that first writes it.
 | `angstrom^2/amu^1/2` | square ångström per square-root amu | `ang2_per_amu12` |
 | `D/(angstrom amu^1/2)` | debye (3.33564×10⁻³⁰ C m) per ångström per square-root amu | `d_per_ang_amu12` |
 | `angstrom^4/amu` | ångström to the fourth per amu | `ang4_per_amu` |
-| `mdyn/angstrom` | millidyne per ångström, 100 N/m — a mode's force constant, as Gaussian prints it (to be listed in § 9.2 with `spectra-data@11`, `engines/vibration.md` § 6.11 § 5) | `mdyn_per_ang` |
+| `mdyn/angstrom` | millidyne per ångström, 100 N/m — a mode's force constant, as Gaussian prints it (`/modes`, `spectra-data@11`) | `mdyn_per_ang` |
 
 **CF-1.8 and its units**: CF reads a unit through UDUNITS, which has no
 name for the hartree, the conductance quantum or a square-root mass; those
@@ -1126,7 +1126,7 @@ Every raw variable here is *from the device point's SIESTA output*.
 The vibration result as data — the same payload as `<label>.spectra.json`
 beside it, tied to it by that JSON's sha256 (`json_sha256`). Written by the
 job at every write of the result, on both engines (the result's one writer,
-`write_spectra_payload`); schema `molbuilder/spectra-data@10` — which older
+`write_spectra_payload`); schema `molbuilder/spectra-data@11` — which older
 ones it reads, § 1. The science is [`engines/vibration.md`](?doc=engines/vibration.md)
 § 4 (PySCF) and § 5 (SIESTA); the result's keys, § 6.2–6.6.
 
@@ -1135,6 +1135,7 @@ ones it reads, § 1. The science is [`engines/vibration.md`](?doc=engines/vibrat
 /structure                     the geometry the vibration is about (9.0.5)
 /equilibrium                   the equilibrium SCF -- PySCF's; NaN and -1 on SIESTA
 /modes                         the normal modes
+/modes/thermal                 each mode's spread and mean quanta at the modes' own temperatures -- always there from @11
 /modes/electronic_structure    the probe -- always there, a row per mode PySCF's probe ran on
 /thermo                        the thermochemistry at one temperature
 /thermo/grid                   the same over temperature -- no temperature where none is drawn
@@ -1223,11 +1224,38 @@ and no HOMO.
 | `dipole_derivative_d_per_ang_amu12` | mode, xyz | derived | D/(angstrom amu^1/2) | the dipole change along the mode, dμ/dQ: the engine's dμ/dR projected on the canonical eigenvector — the vector the IR intensity is the orientation average of; NaN where none was kept (SIESTA) |
 | `ir_active` · `raman_active` | mode | derived | 1 | **flag**: the activity class's verdict for IR, for Raman ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.6); `−1` where the channel was not computed |
 | `activity_class` | mode | derived | — | the mode's class, judged over the whole run ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.6): `both`, `ir-only`, `raman-only`, `silent`, or `partial` — a channel not computed |
+| `motion_share` | mode, free_atom | derived | 1 | each free atom's share of the mode's motion, $m_A\lvert L_A\rvert^2$ over its sum across the free atoms — the kinetic energy's share, summing to 1 ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.11 § 3; from @11) |
+| `largest_zero_point_move_ang` | mode | derived | angstrom | the largest single atom's move at the zero-point amplitude; NaN for an imaginary mode (@11) |
+| `reduced_mass_amu` | mode | derived | amu | the reduced mass by Gaussian's convention, 1 / Σ_atoms \|L\|² of the canonical eigenvector; NaN for a mode with no motion (@11) |
+| `force_constant_mdyn_per_ang` | mode | derived | mdyn/angstrom | the force constant by Gaussian's convention, the reduced mass times ω² — positive for an imaginary mode, as Gaussian prints it; NaN for a mode with no motion (@11) |
 | `removed_motion` | removed, free_atom, xyz | derived | 1 | a removed whole-body motion: an orthonormal Cartesian pattern over the free atoms |
 
 | attribute | what it says |
 |---|---|
 | `title` | *the normal modes …* |
+
+#### `/modes/thermal` — each mode's spread and mean quanta (from @11)
+
+*Axes* `mode` (its parent's, repeated: a group states its own axes, § 3),
+`temperature_k` — a group of its own, so the probe's group inherits no
+temperature axis ([`engines/vibration.md`](?doc=engines/vibration.md)
+§ 6.11 § 5). Always written: before the modes exist no mode is on it, and
+it reads back as the result's `modes_thermal` `null`
+([`engines/vibration.md`](?doc=engines/vibration.md) § 6.2, § 6.5); an
+imaginary mode's row reads back `null` by the mode's own `has_imag`. The
+temperatures are the file's own
+([`engines/vibration.md`](?doc=engines/vibration.md) § 6.6).
+
+| name | over | kind | units | what it is |
+|---|---|---|---|---|
+| `mode` | mode | coordinate | 1 | the mode's 1-based index (9.0.4), its parent's repeated |
+| `temperature_k` | temperature_k | coordinate | K | each of the modes' temperatures, as the result states them — the file's own list ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.6; today's, § 6.11 § 3) |
+| `thermal_spread_amu12_ang` | mode, temperature_k | derived | amu^1/2 angstrom | the mode's spread at the temperature, $Q_{\mathrm{zp}}\sqrt{2n+1}$; NaN for an imaginary mode |
+| `mean_quanta` | mode, temperature_k | derived | 1 | the mode's mean quanta at the temperature, Bose and Einstein's; NaN for an imaginary mode |
+
+| attribute | what it says |
+|---|---|
+| `title` | *each mode's spread and mean quanta …* |
 
 #### `/modes/electronic_structure` — the electronic-structure probe ([`engines/vibration.md`](?doc=engines/vibration.md) § 4.8)
 

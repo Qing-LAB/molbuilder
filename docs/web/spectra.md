@@ -694,8 +694,7 @@ $$
 This is the **kinetic-energy distribution**, the standard way a mode is assigned
 to the atoms that carry it. For a harmonic mode the ratio is the same at every
 phase of the oscillation, so it is a property of the mode and not of the instant
-you look at it. Either stored eigenvector gives the same answer: the two forms
-differ by one scalar per mode, and a scalar cancels in a ratio.
+you look at it.
 
 > **Why mass-weight it.** Naming the atom that moves furthest would answer
 > *hydrogen* almost regardless of the mode: a light atom travels further for the
@@ -722,32 +721,37 @@ not get wrong about a number quoted from this panel.
 
 #### Where the composition is computed, and why there
 
-**The server**, in `/api/spectra/load` — not the browser, and not the file.
+**Each atom's share in the file, the element sums on the server** — in
+`/api/spectra/load`, never in the browser.
 
 The share needs atomic masses, and the browser has none. **A result from
 schema 7 states its own** — `equilibrium.masses_amu`, the masses its analysis
-weighted by ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.2, I3) —
-and the share is computed from them; an older result states none, and its
-share is computed from `chemistry.atomic_mass`, the name for ASE's IUPAC
-standard weights, the table `prep` states every deck's masses from. Typing 118
-masses into this program — in Python or, worse, into JavaScript — would have
-been a second source of truth that no test would notice going stale.
+weighted by ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.2, I3);
+an older result states none, and its share is computed from
+`chemistry.atomic_mass`, the name for ASE's IUPAC standard weights, the table
+`prep` states every deck's masses from. Typing 118 masses into this program —
+in Python or, worse, into JavaScript — would have been a second source of
+truth that no test would notice going stale.
 
-It is computed **when a result is opened, not when it is written**:
+**Each free atom's share is the result's own**: `motion_share`, stored from
+schema 15 beside the mode it is derived from, checked on read against the one
+derivation and worked out again by it — and for a result written before it,
+worked out on read ([`engines/vibration.md`](?doc=engines/vibration.md)
+§ 6.6, § 6.11 § 3); the panel's sums are of those shares — so
+every result on disk shows the line the moment it is opened, and a person
+reads each atom's share from the file without molbuilder. **The element
+sums are a view, made at load**: each free atom's share summed by its
+element, its species label's name (`SpectraResults.atoms_weighted`,
+`Structure.chemical_symbols` — `Au` for `Au1`, a label's name taken as
+written). Grouped another way — by species label, by region — they are the
+script door's (`engines/vibration.md` § 6.11 § 6), not the panel's.
 
-| | what it costs | what it means for the results already on disk |
-|---|---|---|
-| computed at load *(chosen)* | one pass over each eigenvector | every existing result gains the line the moment it is opened |
-| written into the file | a schema bump | nothing shows until each result is re-run |
+A mode that states no shares is served without the field, and the panel
+simply drops that clause: a result with no stored geometry yet, or one written
+before schema 7 — which states no masses — whose label names no element the
+mass table knows.
 
-`SpectraResults.to_dict()` is the **on-disk format** and round-trips through
-`from_dict`; the share is derived, so it is added to the reply and never to the
-file. A result whose shares cannot be worked out — an element ASE does not know,
-or no stored geometry — is served without the field, and the panel simply drops
-that clause.
-
-The maths lives in `vibration.element_shares`, each free atom's element and mass as the result reads them (`SpectraResults.atoms_weighted`: the species label resolved, the mass by `results.mass_of`); the sentence
-is assembled in `lib/spectra/core.js :: _reportSwing`.
+The sentence is assembled in `lib/spectra/core.js :: _reportSwing`.
 
 ### 4.3 A mode's frame set — *Write frame set…*
 

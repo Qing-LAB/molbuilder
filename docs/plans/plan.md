@@ -12,7 +12,7 @@ at 2.77.23 is [`archive/2026-11-22-plan-consolidation.md`](?doc=archive/2026-11-
 
 ## ▶ Where we are *(2026-11-23)*
 
-**2.78.0.** F0–F11 and F7a are closed (2.56.2–2.77.2). F12, *Proven*,
+**2.79.0.** F0–F11 and F7a are closed (2.56.2–2.77.2). F12, *Proven*,
 walked its three roads in the browser on real runs and ran the full batch
 (6106 fast and 805 e2e tests, none failed, at 2.77.2); its two review rounds
 ([`archive/audits/2026-11-18-f12-review/`](?doc=archive/audits/2026-11-18-f12-review/TRIAGE-round1.md))
@@ -20,7 +20,7 @@ sorted every finding into the releases below. **The finish plan** *(the
 user, 2026-11-19: "a consolidated plan to get things finished, not to drag
 things along")*: five releases, R1–R5, each with its review rounds. R1 and R2
 are done; R3, one home per fact on the server side, grew from one release
-into parts as reviews and the user's decisions added work, eleven of them
+into parts as reviews and the user's decisions added work, twelve of them
 shipped:
 
 | version | part | what it did | record |
@@ -39,6 +39,7 @@ shipped:
 | 2.77.25 | R3d1a | transport, each fact in one home; every data file names its engine in the engine table's words, a voltage said one way | `fix17-review.md` |
 | 2.77.26 | R3d1b | the spectra, each fact in one home; the spectra page names its engine in the engine table's words | `fix18-review.md` |
 | 2.78.0 | R3d2a | the vibration framework's module `vibration`, a mode's states and their frames, and the script door `postprocess.vibration` | `fix19-review.md` |
+| 2.79.0 | R3d2b1 | a vibration's record states each mode's mechanics: each atom's share of the motion, the largest zero-point move, Gaussian's reduced mass and force constant, the spread and mean quanta at the modes' temperatures (schema 15, data file @11) | `fix20-review.md` |
 
 Records: `archive/audits/2026-11-18-f12-review/fix<N>-review.md`. Since
 2.77.23 the host env holds `molbuilder-source.pth` on the development machine
@@ -65,7 +66,10 @@ built in R3d with the vibration's data files.
 - **What a person can already read** (2026-11-22, read in the code): the run's
   `<label>.spectra.nc` — per mode its frequency, imaginary flag, mass-normalised
   and display eigenvectors, IR intensity, Raman activity, and (data file v7)
-  its zero-point amplitude √(ħ/2ω) and each atom's zero-point displacement;
+  its zero-point amplitude √(ħ/2ω) and each atom's zero-point displacement,
+  and (schema 15, data file @11) each free atom's share of the motion, the
+  largest zero-point move, the reduced mass and force constant, and each
+  mode's spread and mean quanta at the modes' own temperatures;
   the thermochemistry (ZPE, G, a temperature grid); the per-displacement
   charges (SIESTA, IR on); `<label>.optical.nc`, `<label>.raman.nc`,
   `<label>.steps.nc`; through the Results tab's Export and
@@ -74,8 +78,9 @@ built in R3d with the vibration's data files.
   `outermost_move`, `reaveraged`, `atom_index_map`), every row in the user's
   atom order.
 - **What is computed on request and kept nowhere**: a mode's thermal spread
-  and mean quanta at a temperature, each element's share of a mode's motion,
-  the mode over all atoms and the displaced geometry (`vibration`, 2.78.0),
+  and mean quanta at a temperature other than the modes' own, the shares
+  summed by element, label or region, the mode over all atoms and the
+  displaced geometry (`vibration`, 2.78.0),
   a frame set's outermost move (`spectra/mode_frames.py`), the frame weights
   at a temperature (`frame_average.py`) — the last two moving into the motion
   toolkit (`vibration_frames`, and `State.weights_at`, R3d2b2).
@@ -83,9 +88,10 @@ built in R3d with the vibration's data files.
   § 6.11; the theory [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
   § 2b): one `vibration` module owning every per-mode quantity and its
   definition, the rules today written two or more times folded into it; a
-  per-mode record in the data file — element shares, the largest zero-point
-  move, the spread and mean quanta on the thermochemistry's temperatures —
-  each derived, stored and checked on read; `postprocess.vibration(path)`;
+  per-mode record in the data file — each free atom's share of the motion,
+  the largest zero-point move, the reduced mass and force constant, the
+  spread and mean quanta at the modes' own temperatures — each derived,
+  stored and checked on read (built, schema 15); `postprocess.vibration(path)`;
   **the probe on D7/D8's rule** (the user's, 2026-09-28: the frame set's
   Gauss–Hermite nodes at the stated temperature), which settles `r2-4` P2 —
   its slope, the coupling $g$, the Huang–Rhys factor, the level's average and
@@ -140,7 +146,7 @@ and an API reviewer** *(the user, 2026-11-23)*.
 
 - **R3d2a** (2.78.0, done) — the module `vibration`, its states and
   `postprocess.vibration`'s mechanics.
-- **R3d2b1, the record** (schema 15, data file @11; `engines/vibration.md`
+- **R3d2b1, the record** (2.79.0, done; schema 15, data file @11; `engines/vibration.md`
   § 6.11 § 3, § 5), the user's choices of 2026-11-23: each free atom's share
   of every mode's motion, $m_A\lvert\mathbf L_A\rvert^2$, stored on the
   `free_atom` axis (the shares by element, by species label and by region its
@@ -161,7 +167,8 @@ and an API reviewer** *(the user, 2026-11-23)*.
   the module, written by both engines, checked on read; each atom's element
   its species label's name (`Structure.chemical_symbols`, travelling), prep
   having made it an element; `Mode`'s fields by the record's names; the load
-  door reading the stored shares.
+  door summing the shares the result states — checked on read and worked out
+  again by the one derivation — by element.
 - **R3d2b2, the motion toolkit** ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md);
   its § 9 is the one list of each piece and each visible change of a built
   call, transport's own in `engines/transport.md` § 2a.12; the design's three
@@ -190,7 +197,12 @@ and an API reviewer** *(the user, 2026-11-23)*.
     (read by `vibration_frames.vibration_of_run`), carrying `v.run`,
     `v.read_path` (`v.source`, renamed — a deletion to list),
     `v.result_sha256`, `v.structure`, `v.relaxation_calculation`;
-    `Mode.vibration` (out of repr and comparison), `v.mode(n)`,
+    `Mode.vibration` (out of repr and comparison) — the fields every `Mode`
+    copies in 2.79.0 (`free_atom_idxs`, masses, elements, positions, the
+    record's temperature, species labels, regions, `mode_temperatures_k`)
+    become the `Vibration`'s,
+    reached through it, `v.mode_temperatures_k` the file's list (a visible
+    change, the toolkit's § 9), `v.mode(n)`,
     `v.displaced({...})`, `v.with_frequency_scale(f)`; `Motion` (`v.motion()`;
     a state per mode by number; `with_mode` taking a `ModeState` of that mode
     alone; each driven mode its own phase; `with_drive({k: n_s}, lags_rad=…)`,

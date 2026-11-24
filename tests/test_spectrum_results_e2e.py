@@ -417,9 +417,11 @@ def test_each_elements_share_is_its_part_of_the_mass_weighted_motion(
     row is the atom the free list names.  THE SILENT FAILURES: a row read as
     the atom of its own position -- with the oxygen held, a hydrogen's motion
     handed to the oxygen; a labelled water's owner split in two, "44% H1, 44%
-    H2".  The trap the share exists for, a heavy atom owning a mode while
-    moving less, is `spectra/test_motion_share.py`'s, on the numbers of the
-    mode that showed it."""
+    H2".  Asked by label (`engines/vibration.md` § 6.11 § 6), the script
+    door gives each label its own share -- the one place the two hydrogens
+    stand apart.  The trap the share exists for, a heavy atom owning a mode
+    while moving less, is `spectra/test_motion_share.py`'s, on the numbers
+    of the mode that showed it."""
     run = {"water": real_water_vibration, "held": real_water_held,
            "linear": real_water_linear}[fixture_name]
     path = _final(run)
@@ -435,6 +437,19 @@ def test_each_elements_share_is_its_part_of_the_mass_weighted_motion(
         total = sum(weight.values())
         assert mode["motion_share_by_element"] == pytest.approx(
             {el: w / total for el, w in weight.items()}, abs=1e-12)
+    # A LABEL'S SHARE, the script door's (§ 6.11 § 6): each label as
+    # written, its atoms' m|L|^2 over the total -- the labelled hydrogens
+    # apart, where their element is one.
+    from molbuilder.postprocess import vibration
+    labels = d["structure"]["elements"]
+    for row, mode in zip(d["modes"], vibration(path).modes):
+        weight = {}
+        for atom, moved in zip(d["free_atom_idxs"], row["eigenvector_canonical"]):
+            weight[labels[atom]] = weight.get(labels[atom], 0.0) + (
+                masses[atom] * float(np.dot(moved, moved)))
+        total = sum(weight.values())
+        assert mode.motion_shares(by="label") == pytest.approx(
+            {label: w / total for label, w in weight.items()}, abs=1e-12)
 
 
 # --------------------------------------------------------------------- #

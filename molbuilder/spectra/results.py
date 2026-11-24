@@ -52,8 +52,9 @@ import numpy as np
 # TWO WAYS, because this module travels beside the SIESTA finish and the PySCF
 # script (`runwrap.members`).
 try:                                        # inside molbuilder
-    from .derived import disagreements, with_derived
-    from .normal_modes import display_form
+    from .derived import (THERMAL_KEY, disagreements, free_masses_of,
+                          stated_temperatures, thermal_block, with_derived)
+    from .normal_modes import display_form, mode_temperatures
     from .result_keys import (CHARGE_STEP_KEYS, EQUILIBRIUM_KEYS, ES_KEYS,
                               MODE_KEYS, OPTICAL_KEYS, OPTICAL_MODE_KEYS,
                               PARTIAL_CHARGES_KEYS, RESULT_KEYS)
@@ -65,8 +66,11 @@ try:                                        # inside molbuilder
                                                 fc_step_count)
     from ..parse.engines._run_ending import FAILED, NOT_DONE, NOT_RUN
 except ImportError:                         # beside a job, in a bundle
-    from derived import disagreements, with_derived
-    from normal_modes import display_form  # type: ignore[no-redef]
+    from derived import (  # type: ignore[no-redef]
+        THERMAL_KEY, disagreements, free_masses_of, stated_temperatures,
+        thermal_block, with_derived)
+    from normal_modes import (  # type: ignore[no-redef]
+        display_form, mode_temperatures)
     from result_keys import (  # type: ignore[no-redef]
         CHARGE_STEP_KEYS, EQUILIBRIUM_KEYS, ES_KEYS, MODE_KEYS,
         OPTICAL_KEYS, OPTICAL_MODE_KEYS, PARTIAL_CHARGES_KEYS, RESULT_KEYS)
@@ -99,7 +103,16 @@ except ImportError:                         # beside a job, in a bundle
 #          `spectra.derived` and checked on read (engines/vibration.md
 #          § 6.6).  A v4-v6 file reads as before: no masses, its derived
 #          values computed on read.
-SCHEMA_VERSION = 14  # 14: an optical frame's state may be `not run` --
+SCHEMA_VERSION = 15  # 15: each mode's MECHANICS, stated -- `motion_share`
+#                    (each free atom's share of the motion),
+#                    `largest_zero_point_move_ang`, `reduced_mass_amu` and
+#                    `force_constant_mdyn_per_ang` on every mode, and the
+#                    block `modes_thermal`, each mode's spread and mean
+#                    quanta at the modes' own temperatures -- written by
+#                    every engine through `spectra.derived` and checked on
+#                    read (engines/vibration.md § 6.11 § 3); a v4-v14 file
+#                    reads, each computed on read.
+#                    14: an optical frame's state may be `not run` --
 #                    its run's walk ended before starting it, never
 #                    `failed` -- or `not done` -- it ran to its end and is
 #                    not done (execution/runs-of-points.md § 1.3); a v4-v13
@@ -143,7 +156,7 @@ SCHEMA_VERSION = 14  # 14: an optical frame's state may be `not run` --
 #                    name (`from_dict`).
 #: Every version the reader serves as the v9 shape.
 READABLE_SCHEMA_VERSIONS = frozenset({4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
-                                      14})
+                                      14, 15})
 
 
 def readable_version(actual: Any) -> int:
@@ -701,6 +714,14 @@ class ModeData:
 # --------------------------------------------------------------------- #
 
 
+def _stated_mode_temperatures(d: Mapping[str, Any]) -> Optional[List[float]]:
+    """The modes' temperatures a result file states (v15, `derived.
+    stated_temperatures`, as `normal_modes.mode_temperatures` takes them)
+    -- ``None`` where it states none."""
+    stated = stated_temperatures(d.get(THERMAL_KEY))
+    return None if stated is None else mode_temperatures(None, stated)
+
+
 def mass_of(i: int, elements: Sequence[str],
             masses_amu: Optional[Sequence[float]] = None) -> float:
     """Atom ``i``'s mass a result is weighted by, in amu: as the result
@@ -949,6 +970,13 @@ class SpectraResults:
     #: § 6.2) -- :func:`checked_optical`'s shape; ``None`` where no optical
     #: call was planned, on PySCF, and before v13.
     optical:                   Optional[Dict[str, Any]] = None
+
+    #: v15: THE MODES' TEMPERATURES the file states its ``modes_thermal`` at
+    #: (engines/vibration.md § 6.6) -- the file's own list, kept so a file
+    #: read and written again states the same block; ``None`` before v15 and
+    #: on a result built in memory, whose list is today's at the record's
+    #: temperature (`normal_modes.mode_temperatures`).
+    mode_temperatures_k:       Optional[List[float]] = None
 
     __eq__ = _no_equality
 
@@ -1206,10 +1234,33 @@ class SpectraResults:
         """Mode dicts, each with its DERIVED values stated beside the rest --
         the activity classes (a whole-run decision: a mode is active when
         it clears a fraction of the STRONGEST band in its own channel, and
-        one mode does not know the others) and the zero-point amplitude and
-        displacement -- through the one derivation every writer uses
-        (`spectra.derived`, `engines/vibration.md` § 6.6)."""
-        return with_derived([m.to_dict() for m in self.modes])
+        one mode does not know the others), the zero-point amplitude and
+        displacement, and the mode's mechanics -- through the one derivation
+        every writer uses (`spectra.derived`, `engines/vibration.md` § 6.6,
+        § 6.11 § 3), by the masses the modes were weighted by."""
+        return with_derived([m.to_dict() for m in self.modes],
+                            self._free_masses())
+
+    def _free_masses(self) -> Optional[List[float]]:
+        """The free atoms' masses the modes were weighted by, in the free
+        list's order (:meth:`atoms_weighted`); ``None`` before any geometry
+        exists, and for a result before schema 7 -- which states no masses
+        -- whose label names no element the table knows: its modes' masses
+        are unknown, so no shares are stated (`web/spectra.md` § 4.2)."""
+        try:
+            weighted = self.atoms_weighted(self.free_atom_idxs)
+        except KeyError:
+            if self.equilibrium_masses_amu is not None:
+                raise
+            return None
+        return None if weighted is None else weighted[1].tolist()
+
+    def _mode_temperatures(self) -> List[float]:
+        """The modes' temperatures (`normal_modes.mode_temperatures`): the
+        file's own where it states them, else today's list at the record's
+        temperature."""
+        return mode_temperatures((self.thermo or {}).get("temperature_K"),
+                                 self.mode_temperatures_k)
 
     def structure_stated(self) -> Optional[Dict[str, Any]]:
         """THE STRUCTURE THE RESULT STATES (v9, § 6.10): the one it was read
@@ -1231,23 +1282,24 @@ class SpectraResults:
         return s.to_dict(view=False)
 
     def atoms_weighted(self, atoms: Optional[Sequence[int]] = None):
-        """EACH ATOM AS THE MODES WEIGHT IT -- its element (a species label
-        resolved, `chemistry.resolve_element`) and its mass (:func:`mass_of`:
-        the result's own, or the table's for a result before schema 7):
-        ``(elements, masses_amu)`` for the ``atoms`` asked, in the order
-        asked -- every atom in the user's order where none are -- or
-        ``None`` before any geometry exists.  The one reading the load
-        door's element shares (its free atoms alone) and :meth:`vibration`
-        (every atom) ask.  The host's alone: the element table does not
-        travel."""
-        from ..chemistry import resolve_element
+        """EACH ATOM AS THE MODES WEIGHT IT -- its element, its species
+        label's name (`Structure.chemical_symbols`: prep has made every
+        label's name an element, `engines/vibration.md` § 6.11 § 3), and its
+        mass (:func:`mass_of`: the result's own, or the table's for a result
+        before schema 7): ``(elements, masses_amu)`` for the ``atoms``
+        asked, in the order asked -- every atom in the user's order where
+        none are -- or ``None`` before any geometry exists.  The one reading
+        the load door's element shares (its free atoms alone) and
+        :meth:`vibration` (every atom) ask."""
         stated = self.structure_stated()
         if stated is None:
             return None
-        labels = list(_Structure.from_dict(stated).elements)
+        structure = _Structure.from_dict(stated)
+        labels = list(structure.elements)
+        symbols = structure.chemical_symbols()
         asked = (range(len(labels)) if atoms is None
                  else [int(i) for i in atoms])
-        return (tuple(resolve_element(str(labels[i])) for i in asked),
+        return (tuple(symbols[i] for i in asked),
                 np.array([mass_of(i, labels, self.equilibrium_masses_amu)
                           for i in asked], dtype=float))
 
@@ -1256,23 +1308,28 @@ class SpectraResults:
         (`vibration.Vibration`, `engines/vibration.md` § 6.11 § 6): each mode
         over every atom in the user's order, held atoms still, by the masses
         the result states -- or, a result before schema 7, the table's
-        (:func:`mass_of`) -- each atom by its element (a species label
-        resolved, `chemistry.resolve_element`), at the geometry the result
-        states, the temperature its thermochemistry states; ``source`` the
-        file it was read from.  Refused by name before any geometry exists.
-        The host's alone, as :meth:`atoms_weighted` is."""
+        (:func:`mass_of`) -- each atom by its element (its species
+        label's name), each atom's species label and the structure's region
+        labels as written, at the geometry the result states, the temperature
+        its thermochemistry states and the modes' own temperatures its
+        ``modes_thermal`` is at (:meth:`_mode_temperatures`); ``source`` the
+        file it was read from.  Refused by name before any geometry
+        exists."""
         from ..vibration import Mode, Vibration
         weighted = self.atoms_weighted()
         if weighted is None:
             raise ValueError("the result states no geometry yet: its modes "
                              "come with its force constants")
         elements, masses = weighted
-        positions = np.asarray(
-            _Structure.from_dict(self.structure_stated()).positions,
-            dtype=float)
+        structure = _Structure.from_dict(self.structure_stated())
+        positions = np.asarray(structure.positions, dtype=float)
         free = tuple(int(i) for i in self.free_atom_idxs)
         t = (self.thermo or {}).get("temperature_K")
         temperature = None if t is None else float(t)
+        labels = tuple(str(e) for e in structure.elements)
+        regions = {str(k): tuple(int(i) for i in v)
+                   for k, v in (structure.regions or {}).items()}
+        temperatures = tuple(self._mode_temperatures())
         modes = tuple(
             Mode(index_1based=int(m.index_1based),
                  frequency_cm1=float(m.frequency_cm1),
@@ -1281,7 +1338,9 @@ class SpectraResults:
                      m.eigenvector_canonical, dtype=float),
                  free_atom_idxs=free, masses_amu=masses,
                  element_symbols=elements,
-                 positions_ang=positions, record_temperature_k=temperature)
+                 positions_ang=positions, record_temperature_k=temperature,
+                 species_labels=labels, regions=regions,
+                 mode_temperatures_k=temperatures)
             for m in self.modes)
         return Vibration(modes=modes, record_temperature_k=temperature,
                          source=str(source))
@@ -1337,8 +1396,15 @@ class SpectraResults:
             # THE DERIVED VALUES ride WITH the modes, through the one
             # derivation (`spectra.derived`): the activity classes -- a
             # whole-run judgement, never re-derived as an epsilon in the
-            # viewer -- and the zero-point amplitude and displacement.
+            # viewer -- the zero-point amplitude and displacement, and each
+            # mode's mechanics: each free atom's share of the motion, the
+            # largest zero-point move, the reduced mass and force constant.
             "modes":                self._modes_with_derived(),
+            # EACH MODE'S SPREAD AND MEAN QUANTA at the modes' own
+            # temperatures (v15, § 6.11 § 3) -- null before the modes exist,
+            # stated so from the run's first write (§ 6.5).
+            THERMAL_KEY:            thermal_block(
+                [m.to_dict() for m in self.modes], self._mode_temperatures()),
             "selected_mode_idxs_1based": [int(i) for i in self.selected_mode_idxs_1based],
 
             "config":               dict(self.config),
@@ -1412,7 +1478,9 @@ class SpectraResults:
         # is refused by name.  A file before v7 states them or not; they are
         # computed on read either way.
         if int(sv) >= 7:
-            wrong = disagreements(d.get("modes") or [])
+            wrong = disagreements(
+                d, int(sv),
+                None if eq.get("masses_amu") is None else free_masses_of(d))
             if wrong:
                 raise ValueError(
                     "SpectraResults: the derived values this file states are "
@@ -1487,6 +1555,7 @@ class SpectraResults:
                                     if MAP_KEY in d else None),
             partial_charges      = _partial_charges_read(d),
             optical              = _optical_read(d),
+            mode_temperatures_k  = _stated_mode_temperatures(d),
         )
 
 

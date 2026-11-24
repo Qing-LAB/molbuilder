@@ -13,9 +13,14 @@ ROLE    from what a result states of a mode -- its frequency, whether it is
         * its geometry: the pattern over every atom, each atom's move for a
           coordinate ``u_A = Q L_A`` and the coordinate back by the
           mass-weighted projection ``Q = sum_A m_A L_A . u_A`` (§ 2b.2), the
-          displaced geometry ``R + Q L``, the largest move;
-        * each element's share of its motion, ``m_i |L_i|^2`` summed by
-          element over the total (`engines/vibration.md` § 6.6);
+          displaced geometry ``R + Q L``, the largest move, and the largest
+          at the zero-point amplitude;
+        * each atom's share of its motion, ``m_A |L_A|^2`` over the total,
+          and those shares summed by any grouping -- element, species label,
+          region (`engines/vibration.md` § 6.11 § 3);
+        * its reduced mass and force constant by Gaussian's convention, and
+          its spread and mean quanta over a list of temperatures (the row
+          the record states, § 6.11 § 3);
         * where the molecule sits along it in each state (§ 2b.3) -- n quanta
           exactly, thermal (at a temperature or at a mean number of quanta),
           a steady swing over a thermal bath, and the classical limits -- its
@@ -52,9 +57,12 @@ import numpy as np
 
 # TWO WAYS, because this module travels beside the job (see the header).
 try:                                        # inside molbuilder
-    from .constants import CM1_KELVIN, ZERO_POINT_Q2_AMU_ANG2_CM1
+    from .constants import (CM1_KELVIN, FORCE_CONSTANT_MDYN_ANG_PER_AMU_CM2,
+                            ZERO_POINT_Q2_AMU_ANG2_CM1)
 except ImportError:                         # beside a job, in a bundle
-    from constants import CM1_KELVIN, ZERO_POINT_Q2_AMU_ANG2_CM1  # type: ignore[no-redef]
+    from constants import (  # type: ignore[no-redef]
+        CM1_KELVIN, FORCE_CONSTANT_MDYN_ANG_PER_AMU_CM2,
+        ZERO_POINT_Q2_AMU_ANG2_CM1)
 
 
 # --------------------------------------------------------------------- #
@@ -99,9 +107,14 @@ def mean_quanta(frequency_cm1, temperature_k):
     Einstein's ``n = 1 / (exp(hbar omega / k_B T) - 1)`` -- 0 at 0 K (§ 2a).
     Written as ``e^-x / (1 - e^-x)``, which neither overflows for a stiff
     mode in the cold nor loses digits for a soft one in the heat.  A number
-    of kelvin, or an array of frequencies (the thermochemistry's sums)."""
+    of kelvin, or an array of frequencies (the thermochemistry's sums);
+    each frequency positive -- an imaginary mode, or one of no frequency,
+    holds no thermal state, and is refused by name."""
     temperature_k = checked_temperature_k(temperature_k)
     nu = np.asarray(frequency_cm1, dtype=float)
+    if not np.all(np.isfinite(nu) & (nu > 0.0)):
+        raise ValueError(f"a mode's mean quanta need a positive frequency, "
+                         f"in cm-1; got {frequency_cm1!r}")
     if temperature_k == 0.0:
         out = np.zeros_like(nu)
     else:
@@ -145,6 +158,26 @@ def classical_spread_amu12_ang(frequency_cm1: float,
         raise ValueError("an imaginary mode has no classical spread")
     return q_zp * math.sqrt(2.0 * temperature_k
                             / (float(frequency_cm1) * CM1_KELVIN))
+
+
+#: THE NAMES A MODE'S THERMAL ROW GOES BY -- :attr:`Mode.thermal`'s keys and
+#: the record's ``modes_thermal`` block's (`engines/vibration.md` § 6.2): the
+#: temperatures, and the spread and mean quanta at each.
+THERMAL_ROW_KEYS = ("temperature_k", "thermal_spread_amu12_ang", "mean_quanta")
+
+
+def thermal_row(frequency_cm1: float, has_imag: bool,
+                temperatures_k: Sequence[float]):
+    """A mode's spread and mean quanta at each of ``temperatures_k`` --
+    ``(spreads, quanta)``, lists in amu^1/2.Å and quanta, or ``(None,
+    None)`` for an imaginary mode, which holds no thermal state: the row the
+    record states over the modes' own temperatures (`engines/vibration.md`
+    § 6.11 § 3)."""
+    q = zero_point_amplitude_amu12_ang(frequency_cm1, has_imag)
+    if q is None:
+        return None, None
+    quanta = [mean_quanta(frequency_cm1, t) for t in temperatures_k]
+    return [spread_of_quanta(q, n) for n in quanta], quanta
 
 
 def thermal_spread_of(mode: Mapping[str, Any],
@@ -227,33 +260,88 @@ def coordinate_of(mode_rows, masses_amu, moves_ang) -> float:
     return float(np.einsum("a,ai,ai->", masses, rows, moves))
 
 
-def element_shares(elements: Sequence[str], mode_rows,
-                   masses_amu: Sequence[float]) -> Dict[str, float]:
-    """Each element's share of a mode's motion, summing to 1: atom ``A``'s
-    share is ``m_A |L_A|^2`` over the sum across atoms, summed by element
-    (`engines/vibration.md` § 6.6) -- the kinetic energy's share, the same at
-    every phase of the motion, so a property of the mode.  ``elements`` and
-    ``masses_amu`` are a row's each, as the caller resolved them (a species
-    label to its element; the result's masses, or the table's for a result
-    stating none).  Largest first; a mode with no motion gives ``{}``."""
+def motion_shares_of(mode_rows, masses_amu) -> np.ndarray:
+    """Each atom's share of a mode's motion: ``m_A |L_A|^2`` over its sum
+    across the atoms -- the kinetic energy's share, the same at every phase
+    of the motion, so a property of the mode (`engines/vibration.md`
+    § 6.11 § 3); for the canonical form, over the free atoms, the sum is 1
+    already.  A row and a mass per atom, the shares in the rows' order,
+    summing to 1; all 0 for a mode with no motion."""
     rows = np.asarray(mode_rows, dtype=float)
     if rows.ndim != 2 or rows.shape[1] != 3:
         raise ValueError(f"a mode is a row of x, y, z per atom; got the "
                          f"shape {rows.shape}")
-    if len(elements) != rows.shape[0] or len(masses_amu) != rows.shape[0]:
+    masses = np.asarray(masses_amu, dtype=float).reshape(-1)
+    if masses.shape[0] != rows.shape[0]:
         raise ValueError(
-            f"{rows.shape[0]} rows of the mode, {len(elements)} elements and "
-            f"{len(masses_amu)} masses: the mode does not match its atoms")
-    weight: Dict[str, float] = {}
-    total = 0.0
-    for el, m, row in zip(elements, masses_amu, rows):
-        w = float(m) * float(np.dot(row, row))
-        weight[str(el)] = weight.get(str(el), 0.0) + w
-        total += w
-    if total <= 0.0:
+            f"{rows.shape[0]} rows of the mode and {masses.shape[0]} masses: "
+            f"the mode does not match its atoms")
+    weight = masses * np.einsum("ai,ai->a", rows, rows)
+    total = float(weight.sum())
+    return np.zeros_like(weight) if total <= 0.0 else weight / total
+
+
+def shares_by(groups: Sequence[Any], shares) -> Dict[str, float]:
+    """The shares of :func:`motion_shares_of` summed by each atom's group --
+    its element, its species label -- or groups, a tuple of them (the
+    structure's regions, which may overlap; an atom in none adds to none):
+    one entry per share, the sums largest first; a mode with no motion
+    gives ``{}``."""
+    values = np.asarray(shares, dtype=float).reshape(-1)
+    if len(groups) != values.shape[0]:
+        raise ValueError(f"{values.shape[0]} shares and {len(groups)} "
+                         f"groups: the mode does not match its atoms")
+    if not values.any():
         return {}
-    return {el: w / total
-            for el, w in sorted(weight.items(), key=lambda kv: -kv[1])}
+    summed: Dict[str, float] = {}
+    for group, share in zip(groups, values):
+        for name in ((group,) if isinstance(group, str) else group):
+            summed[str(name)] = summed.get(str(name), 0.0) + float(share)
+    return dict(sorted(summed.items(), key=lambda kv: -kv[1]))
+
+
+def zero_point_displacement_ang(frequency_cm1: float, has_imag: bool,
+                                mode_rows) -> Optional[np.ndarray]:
+    """Each atom's move at the zero-point amplitude, in Å, a row per row of
+    ``mode_rows`` -- ``u_A = Q_zp L_A`` (§ 2b.2, `engines/vibration.md`
+    § 6.3); ``None`` for an imaginary mode, which has no zero-point
+    amplitude."""
+    q = zero_point_amplitude_amu12_ang(frequency_cm1, has_imag)
+    return None if q is None else atom_moves(mode_rows, q)
+
+
+def largest_zero_point_move_ang(frequency_cm1: float, has_imag: bool,
+                                mode_rows) -> Optional[float]:
+    """The largest single atom's move at the zero-point amplitude, in Å --
+    ``Q_zp`` times the longest row (`engines/vibration.md` § 6.11 § 3);
+    ``None`` for an imaginary mode, which has no zero-point amplitude."""
+    q = zero_point_amplitude_amu12_ang(frequency_cm1, has_imag)
+    return None if q is None else q * largest_move(mode_rows)
+
+
+def reduced_mass_amu(mode_rows) -> Optional[float]:
+    """The mode's reduced mass by Gaussian's convention [Ochterski1999],
+    ``mu = 1 / sum_A |L_A|^2`` over the canonical form's rows, in amu --
+    what Gaussian prints beside every frequency, so a person compares the
+    two directly (`engines/vibration.md` § 6.11 § 3); for H2's stretch the
+    atom's mass, 1.008.  ``None`` for a mode with no motion, which has
+    none -- the record states it ``null``."""
+    rows = np.asarray(mode_rows, dtype=float)
+    total = float(np.einsum("ai,ai->", rows, rows))
+    return 1.0 / total if total > 0.0 else None
+
+
+def force_constant_mdyn_per_ang(frequency_cm1: float,
+                                reduced_mass: Optional[float]
+                                ) -> Optional[float]:
+    """The mode's force constant by Gaussian's convention, ``k = mu omega^2``
+    in mdyn/Å (`constants.FORCE_CONSTANT_MDYN_ANG_PER_AMU_CM2`) -- an
+    imaginary mode's positive, ``mu |omega|^2``, as Gaussian prints it;
+    ``None`` where the mode has no reduced mass (:func:`reduced_mass_amu`)."""
+    if reduced_mass is None:
+        return None
+    nu = float(frequency_cm1)
+    return FORCE_CONSTANT_MDYN_ANG_PER_AMU_CM2 * float(reduced_mass) * nu * nu
 
 
 # --------------------------------------------------------------------- #
@@ -727,15 +815,21 @@ class ModeState:
 class Mode:
     """One normal mode with its atoms -- every number of § 6.11 § 6 derived
     by this module from what the result states, each field the record's, by
-    the data file's name, its unit in it.
+    the data file's name, its unit in it: a value the record stores is
+    worked out here by the function the record was written with, and the
+    reader has checked the two agree (§ 6.6).
     ``eigenvector_canonical_per_amu12`` the record's canonical eigenvector, a
     row per free atom (§ 6.3), over ``free_atom_idxs``, the atoms the mode
     moves; ``masses_amu`` every atom's, in the user's order;
-    ``element_symbols`` every atom's element, its species label resolved
-    (``Au`` for ``Au1``); ``positions_ang`` the geometry the modes were
-    taken at; ``record_temperature_k`` the temperature the record states
-    (its thermochemistry's), ``None`` where it states none.  The pattern
-    over every atom is :attr:`eigenvector_canonical_over_atoms_per_amu12`."""
+    ``element_symbols`` every atom's element, its species label's name
+    (``Au`` for ``Au1``, `Structure.chemical_symbols`); ``positions_ang``
+    the geometry the modes were taken at; ``record_temperature_k`` the
+    temperature the record states (its thermochemistry's), ``None`` where
+    it states none; ``species_labels`` every atom's label as written;
+    ``regions`` the structure's region labels as written, each label's
+    atoms; ``mode_temperatures_k`` the modes' own temperatures the record
+    states its spreads at (§ 6.11 § 3).  The pattern over every atom is
+    :attr:`eigenvector_canonical_over_atoms_per_amu12`."""
     index_1based: int
     frequency_cm1: float
     has_imag: bool
@@ -745,6 +839,10 @@ class Mode:
     element_symbols: Tuple[str, ...] = field(repr=False)
     positions_ang: np.ndarray = field(repr=False)
     record_temperature_k: Optional[float] = None
+    species_labels: Tuple[str, ...] = field(default=(), repr=False)
+    regions: Mapping[str, Tuple[int, ...]] = field(default_factory=dict,
+                                                   repr=False)
+    mode_temperatures_k: Tuple[float, ...] = field(default=(), repr=False)
 
     @property
     def eigenvector_canonical_over_atoms_per_amu12(self) -> np.ndarray:
@@ -762,28 +860,74 @@ class Mode:
     @property
     def zero_point_displacement_ang(self) -> Optional[np.ndarray]:
         """Each FREE atom's move at ``Q_zp``, Å, a row per atom of
-        :attr:`free_atom_idxs` -- the record's own field and shape (§ 6.3);
-        ``None`` for an imaginary mode.  Every atom's is
-        ``displacement(zero_point_widths=1)``."""
-        q = self.zero_point_amplitude_amu12_ang
-        return None if q is None else atom_moves(
-            self.eigenvector_canonical_per_amu12, q)
-
-    @property
-    def largest_zero_point_move_ang(self) -> Optional[float]:
-        """The atom that moves most at ``Q_zp``, its move's length in Å."""
-        q = self.zero_point_amplitude_amu12_ang
-        return None if q is None else q * largest_move(
+        :attr:`free_atom_idxs` -- the record's own field and shape (§ 6.3,
+        :func:`zero_point_displacement_ang`); ``None`` for an imaginary
+        mode.  Every atom's is ``displacement(zero_point_widths=1)``."""
+        return zero_point_displacement_ang(
+            self.frequency_cm1, self.has_imag,
             self.eigenvector_canonical_per_amu12)
 
     @property
-    def element_shares(self) -> Dict[str, float]:
-        """Each element's share of the motion, summed over the free atoms
-        (§ 6.11 § 3) -- a held atom adds nothing to its element's share."""
+    def largest_zero_point_move_ang(self) -> Optional[float]:
+        """The atom that moves most at ``Q_zp``, its move's length in Å --
+        the record's `largest_zero_point_move_ang`
+        (:func:`largest_zero_point_move_ang`)."""
+        return largest_zero_point_move_ang(
+            self.frequency_cm1, self.has_imag,
+            self.eigenvector_canonical_per_amu12)
+
+    @property
+    def motion_share(self) -> np.ndarray:
+        """Each FREE atom's share of the mode's motion, in the order of
+        :attr:`free_atom_idxs` -- the record's `motion_share` (§ 6.11 § 3)."""
+        return motion_shares_of(self.eigenvector_canonical_per_amu12,
+                                self.masses_amu[list(self.free_atom_idxs)])
+
+    def motion_shares(self, by: str = "element") -> Dict[str, float]:
+        """The free atoms' shares summed by group (§ 6.11 § 6, :func:`shares_by`),
+        largest first, each group holding a free atom: ``by="element"`` --
+        each atom's element, its species label's name; ``"label"`` -- its
+        species label as written; ``"region"`` -- each of the structure's
+        region labels as written (they may overlap, so the sums may add to
+        more than 1; ``{}`` where the structure has none).  A held atom adds
+        nothing; a mode with no motion gives ``{}``."""
         free = list(self.free_atom_idxs)
-        return element_shares([self.element_symbols[i] for i in free],
-                              self.eigenvector_canonical_per_amu12,
-                              self.masses_amu[free])
+        shares = self.motion_share
+        if by == "element":
+            return shares_by([self.element_symbols[i] for i in free], shares)
+        if by == "label":
+            return shares_by([self.species_labels[i] for i in free], shares)
+        if by == "region":
+            return shares_by([tuple(label for label, atoms
+                                    in self.regions.items() if i in atoms)
+                              for i in free], shares)
+        raise ValueError(f"motion shares are summed by element, label or "
+                         f"region; got {by!r}")
+
+    @property
+    def reduced_mass_amu(self) -> Optional[float]:
+        """The reduced mass by Gaussian's convention (:func:`reduced_mass_amu`);
+        ``None`` for a mode with no motion."""
+        return reduced_mass_amu(self.eigenvector_canonical_per_amu12)
+
+    @property
+    def force_constant_mdyn_per_ang(self) -> Optional[float]:
+        """The force constant by Gaussian's convention
+        (:func:`force_constant_mdyn_per_ang`); ``None`` for a mode with no
+        motion."""
+        return force_constant_mdyn_per_ang(self.frequency_cm1,
+                                           self.reduced_mass_amu)
+
+    @property
+    def thermal(self) -> Dict[str, Any]:
+        """The mode's spread and mean quanta at the modes' own temperatures
+        (§ 6.11 § 3), ``{temperature_k, thermal_spread_amu12_ang,
+        mean_quanta}`` -- each a list over :attr:`mode_temperatures_k`,
+        ``None`` for an imaginary mode, which holds no thermal state."""
+        temps = [float(t) for t in self.mode_temperatures_k]
+        spreads, quanta = thermal_row(self.frequency_cm1, self.has_imag,
+                                      temps)
+        return dict(zip(THERMAL_ROW_KEYS, (temps, spreads, quanta)))
 
     def displacement(self, q: Optional[float] = None, *,
                      zero_point_widths: Optional[float] = None) -> np.ndarray:
@@ -877,9 +1021,12 @@ class Vibration:
 __all__ = ["checked_temperature_k", "zero_point_amplitude_amu12_ang",
            "mean_quanta", "spread_of_quanta", "thermal_spread_amu12_ang",
            "classical_spread_amu12_ang",
-           "thermal_spread_of", "mode_over_atoms", "largest_move",
+           "thermal_spread_of", "THERMAL_ROW_KEYS", "thermal_row",
+           "mode_over_atoms", "largest_move",
            "q_for_largest_move", "atom_moves", "displaced", "coordinate_of",
-           "element_shares", "THERMAL", "NUMBER", "SWING", "CLASSICAL",
+           "zero_point_displacement_ang", "largest_zero_point_move_ang",
+           "motion_shares_of", "shares_by", "reduced_mass_amu",
+           "force_constant_mdyn_per_ang", "THERMAL", "NUMBER", "SWING", "CLASSICAL",
            "CLASSICAL_SWING", "Frames", "State", "state", "ModeState", "Mode",
            "Vibration"]
 

@@ -1,10 +1,12 @@
-"""A real H2 vibration's mechanics, through the script door a person uses
-(`engines/vibration.md` § 6.11 § 6, § 7; `science/vibrational-averaging.md`
-§ 2b.5, its end-to-end row): a free H2 run on PySCF down the road, its
-result read by `postprocess.vibration` from each of its two files, and the
-answers held to CODATA's constants and the file's own frequency and masses
--- never to molbuilder's own numbers.  The closed forms on typed modes are
-`test_vibration_mechanics.py`.
+"""A real H2 vibration's mechanics and its record (`engines/vibration.md`
+§ 6.6, § 6.7, § 6.11 § 6, § 7; `science/vibrational-averaging.md` § 2b.5,
+its end-to-end row): a free H2 run on PySCF down the road, its result read
+by `postprocess.vibration` and by the result's reader from each of its two
+files.  The numbers are held to CODATA's constants and the file's own
+frequency and masses, never to molbuilder's own; the record's rules -- a
+file its own inputs contradict refused, the modes' temperatures the file's
+own -- to the contract, on that run's result.
+The closed forms on typed modes are `test_vibration_mechanics.py`.
 """
 from __future__ import annotations
 
@@ -81,4 +83,118 @@ def test_h2s_bond_moves_by_the_textbooks_zero_point_amplitude(
     x = codata.h * codata.c * nu * 100.0 / (codata.k * stated_t)
     assert taken.spread_amu12_ang == pytest.approx(
         q_zp * math.sqrt(1.0 / math.tanh(x / 2.0)), rel=1e-6)
-    assert mode.element_shares == pytest.approx({"H": 1.0})
+    assert mode.motion_shares(by="element") == pytest.approx({"H": 1.0})
+
+    # THE RECORD STATES EACH MODE'S MECHANICS (v15, § 6.11 § 3), in the file
+    # itself -- the JSON's keys and the data file's variables alike: each
+    # atom half the motion, the largest zero-point move each atom's half of
+    # the bond's r.m.s., Gaussian's reduced mass the atom's own mass, the
+    # force constant mu omega^2 from CODATA; at the record's temperature the
+    # spread Q_zp sqrt(coth(h c nu / 2 k_B T)) and the mean quanta
+    # 1 / (exp(h c nu / k_B T) - 1), at 0 K the spread Q_zp and no quanta;
+    # and the script door's `m.thermal` the record's row.
+    if which == "json":
+        stated = json.loads(result.read_text())
+    else:
+        from molbuilder.spectra.datafile import read_spectra_data
+        stated = read_spectra_data(data)
+    row = stated["modes"][0]
+    assert row["motion_share"] == pytest.approx([0.5, 0.5], rel=1e-9)
+    assert row["largest_zero_point_move_ang"] == pytest.approx(bond_rms / 2,
+                                                              rel=1e-6)
+    assert row["reduced_mass_amu"] == pytest.approx(m1, rel=1e-9)
+    assert row["force_constant_mdyn_per_ang"] == pytest.approx(
+        m1 * AMU_KG * omega ** 2 / 100.0, rel=1e-6)
+    thermal = stated["modes_thermal"]
+    k = thermal["temperature_k"].index(stated_t)
+    assert thermal["thermal_spread_amu12_ang"][0][k] == pytest.approx(
+        q_zp * math.sqrt(1.0 / math.tanh(x / 2.0)), rel=1e-6)
+    assert thermal["mean_quanta"][0][k] == pytest.approx(1.0 / math.expm1(x),
+                                                         rel=1e-6, abs=0.0)
+    cold = thermal["temperature_k"].index(0.0)
+    assert (thermal["thermal_spread_amu12_ang"][0][cold],
+            thermal["mean_quanta"][0][cold]) == (pytest.approx(q_zp, rel=1e-6),
+                                                 0.0)
+    assert mode.thermal["temperature_k"] == thermal["temperature_k"]
+    for key in ("thermal_spread_amu12_ang", "mean_quanta"):
+        assert mode.thermal[key] == pytest.approx(thermal[key][0], rel=1e-12,
+                                                  abs=1e-300)
+
+
+def _rewritten(run, tmp_path, change, name="h2"):
+    """The run's own result, its payload changed by ``change``, written by
+    the one writer into ``tmp_path`` -- both files, as a writer writes them."""
+    from molbuilder.sidecars.spectra import write_spectra_payload
+    result, _ = _files(run)
+    payload = json.loads(result.read_text())
+    change(payload)
+    out = tmp_path / compose(name, ROLE_SPECTRA)
+    write_spectra_payload(payload, out)
+    return out
+
+
+def test_a_v15_file_whose_stored_values_its_inputs_contradict_is_refused(
+        real_h2_vibration, tmp_path):
+    """§ 6.6, § 6.7, I16: a reader works each derived value out again and
+    refuses, by name, a file whose stored one disagrees -- a file never
+    carries a number its own inputs contradict; one example of the one rule,
+    a share moved, the refusal naming the mode, the key and the element.
+    The run's file edited by hand, the one way to show it: no writer states
+    a value its inputs contradict.
+    THE SILENT FAILURE: the reader taking a stored v15 value on trust, so
+    the file and its own inputs tell a person two different things."""
+    from molbuilder.sidecars.spectra import (SpectraJsonFieldError,
+                                             parse_spectra_json)
+    result, _ = _files(real_h2_vibration)
+    payload = json.loads(result.read_text())
+    payload["modes"][0]["motion_share"] = [0.6, 0.4]
+    path = tmp_path / compose("edited", ROLE_SPECTRA)
+    path.write_text(json.dumps(payload))
+    with pytest.raises(SpectraJsonFieldError,
+                       match=r"mode 1: motion_share\[0\] is 0.6, its "
+                             r"derivation"):
+        parse_spectra_json(path)
+
+
+def test_the_modes_temperatures_are_the_files_own(real_h2_vibration,
+                                                 tmp_path):
+    """§ 6.6, § 6.7: a file states the temperatures its thermal block is
+    at, and a reader checks each row at them -- never at a list of its own,
+    so a later list changes new files only.  The run's own result, written
+    again by the one writer stating 0 K, a temperature where H2's mean
+    quanta is near the smallest number a double holds (``h c nu / k_B T``
+    = 740, where one unit in the last place is a percent of it),
+    77 K and the record's: read back from both files, the script door's
+    `m.thermal` is at exactly those, and the result read and written again
+    keeps them.  That cold quanta one unit away in its last place -- the
+    most two machines' ``exp`` may differ by, which no run here can cause --
+    still reads (the floor of § 6.7).  THE SILENT FAILURES: every file
+    written before a change to the thermochemistry's grid refused; a result
+    the job's node wrote refused on the server for a last bit."""
+    from molbuilder.postprocess import vibration
+    from molbuilder.sidecars.spectra import parse_spectra_json
+    result, data = _files(real_h2_vibration)
+    stated = json.loads(result.read_text())
+    nu = stated["modes"][0]["frequency_cm1"]
+    t_cold = codata.h * codata.c * nu * 100.0 / (codata.k * 740.0)
+    own = [0.0, t_cold, 77.0, stated["thermo"]["temperature_K"]]
+
+    def state_own(payload):
+        payload["modes_thermal"] = {"temperature_k": own}
+    out = _rewritten(real_h2_vibration, tmp_path, state_own)
+    for read in (out, out.with_name(compose("h2", ROLE_SPECTRA_DATA))):
+        assert vibration(read).modes[0].thermal["temperature_k"] == own
+    # READ AND WRITTEN AGAIN, the file keeps its list.
+    assert parse_spectra_json(out).to_dict()["modes_thermal"][
+        "temperature_k"] == own
+    written = json.loads(out.read_text())
+    cold = written["modes_thermal"]["mean_quanta"][0][1]
+    assert 0.0 < cold < np.finfo(float).tiny
+
+    last_bit = json.loads(out.read_text())
+    last_bit["modes_thermal"]["mean_quanta"][0][1] = float(
+        np.nextafter(cold, 1.0))
+    path = tmp_path / compose("last_bit", ROLE_SPECTRA)
+    path.write_text(json.dumps(last_bit))
+    parse_spectra_json(path)
+

@@ -1475,7 +1475,7 @@ few (`template.why_not_items`, [`engines/template.md`](?doc=engines/template.md)
 |---|---|---|---|---|
 | benchmark result | `<NN>_<stage>/bench/bench-result.json` | `molbuilder/bench-result@1` | `bench/result.py` | [`generator.md`](?doc=execution/generator.md) § 4.4b |
 | vibration result | `<label>.spectra.json` in the run that computed it | a bare integer `schema_version`, `spectra/results.SCHEMA_VERSION` | `spectra/results.py`, `sidecars/spectra.py` | [`engines/vibration.md`](?doc=engines/vibration.md) § 6.2 |
-| vibration data | `<label>.spectra.nc` beside it | `molbuilder/spectra-data@10` | `spectra/datafile.py` | [`engines/vibration.md`](?doc=engines/vibration.md) § 6.10 (part 5, *The data file*) |
+| vibration data | `<label>.spectra.nc` beside it | `molbuilder/spectra-data@11` | `spectra/datafile.py` | [`engines/vibration.md`](?doc=engines/vibration.md) § 6.10 (part 5, *The data file*) |
 | optical data | `<label>.optical.nc` at a SIESTA vibration run's root | `molbuilder/optical-data@5` | `spectra/optical_data.py` | [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 |
 | displacement sweep | `<label>.fc-sweep.json` at the root | `molbuilder/fc-displacement-sweep@2` | `spectra/displacement_sweep.py` | [`engines/vibration.md`](?doc=engines/vibration.md) § 5.9 |
 | Raman view | a NetCDF file an export writes | `molbuilder/raman-view@4` | `spectra/raman.py` | [`model/datafiles.md`](?doc=model/datafiles.md) § 1 |

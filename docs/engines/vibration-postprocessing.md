@@ -33,7 +33,7 @@ import xarray as xr
 | name | answers |
 |---|---|
 | `read_spectra_data(path)` | `<label>.spectra.nc`: the whole result as data, and its atom index map |
-| `vibration(path)` | the result's modes to compute with: each atom's move for a coordinate and back, a mode's states and their frames, the mode at another frequency (§ 2a) |
+| `vibration(path)` | the result's modes to compute with: the values the record stores of each — the zero-point amplitude and displacement, the largest zero-point move, each free atom's share of the motion and its sums by element, label or region, Gaussian's reduced mass and force constant, the spread and mean quanta at the file's temperatures — each atom's move for a coordinate and back, a mode's states and their frames, the mode at another frequency (§ 2a) |
 | `infrared_view(path, direction=, partition=)` | the infrared the spectrum viewer draws |
 | `raman_view(path, laser_nm=, broaden_ev=)` | a SIESTA vibration's Raman at a laser |
 | `read_optical_data(path)` | `<label>.optical.nc`: the optical calls, each frame's ε₂ |
@@ -113,7 +113,10 @@ rest are `tests/test_vibration_mechanics.py`'s, on the science's own modes:
 v = vibration("01_freq/run-0/v-h2.spectra.nc")    # or the .spectra.json
 m = v.modes[0]                                    # mode 1
 m.frequency_cm1, m.zero_point_amplitude_amu12_ang # Q_zp = sqrt(hbar / 2 omega)
-m.element_shares                                  # {'H': 1.0}
+m.motion_shares(by="element")                     # {'H': 1.0}; by="label", by="region"
+m.reduced_mass_amu, m.force_constant_mdyn_per_ang # Gaussian's convention, as the record states them
+m.motion_share                                    # each free atom's share, the record's
+m.thermal                                         # spread and mean quanta at the temperatures the file states
 
 u = m.displacement(zero_point_widths=1.0)         # each atom's move at Q_zp, Å (x, y, z)
 m.coordinate(u)                                   # back: sum_A m_A L_A . u_A = Q_zp

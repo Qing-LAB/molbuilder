@@ -43,7 +43,7 @@ try:                                        # inside molbuilder
                             compose as _compose, role_of as _role_of,
                             stem_before as _stem_before)
     from ..spectra.datafile import write_spectra_data as _write_spectra_data
-    from ..spectra.derived import with_derived as _with_derived
+    from ..spectra.derived import payload_with_derived as _payload_with_derived
 except ImportError:                         # beside a job, in a bundle
     from persist import json_text as _json_text  # type: ignore[no-redef]
     from persist import object_of as _object_of  # type: ignore[no-redef]
@@ -53,7 +53,7 @@ except ImportError:                         # beside a job, in a bundle
                           compose as _compose, role_of as _role_of,
                           stem_before as _stem_before)
     from spectra_datafile import write_spectra_data as _write_spectra_data
-    from derived import with_derived as _with_derived
+    from derived import payload_with_derived as _payload_with_derived
 
 
 class SpectraJsonError(Exception):
@@ -122,10 +122,11 @@ def write_spectra_payload(payload: dict,
 
     Behaviour:
 
-      * every mode's derived values -- the activity classes, the zero-point
-        amplitude and displacement -- are stated beside its own keys by the
-        one derivation (`spectra.derived`), whichever engine built the
-        payload;
+      * every derived value -- each mode's activity classes, zero-point
+        amplitude and displacement, motion shares, largest zero-point move,
+        reduced mass and force constant, and the ``modes_thermal`` block --
+        is stated by the one derivation (`spectra.derived`), whichever engine
+        built the payload;
       * a non-finite scalar anywhere in the payload raises
         :class:`ValueError` BEFORE any bytes hit disk (``engines/vibration.md``
         § 6.8: *no NaN*): what may stand as null is written so by the record
@@ -146,11 +147,11 @@ def write_spectra_payload(payload: dict,
             f"(runfiles.WRITTEN), and its data file follows from that name")
     label = _stem_before(p.name, ROLE_SPECTRA)
 
-    # EVERY MODE'S DERIVED VALUES, stated beside what they come from by the
-    # one derivation (`spectra.derived`, `engines/vibration.md` § 6.6) -- in
-    # this writer, so every engine's file states them alike at every write.
-    if payload.get("modes"):
-        payload = {**payload, "modes": _with_derived(payload["modes"])}
+    # EVERY DERIVED VALUE, stated beside what it comes from by the one
+    # derivation (`spectra.derived`, `engines/vibration.md` § 6.6, § 6.11
+    # § 3) -- in this writer, so every engine's file states them alike at
+    # every write.
+    payload = _payload_with_derived(payload)
 
     # THE CONTRACT'S REFUSAL (§ 6.8) of a number JSON cannot hold, where
     # every other file writes it null.

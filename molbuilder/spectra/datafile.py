@@ -58,6 +58,7 @@ try:                                        # inside molbuilder
                           state, unflag, unjson_attr, unnumber_attr,
                           write_group, write_structure_group)
     from ..persist import unknown_keys, write_bytes
+    from .derived import THERMAL_KEY
     from .result_keys import WRITTEN_KEYS
 except ImportError:                         # beside a job, in a bundle
     from atom_permutation import MAP_KEY, AtomIndexMap  # type: ignore[no-redef]
@@ -68,6 +69,7 @@ except ImportError:                         # beside a job, in a bundle
                         state, unflag, unjson_attr, unnumber_attr,
                         write_group, write_structure_group)
     from persist import unknown_keys, write_bytes  # type: ignore[no-redef]
+    from derived import THERMAL_KEY  # type: ignore[no-redef]
     from result_keys import WRITTEN_KEYS  # type: ignore[no-redef]
 
 #: Why a key a data file does not state is refused at its write -- this
@@ -75,7 +77,7 @@ except ImportError:                         # beside a job, in a bundle
 UNSTATED = (".  A key this data file does not know how to state is refused "
             "rather than dropped")
 
-DATA_SCHEMA = "molbuilder/spectra-data@10"
+DATA_SCHEMA = "molbuilder/spectra-data@11"
 #: The schemas the reader reads: a file written before 2.32.0 (``@1``) holds
 #: the same variables without its atom index map, read as it is and never
 #: rewritten -- its map made as it is read (`engines/vibration.md`
@@ -91,7 +93,9 @@ DATA_SCHEMA = "molbuilder/spectra-data@10"
 #: § 3a); one before 2.72.3 (``@1``-``@9``) names some variables and
 #: attributes by the result's keys -- read by them, each variable's
 #: ``earlier`` names, each attribute's key (`model/datafiles.md` § 2a
-#: rule 5).
+#: rule 5); one before 2.79.0 (``@1``-``@10``) states no mode's mechanics
+#: and no ``/modes/thermal`` -- each computed as the result is read
+#: (`engines/vibration.md` § 6.11 § 5).
 READABLE_DATA_SCHEMAS = ("molbuilder/spectra-data@1",
                          "molbuilder/spectra-data@2",
                          "molbuilder/spectra-data@3",
@@ -100,7 +104,8 @@ READABLE_DATA_SCHEMAS = ("molbuilder/spectra-data@1",
                          "molbuilder/spectra-data@6",
                          "molbuilder/spectra-data@7",
                          "molbuilder/spectra-data@8",
-                         "molbuilder/spectra-data@9", DATA_SCHEMA)
+                         "molbuilder/spectra-data@9",
+                         "molbuilder/spectra-data@10", DATA_SCHEMA)
 #: The fill of an integer attribute that can be not stated.
 _INT_FILL = -1
 
@@ -473,10 +478,52 @@ def _mode_vars() -> Tuple[Var, ...]:
             "computed, so the mode cannot be placed", dtype=str),
         Var("has_imag", ("mode",), "derived", "1", "whether imaginary",
             "1 for an imaginary frequency", dtype="i1", flag=True),
+        Var("motion_share", ("mode", "free_atom"), "derived", "1",
+            "each free atom's share of the motion",
+            "m_A |L_A|^2 over its sum across the free atoms -- the kinetic "
+            "energy's share, the same at every phase, summing to 1 "
+            "(engines/vibration.md 6.11 3)"),
+        Var("largest_zero_point_move_ang", ("mode",), "derived", "angstrom",
+            "the largest zero-point move",
+            "the largest single atom's move at the zero-point amplitude "
+            "(engines/vibration.md 6.11 3); NaN for an imaginary mode"),
+        Var("reduced_mass_amu", ("mode",), "derived", "amu",
+            "the reduced mass",
+            "Gaussian's convention, 1 over the sum across the atoms of "
+            "|L|^2 of the canonical eigenvector (engines/vibration.md "
+            "6.11 3); NaN for a mode with no motion"),
+        Var("force_constant_mdyn_per_ang", ("mode",), "derived",
+            "mdyn/angstrom", "the force constant",
+            "Gaussian's convention, the reduced mass times omega^2 -- "
+            "positive for an imaginary mode, as Gaussian prints it "
+            "(engines/vibration.md 6.11 3); NaN for a mode with no motion"),
         Var("removed_motion", ("removed", "free_atom", "xyz"), "derived", "1",
             "a removed whole-body motion",
             "an orthonormal Cartesian pattern over the free atoms removed "
             "before diagonalising (removed_motions.patterns)"),
+    )
+
+
+def _thermal_vars() -> Tuple[Var, ...]:
+    """``/modes/thermal``'s variables (`engines/vibration.md` § 6.11 § 5):
+    the ``mode`` coordinate repeated, a group stating its own axes, and its
+    own ``temperature_k`` axis -- so the probe's group inherits none."""
+    return (
+        coordinate("mode"),
+        Var("temperature_k", ("temperature_k",), "coordinate", "K",
+            "the temperature",
+            "each of the modes' own temperatures, as the result states "
+            "them (engines/vibration.md 6.11 3)"),
+        Var("thermal_spread_amu12_ang", ("mode", "temperature_k"), "derived",
+            "amu^1/2 angstrom", "the thermal spread",
+            "Q_zp sqrt(2n + 1), the r.m.s. coordinate at the temperature "
+            "(science/vibrational-averaging.md 2); NaN for an imaginary "
+            "mode"),
+        Var("mean_quanta", ("mode", "temperature_k"), "derived", "1",
+            "the mean quanta",
+            "Bose and Einstein's 1 / (exp(hbar omega / k_B T) - 1) "
+            "(science/vibrational-averaging.md 2a); NaN for an imaginary "
+            "mode"),
     )
 
 
@@ -621,8 +668,13 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
             values["has_imag"][k] = flag(m.get("has_imag"))
             for name in ("ir_intensity_km_per_mol",
                          "raman_activity_ang4_per_amu",
-                         "zero_point_amplitude_amu12_ang"):
+                         "zero_point_amplitude_amu12_ang",
+                         "largest_zero_point_move_ang", "reduced_mass_amu",
+                         "force_constant_mdyn_per_ang"):
                 values[name][k] = number_attr(m.get(key_of(MODE[name])))
+            if m.get("motion_share") is not None:
+                values["motion_share"][k] = np.asarray(m["motion_share"],
+                                                       dtype=float)
             if m.get("zero_point_displacement_ang") is not None:
                 values["zero_point_displacement_ang"][k] = np.asarray(
                     m["zero_point_displacement_ang"], dtype=float)
@@ -636,9 +688,34 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
             values["removed_motion"][r] = np.asarray(pattern, dtype=float)
         write_group(g, dims, vars_, values,
                     title="the normal modes: each one's frequency, "
-                          "eigenvectors, zero-point motion, strengths and "
-                          "activity, and the whole-body motions removed "
-                          "before diagonalising")
+                          "eigenvectors, zero-point motion, strengths, "
+                          "activity and mechanics, and the whole-body "
+                          "motions removed before diagonalising")
+
+        # /modes/thermal -- each mode's spread and mean quanta at the modes'
+        # own temperatures (§ 6.11 § 5), a group of its own axes; always
+        # written, no mode on it before the modes exist (§ 6.5).
+        thermal = payload.get(THERMAL_KEY) or {}
+        tvars = _thermal_vars()
+        _, temperature, spread, quanta = tvars
+        said = unknown_keys(thermal, [key_of(v) for v in tvars[1:]],
+                            note=UNSTATED)
+        if said:
+            raise SpectraDataError(f"the modes' thermal block: {said}")
+        temps = [float(x) for x in thermal.get(key_of(temperature)) or ()]
+        tdims = {"mode": len(modes), "temperature_k": len(temps)}
+        tvalues = _fill(tvars, tdims)
+        tvalues["mode"][:] = [int(m["index_1based"]) for m in modes]
+        tvalues[temperature.name][:] = temps
+        for k, (row_spread, row_quanta) in enumerate(zip(
+                thermal.get(key_of(spread)) or (),
+                thermal.get(key_of(quanta)) or ())):
+            if row_spread is not None:
+                tvalues[spread.name][k] = row_spread
+                tvalues[quanta.name][k] = row_quanta
+        write_group(g.createGroup("thermal"), tdims, tvars, tvalues,
+                    title="each mode's spread and mean quanta at the "
+                          "modes' own temperatures")
 
         # /modes/electronic_structure -- one row per probed mode.
         probed = [m for m in modes
@@ -817,6 +894,13 @@ def read_spectra_data(path, *, data=None) -> Dict[str, Any]:
                     None if amplitude is None else
                     mv["zero_point_displacement_ang"]["data"][k].tolist()),
             }
+            # THE MODE'S MECHANICS, where the file keeps them (@11).
+            if "motion_share" in mv:
+                m["motion_share"] = mv["motion_share"]["data"][k].tolist()
+                for name in ("largest_zero_point_move_ang",
+                             "reduced_mass_amu",
+                             "force_constant_mdyn_per_ang"):
+                    m[name] = unnumber_attr(mv[name]["data"][k])
             # THE DIPOLE CHANGE, where the file keeps the variable (@6): the
             # fill value says the engine kept none.
             if "dipole_derivative_d_per_ang_amu12" in mv:
@@ -827,6 +911,25 @@ def read_spectra_data(path, *, data=None) -> Dict[str, Any]:
                     None if not np.all(np.isfinite(v)) else v.tolist())
             modes.append(m)
         out["modes"] = modes
+        # /modes/thermal, where the file keeps it (@11): null with no mode
+        # on it, before the modes exist (§ 6.5).
+        if "thermal" in g.groups and not n_modes:
+            out[THERMAL_KEY] = None
+        elif "thermal" in g.groups:
+            tvars = _thermal_vars()
+            _, temperature, spread, quanta = tvars
+            tv = read_variables(g["thermal"], tvars)
+            # AN IMAGINARY MODE'S ROW IS NONE, by the mode's own flag.
+            rows = {v.name: [None if modes[k]["has_imag"] else
+                             np.asarray(tv[v.name]["data"][k],
+                                        dtype=float).tolist()
+                             for k in range(n_modes)]
+                    for v in (spread, quanta)}
+            out[THERMAL_KEY] = {
+                key_of(temperature): [float(x) for x in
+                                      tv[temperature.name]["data"]],
+                key_of(spread): rows[spread.name],
+                key_of(quanta): rows[quanta.name]}
         removed: Dict[str, Any] = {}
         if "removed_motions_count" in attrs:
             removed = {"count": int(attrs["removed_motions_count"]),
@@ -898,7 +1001,7 @@ STATED_KEYS = {
     "result": frozenset({
         *_ROOT, "schema_version", "free_atom_idxs", "frozen_atom_idxs",
         "structure", "equilibrium", "modes", "relaxation", "thermo",
-        "removed_motions", MAP_KEY, "partial_charges"}),
+        "removed_motions", MAP_KEY, "partial_charges", THERMAL_KEY}),
     "equilibrium": frozenset({*_EQUILIBRIUM, "mo_energies_eh",
                               "masses_amu"}),
     "mode": frozenset({
@@ -947,6 +1050,7 @@ _check_tables(WRITTEN_KEYS)
 TRAVELS_WITH = ("molbuilder.atom_permutation",
                 "molbuilder.ncdata",
                 "molbuilder.persist",
+                "molbuilder.spectra.derived",
                 "molbuilder.spectra.result_keys")
 
 

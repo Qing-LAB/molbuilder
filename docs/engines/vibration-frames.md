@@ -162,7 +162,8 @@ a state's `.mean_quanta` is its total always (its warmth and its swing
 together); a classical state counts none (`None`). A driven state's swing
 $Q_0$ and the spread it carries are `s.swing_amplitude_amu12_ang` and
 `s.carried_spread_amu12_ang` ($Q_{\mathrm{zp}}$, or the warm mode's
-$\sigma_T$, the record's `thermal_spread_amu12_ang` at that temperature)
+$\sigma_T$, the spread at that temperature — the record's
+`thermal_spread_amu12_ang` row where the file states that temperature)
 *(to build)*.
 
 **A temperature not given** — the user's rule
@@ -757,7 +758,11 @@ plan's:
 - `v` from a run's folder (`vibration_frames.vibration_of_run`), carrying
   `v.run`, `v.read_path` (in 2.78.0 `v.source`, the file's name),
   `v.result_sha256`, `v.structure`, `v.relaxation_calculation`;
-  `Mode.vibration`; `v.mode(n)`, `v.displaced({...})`,
+  `Mode.vibration` — and the fields every `Mode` copies in 2.79.0 (its free
+  atoms, `free_atom_idxs`, its masses, elements, positions, the record's
+  temperature, species labels, regions and the modes' temperatures,
+  `mode_temperatures_k`) become the `Vibration`'s,
+  reached through it, `v.mode_temperatures_k` the file's list; `v.mode(n)`, `v.displaced({...})`,
   `v.with_frequency_scale(...)`; `v.motion()`, `Motion` with `with_mode` and
   `with_drive`, `Snapshots` (`standard_error` → `Estimate`, `parts` →
   `Parts`), `pooled`;

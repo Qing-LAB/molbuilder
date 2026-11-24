@@ -16,6 +16,7 @@ paper; no run makes a mode whose answers a test knows in advance.
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -76,13 +77,35 @@ def test_h2s_zero_point_amplitude_and_its_bond_move_are_the_textbooks():
                                                              rel=1e-7)
 
 
+def test_the_largest_zero_point_move_is_an_atoms_whole_move_on_any_axis():
+    """§ 6.11 § 3: the largest zero-point move is the length of the atom's
+    move that is longest -- for H2 at 4400 cm-1 half the bond's
+    ``sqrt(hbar / 2 mu omega)`` -- whichever way the bond points; the
+    one door the record and the script door both ask
+    (`vibration.largest_zero_point_move_ang`).  H2 along (1, 1, 1)/sqrt(3).
+    THE SILENT FAILURE: the largest single coordinate taken for the move,
+    which a bond along an axis cannot tell apart."""
+    a = 1.0 / math.sqrt(2.0 * M_H)
+    n = np.ones(3) / math.sqrt(3.0)
+    mu_kg = M_H / 2.0 * AMU_KG
+    bond = math.sqrt(codata.hbar / (2.0 * mu_kg * omega_si(4400.0))) * 1e10
+    assert V.largest_zero_point_move_ang(
+        4400.0, False, np.array([a * n, -a * n])) == pytest.approx(
+            bond / 2, rel=1e-7)
+
+
 def test_a_spring_between_two_masses_moves_as_the_two_body_problem_says():
     """§ 2b.5: a harmonic diatomic built from a spring constant ``k`` and two
     masses, through the road's own diagonalisation: its frequency
     ``sqrt(k/mu)``; at ``Q_zp`` the atoms move ``m2/M`` and ``m1/M`` of
     ``Q_zp/sqrt(mu)`` in opposite directions, the centre of mass still; the
     move projects back to ``Q_zp``; its harmonic energy is
-    ``omega^2 Q^2 / 2``."""
+    ``omega^2 Q^2 / 2``; each atom's share of the motion ``m2/M`` and
+    ``m1/M`` (the kinetic energy's, § 6.11 § 3), and Gaussian's reduced mass
+    ``1 / sum |L|^2 = m1 m2 M / (m1^2 + m2^2)``.  THE SILENT FAILURES: a
+    share weighted by the displacement alone, handing the light atom the
+    mode; a reduced mass by another convention, which a person comparing
+    with Gaussian's output reads as a wrong number."""
     k_si, m1, m2 = 1900.0, 12.000, 15.995           # a C=O spring, N/m
     k_au = k_si * BOHR_M ** 2 / HARTREE_J
     z = np.diag([0.0, 0.0, 1.0])
@@ -117,6 +140,13 @@ def test_a_spring_between_two_masses_moves_as_the_two_body_problem_says():
     q_bohr = q * 1e-10 / BOHR_M
     omega2_au = k_au / (m1 * m2 / (m1 + m2))       # k / mu, Eh/(Bohr^2 amu)
     assert energy == pytest.approx(0.5 * omega2_au * q_bohr ** 2, rel=1e-9)
+    # THE TWO-BODY SPRING, by Gaussian's convention (§ 6.11 § 3): each
+    # atom's share of the motion the OTHER's mass over the total -- the
+    # lighter carbon carries more -- and mu = m1 m2 (m1 + m2) / (m1^2 + m2^2)
+    assert mode.motion_share == pytest.approx([m2 / total, m1 / total],
+                                              rel=1e-9)
+    assert mode.reduced_mass_amu == pytest.approx(
+        m1 * m2 * total / (m1 ** 2 + m2 ** 2), rel=1e-9)
 
 
 def test_moves_laid_out_other_than_a_row_per_atom_are_refused():
@@ -127,6 +157,106 @@ def test_moves_laid_out_other_than_a_row_per_atom_are_refused():
     mode = h2_mode()
     with pytest.raises(ValueError, match="a row of x, y, z per atom"):
         mode.coordinate(mode.displacement(0.05).T)
+
+
+def test_the_reduced_mass_and_force_constant_are_as_gaussian_prints_them():
+    """§ 6.11 § 3, Gaussian's convention [Ochterski1999]: ``mu = 1 /
+    sum_A |L_A|^2`` -- for H2's stretch the atom's own mass, 1.008 amu --
+    and ``k = mu omega^2`` in mdyn/Å (100 N/m) from
+    CODATA; an imaginary mode's ``k`` positive, ``mu |omega|^2``, as Gaussian
+    prints it; a mode with no motion has neither, ``None`` -- the record's
+    ``null``.  THE SILENT FAILURE: a unit off by the 100 between N/m and
+    mdyn/Å, or the two-body reduced mass, either a plausible number beside
+    Gaussian's."""
+    mode = h2_mode()
+    assert mode.reduced_mass_amu == pytest.approx(M_H, rel=1e-12)
+    k_n_per_m = M_H * AMU_KG * omega_si(4400.0) ** 2
+    assert mode.force_constant_mdyn_per_ang == pytest.approx(
+        k_n_per_m / 100.0, rel=1e-8)
+    imaginary = V.Mode(index_1based=1, frequency_cm1=-4400.0, has_imag=True,
+                       eigenvector_canonical_per_amu12=(
+                           h2_mode().eigenvector_canonical_per_amu12),
+                       free_atom_idxs=(0, 1), masses_amu=h2_mode().masses_amu,
+                       element_symbols=("H", "H"),
+                       positions_ang=h2_mode().positions_ang)
+    assert imaginary.force_constant_mdyn_per_ang == pytest.approx(
+        k_n_per_m / 100.0, rel=1e-8)
+    still = V.Mode(index_1based=1, frequency_cm1=4400.0, has_imag=False,
+                   eigenvector_canonical_per_amu12=np.zeros((2, 3)),
+                   free_atom_idxs=(0, 1), masses_amu=h2_mode().masses_amu,
+                   element_symbols=("H", "H"),
+                   positions_ang=h2_mode().positions_ang)
+    assert (still.reduced_mass_amu, still.force_constant_mdyn_per_ang) == (
+        None, None)
+
+
+def test_the_shares_sum_by_element_label_and_region():
+    """§ 6.11 § 3, § 6: each free atom's share summed by its element, its
+    species label as written, or each of the structure's region labels as
+    written (they may overlap) -- the three alike, largest first, a group
+    holding no free atom left out (a held atom adds nothing to any), a mode
+    with no motion ``{}``.  THE SILENT FAILURES: a label's two atoms merged
+    into their element, or a region summed over atoms it does not hold."""
+    a = 1.0 / math.sqrt(2.0 * M_H)
+    mode = V.Mode(index_1based=1, frequency_cm1=4400.0, has_imag=False,
+                  eigenvector_canonical_per_amu12=np.array([[0.0, 0.0, a],
+                                                            [0.0, 0.0, -a]]),
+                  free_atom_idxs=(1, 2),
+                  masses_amu=np.array([196.97, M_H, M_H]),
+                  element_symbols=("Au", "H", "H"),
+                  positions_ang=np.zeros((3, 3)),
+                  species_labels=("Au1", "H1", "H2"),
+                  regions={"L-electrode": (0,), "bridge": (1, 2)})
+    assert mode.motion_share == pytest.approx([0.5, 0.5])
+    assert mode.motion_shares(by="element") == pytest.approx({"H": 1.0})
+    assert mode.motion_shares(by="label") == pytest.approx(
+        {"H1": 0.5, "H2": 0.5})
+    regions = {"L-electrode": (0,), "bridge": (1, 2), "H1 side": (1,)}
+    mode = replace(mode, regions=regions)
+    by_region = mode.motion_shares(by="region")
+    assert by_region == pytest.approx({"bridge": 1.0, "H1 side": 0.5})
+    assert list(by_region) == ["bridge", "H1 side"]
+    still = replace(mode, eigenvector_canonical_per_amu12=np.zeros((2, 3)))
+    assert [still.motion_shares(by=b) for b in ("element", "label",
+                                                "region")] == [{}, {}, {}]
+
+
+def test_a_modes_thermal_row_is_its_spread_at_each_temperature():
+    """§ 6.11 § 3: the record's spread and mean quanta at the modes' own
+    temperatures -- 0, 4, 10, 20, 30 and 40 K below the thermochemistry
+    grid, the grid's (§ 4.7), and the record's own, ascending, each once --
+    the spread ``Q_zp sqrt(coth(h c nu / 2 k_B T))`` and the mean quanta
+    ``1 / (exp(h c nu / k_B T) - 1)`` from CODATA, an imaginary mode's none
+    and no largest zero-point move.  THE SILENT FAILURES: a temperature
+    missing from the list or one too many; the quanta and the spread
+    swapped; an imaginary mode handed a thermal state it does not have."""
+    from molbuilder.spectra.normal_modes import mode_temperatures
+    grid = np.linspace(50.0, 1500.0, 30)    # § 4.7: 50-1500 K in 30 points
+    assert mode_temperatures(298.15) == pytest.approx(sorted(
+        {0.0, 4.0, 10.0, 20.0, 30.0, 40.0, 298.15} | set(grid)), abs=1e-9)
+    nu = 700.0
+    mode = V.Mode(index_1based=1, frequency_cm1=nu, has_imag=False,
+                  eigenvector_canonical_per_amu12=(
+                      h2_mode().eigenvector_canonical_per_amu12),
+                  free_atom_idxs=(0, 1), masses_amu=h2_mode().masses_amu,
+                  element_symbols=("H", "H"),
+                  positions_ang=h2_mode().positions_ang,
+                  mode_temperatures_k=(0.0, 298.15))
+    x = codata.h * codata.c * nu * 100.0 / (codata.k * 298.15)
+    row = mode.thermal
+    assert row["temperature_k"] == [0.0, 298.15]
+    assert row["thermal_spread_amu12_ang"] == pytest.approx(
+        [q_zp_codata(nu), q_zp_codata(nu) * math.sqrt(1.0 / math.tanh(x / 2))],
+        rel=1e-7)
+    assert row["mean_quanta"] == pytest.approx([0.0, 1.0 / math.expm1(x)],
+                                               rel=1e-8, abs=1e-15)
+    with pytest.raises(ValueError, match="positive frequency"):
+        V.mean_quanta(-700.0, 298.15)
+    imaginary = replace(mode, frequency_cm1=-700.0, has_imag=True)
+    assert imaginary.thermal == {"temperature_k": [0.0, 298.15],
+                                 "thermal_spread_amu12_ang": None,
+                                 "mean_quanta": None}
+    assert imaginary.largest_zero_point_move_ang is None
 
 
 def test_a_mode_at_another_frequency_keeps_its_pattern():
@@ -523,7 +653,7 @@ def test_a_held_atom_stays_still_and_adds_nothing_to_its_elements_share():
                   masses_amu=np.array([196.97, M_H, M_H]),
                   element_symbols=("Au", "H", "H"), positions_ang=at)
     q_zp = q_zp_codata(4400.0)
-    assert mode.element_shares == pytest.approx({"H": 1.0})
+    assert mode.motion_shares(by="element") == pytest.approx({"H": 1.0})
     assert mode.zero_point_displacement_ang == pytest.approx(q_zp * rows,
                                                              rel=1e-7)
     cold = mode.state(0.0)

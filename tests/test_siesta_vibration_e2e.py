@@ -445,6 +445,13 @@ def _states_its_masses_and_derived_values(d):
         assert all(k in m for k in DERIVED_MODE_KEYS), sorted(m)
         L = np.asarray(m["eigenvector_canonical"])
         assert abs(float((stated[:, None] * L * L).sum()) - 1.0) < 1e-6, m
+        # each free atom's share of the motion, m |L|^2 over its sum -- the
+        # sum 1 already, the masses the stated ones (§ 6.11 § 3)
+        assert m["motion_share"] == pytest.approx(
+            (stated * (L * L).sum(axis=1)).tolist(), rel=1e-9, abs=1e-15)
+    # FROM v15 the modes' thermal block too, at the record's temperature
+    # among the modes' own (§ 6.11 § 3).
+    assert d["thermo"]["temperature_K"] in d["modes_thermal"]["temperature_k"]
 
 
 def _relaxed_geometry(call):

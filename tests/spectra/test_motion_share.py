@@ -1,4 +1,5 @@
-"""Which atoms a mode belongs to — ``vibration.element_shares``.
+"""Which atoms a mode belongs to — each atom's share of its motion
+(``vibration.motion_shares_of``) summed by element (``vibration.shares_by``).
 
 THE BUG THIS ANSWERS.  The mode panel used to describe a mode by the atom with
 the largest displacement.  In the benzene-dithiol result that is a hydrogen in
@@ -7,22 +8,21 @@ further than the carbons and carry 9% of the motion.  "Furthest" and "carries
 the mode" are different questions, and only the second one is worth reading.
 
 So these tests assert the physics, not the code: a heavy atom moving slightly
-less than a light one still owns the mode, the answer does not depend on which
-of the two stored eigenvector forms you hand in, and the shares of a mode add
-up to all of it.
+less than a light one still owns the mode, and the shares of a mode add up to
+all of it.
 """
-import numpy as np
 import pytest
 
 from molbuilder.chemistry import atomic_mass
-from molbuilder.vibration import element_shares
+from molbuilder.vibration import motion_shares_of, shares_by
 
 
 def shares_by_the_table(elements, rows):
     """The shares with each atom weighted by the element table's mass -- a
     result before schema 7 states none, and a reader weights its modes so
-    (`results.mass_of`)."""
-    return element_shares(elements, rows, [atomic_mass(e) for e in elements])
+    (`results.mass_of`) -- each atom's share summed by its element."""
+    return shares_by(elements, motion_shares_of(
+        rows, [atomic_mass(e) for e in elements]))
 
 
 # --------------------------------------------------------------------- #
@@ -39,8 +39,8 @@ class TestAtomicMass:
     reading it.
 
     That the masses are RIGHT is observable where it matters, in
-    ``TestMotionShare`` below: real eigenvectors through
-    ``element_shares``, where a wrong table moves the answer.
+    ``TestMotionShare`` below: real eigenvectors through the shares,
+    where a wrong table moves the answer.
     What is ours, and is tested here, is the label handling and the
     refusal.
     """
@@ -101,17 +101,6 @@ class TestMotionShare:
         assert set(share) == {"C", "H", "S", "Au"}
         assert list(share) == sorted(share, key=share.get, reverse=True), (
             f"shares must come back largest-first, got {list(share)}")
-
-    def test_either_stored_eigenvector_gives_the_same_answer(self):
-        """The two forms differ by one scalar per mode (schema v2), and a
-        scalar cancels in a ratio — so the panel may pass whichever pairing
-        is on screen without the composition changing under the user."""
-        elements = ["C", "C", "H", "H"]
-        display = np.array([[0.9, 0.1, 0], [0.2, 0.8, 0],
-                            [1.0, 0.3, 0], [0.4, 1.0, 0]])
-        canonical = display * 0.1342          # what the emitter's scaling does
-        assert (shares_by_the_table(elements, display)
-                == pytest.approx(shares_by_the_table(elements, canonical)))
 
     def test_a_mode_that_does_not_move_reports_nothing(self):
         """Rather than dividing by zero.  Not hypothetical: a fully frozen

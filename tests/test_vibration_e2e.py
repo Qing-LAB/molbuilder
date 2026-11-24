@@ -223,6 +223,10 @@ def test_water_runs_the_whole_loop_and_the_viewer_can_load_it(
                                 for e in d["structure"]["elements"]], eq
     for m in d["modes"]:
         assert all(k in m for k in DERIVED_MODE_KEYS), sorted(m)
+    # FROM v15 the modes' thermal block too, at the record's temperature
+    # among the modes' own (§ 6.11 § 3).
+    assert d["thermo"]["temperature_K"] in d["modes_thermal"]["temperature_k"]
+    assert len(d["modes_thermal"]["mean_quanta"]) == len(d["modes"])
 
 
 def test_modes_are_matched_by_their_mass_weighted_shape_not_their_rank(

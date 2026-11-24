@@ -24,6 +24,12 @@ vibration's `fc` record step runs it from ``mb_vibration.pyz``
 (`runwrap.members`, `engines/vibration.md` § 5.11 § 3) -- both where
 this package is not installed, so it imports only the ``constants`` and a
 mode's mechanics (`vibration`) that travel beside it.
+
+THE MODES' TEMPERATURES live here too, beside the thermochemistry's grid
+they extend (:func:`mode_temperatures`, `engines/vibration.md` § 6.6,
+§ 6.11 § 3): the list a result states each mode's spread and mean quanta
+at, asked by the derived values' writer and reader (`spectra.derived`) and
+by a result's modes (`spectra.results`).
 """
 from __future__ import annotations
 
@@ -390,10 +396,32 @@ THERMO_GRID_K = tuple(float(x) for x in
                       __import__("numpy").linspace(50.0, 1500.0, 30))
 
 
+#: THE MODES' OWN TEMPERATURES BELOW THE GRID (`engines/vibration.md`
+#: § 6.11 § 3; the user, 2026-11-23: "Add 0 K and low ones") -- where a
+#: junction is measured, 4-77 K, and a soft mode's spread changes most.
+MODE_TEMPERATURES_BELOW_GRID_K = (0.0, 4.0, 10.0, 20.0, 30.0, 40.0)
+
+
+def mode_temperatures(temperature_K, stated_k=None) -> list:
+    """THE MODES' TEMPERATURES -- what a result states each mode's spread
+    and mean quanta at (`engines/vibration.md` § 6.6, § 6.11 § 3):
+    ``stated_k``, the list a result states, its own and kept; else today's
+    list, :data:`MODE_TEMPERATURES_BELOW_GRID_K`, the thermochemistry
+    grid's (:func:`thermo_temperatures`) and the record's ``temperature_K``
+    -- ascending, each once; without the record's own where it states none.
+    A later list changes new files only."""
+    if stated_k is not None:
+        return [float(t) for t in stated_k]
+    grid = (thermo_temperatures(temperature_K) if temperature_K is not None
+            else [float(t) for t in THERMO_GRID_K])
+    return sorted(set(MODE_TEMPERATURES_BELOW_GRID_K) | set(grid))
+
+
 __all__ = ["rigid_motions", "mode_count", "vibrational_modes", "signed_omega",
            "frequencies_cm1", "display_form", "thermo_temperatures",
            "vibrational_thermo", "vibrational_thermo_grid",
-           "vibrational_only_thermo", "THERMO_GRID_K"]
+           "vibrational_only_thermo", "THERMO_GRID_K",
+           "MODE_TEMPERATURES_BELOW_GRID_K", "mode_temperatures"]
 
 
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it

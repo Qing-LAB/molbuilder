@@ -228,7 +228,8 @@ AXES: Dict[str, Axis] = {a.name: a for a in (
     Axis("probed_mode", "the modes the electronic-structure probe ran on",
          "1"),
     Axis("window", "an orbital's place in the probe's window", "1"),
-    Axis("temperature_k", "the thermochemistry's temperatures", "K"),
+    Axis("temperature_k", "the thermochemistry's temperatures, and the "
+         "modes' own", "K"),
     Axis("fc_step", "a SIESTA force-constant run's steps", "1"),
     Axis("photon_energy_ev", "the light's energy, hbar*omega", "eV"),
     Axis("run", "a calculation's runs", ""),
@@ -362,6 +363,8 @@ UNITS: Dict[str, str] = {
     "D/(angstrom amu^1/2)": f"debye ({_scientific(_C.DEBYE_C_M, 5)} C m) per "
                             f"angstrom per square-root amu",
     "angstrom^4/amu": "angstrom to the fourth per amu",
+    "mdyn/angstrom": "millidyne per angstrom, 100 N/m -- a force constant as "
+                     "Gaussian prints it",
     "kcal/mol": f"kilocalorie per mole, {_C.CALORIE_J:g} kJ/mol",
     "GiB": "gibibyte, 2^30 bytes",
 }
@@ -398,6 +401,7 @@ UNIT_IN_NAME: Dict[str, str] = {
     "angstrom^2/amu^1/2": "ang2_per_amu12",
     "D/(angstrom amu^1/2)": "d_per_ang_amu12",
     "angstrom^4/amu": "ang4_per_amu",
+    "mdyn/angstrom": "mdyn_per_ang",
     "kcal/mol": "kcal_per_mol",
     "GiB": "gib",
 }

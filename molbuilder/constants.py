@@ -125,6 +125,17 @@ KCAL_MOL_EV: float = 1000.0 * CALORIE_J * JOULE_EV / AVOGADRO
 #: The unified atomic mass unit (dalton), in kilograms.  CODATA 2018.
 AMU_KG: float = 1.66053906660e-27
 
+#: A HARMONIC MODE'S FORCE CONSTANT per amu of reduced mass and per cm⁻² of
+#: wavenumber, in mdyn/Å: ``k = μ ω²`` as Gaussian prints it beside every
+#: frequency (`engines/vibration.md` § 6.11 § 3).  DERIVED, not typed: the
+#: atomic unit of force constant, one hartree per bohr squared, in mdyn/Å
+#: (1 mdyn/Å = 100 N/m), times the electron masses in an amu over the
+#: wavenumbers in a hartree squared -- the same three constants the
+#: frequencies are converted by.  ≈ 5.8918e-7.
+FORCE_CONSTANT_MDYN_ANG_PER_AMU_CM2: float = (
+    HARTREE_EV * ELEMENTARY_CHARGE_C / (BOHR_ANGSTROM * 1e-10) ** 2 / 100.0
+    * AMU_ELECTRON_MASS / HARTREE_CM1 ** 2)
+
 #: The debye, in coulomb metres -- DERIVED: the atomic unit of dipole
 #: (e times the bohr) over its value in debye, so the three never disagree.
 DEBYE_C_M: float = (ELEMENTARY_CHARGE_C * BOHR_ANGSTROM * 1e-10

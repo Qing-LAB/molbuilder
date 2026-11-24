@@ -170,21 +170,18 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
     carbon for a ring stretch -- and that needs atomic masses, because
     hydrogen has the largest displacement in almost every mode of an organic
     molecule while carrying almost none of the motion.  The browser has no
-    masses.  A schema-7 result states its own (``equilibrium.masses_amu``,
-    the masses its modes were weighted by), and the shares are weighted by
-    them; an older one states none, and ``chemistry.atomic_mass`` -- the
-    table every deck's masses are stated from -- weights them.  Shipping a
-    periodic table into JavaScript would be a second copy of that table, so
-    the server answers.
+    masses.  Each free atom's share (``motion_share``, weighted by the masses
+    the modes were weighted by) is the result's own: stored from schema 15,
+    checked on read against the one derivation and worked out again by it
+    (``to_dict``, `engines/vibration.md` § 6.6) -- for an older result,
+    worked out on read.  This sums them by each atom's element, its species
+    label's name (``SpectraResults.atoms_weighted``): a view of the panel's,
+    so made here, where the request is.
 
-    COMPUTED AT LOAD, NOT STORED.  Every result already written -- including
-    the ones on disk right now -- gains the field the moment it is opened; a
-    schema bump would have left them showing nothing until re-run.  It costs
-    one pass over each eigenvector.
-
-    A mode whose shares cannot be worked out (an element ASE does not know)
-    is served without the field rather than failing the load: the panel drops
-    one clause, and the spectrum still opens.
+    A mode that states no shares -- a result before schema 7, which states
+    no masses, whose label names no element the mass table knows -- is
+    served without the field: the panel drops one clause, and the spectrum
+    still opens.
     """
     payload = results.to_dict()
     # THE PAGE'S CONSTANTS RIDE WITH THE RESULTS: the reply the page already
@@ -204,31 +201,19 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
             payload.get("ir_route") or "",
             payload.get("ir_fd_step_ang"))
 
-    # THE FREE ATOMS, which the reader's partition rule guarantees -- one
-    # eigenvector row each -- each by its element and the mass the modes were
-    # weighted by, as the result reads them (`SpectraResults.atoms_weighted`),
-    # the shares by the mode's mechanics (`vibration.element_shares`).
-    from molbuilder.vibration import element_shares
-    free = payload["free_atom_idxs"]
-    # A LABEL THE ELEMENT TABLE DOES NOT KNOW serves no shares; the result
-    # still loads (`web/spectra.md` § 4.2).
-    free_elements: list = []
-    try:
-        weighted = results.atoms_weighted(free)
-        if weighted is not None:
-            free_elements = list(weighted[0])
-            free_masses = [float(m) for m in weighted[1]]
-    except (IndexError, ValueError, KeyError):
-        free_elements = []
-    for mode in payload.get("modes") or []:
-        rows = mode.get("eigenvector_canonical") or mode.get("eigenvector_display")
-        if not rows or not free_elements:
-            continue
-        try:
-            mode["motion_share_by_element"] = element_shares(
-                free_elements, rows, free_masses)
-        except (ValueError, KeyError):
-            pass
+    # THE ELEMENT SHARES, a view over each mode's per-atom shares as the
+    # result states them (`motion_share`, checked on read and worked out
+    # again, `engines/vibration.md` § 6.6): each free atom's share
+    # summed by its element, its species label's name, as the result reads
+    # it (`SpectraResults.atoms_weighted`).
+    from molbuilder.vibration import shares_by
+    sharing = [mode for mode in payload.get("modes") or []
+               if mode.get("motion_share") is not None]
+    if sharing:
+        free_elements = results.atoms_weighted(payload["free_atom_idxs"])[0]
+        for mode in sharing:
+            mode["motion_share_by_element"] = shares_by(free_elements,
+                                                        mode["motion_share"])
     if temperature_k is not None:
         # the temperature the animation's spreads are at, said with them
         payload["temperature_k"] = temperature_k

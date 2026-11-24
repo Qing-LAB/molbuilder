@@ -1,18 +1,19 @@
 """THE VIBRATION RESULT'S KEYS, each block's -- the rows of
 `engines/vibration.md` § 6.2-6.4, and nothing else.
 
-MODULE  spectra.result_keys (L2; it imports two words -- the atom index
-        map's key and the derived values' -- and nothing else, two ways,
-        for it travels beside the job in both bundles, `runwrap.members`)
+MODULE  spectra.result_keys (L2; it imports three words -- the atom index
+        map's key, the derived mode keys and the modes' thermal block's key
+        -- and nothing else, two ways, for it travels beside the job in both
+        bundles, `runwrap.members`)
 ROLE    the keys of each block the reader reads key by key
         (:data:`RESULT_KEYS`, :data:`EQUILIBRIUM_KEYS`, :data:`MODE_KEYS`,
         :data:`ES_KEYS`, :data:`PARTIAL_CHARGES_KEYS`,
         :data:`CHARGE_STEP_KEYS`, :data:`OPTICAL_KEYS`,
         :data:`OPTICAL_MODE_KEYS`), and what a writer states of the four the
         data file lays out key by key (:data:`WRITTEN_KEYS`); the
-        `relaxation` and `thermo` blocks are their builders'
-        (`results.relaxation_block`, `normal_modes.thermo_block`), which the
-        data file's tables state
+        `relaxation`, `thermo` and `modes_thermal` blocks are their
+        builders' (`results.relaxation_block`, `normal_modes.thermo_block`,
+        `derived.thermal_block`), which the data file's tables state
 USED-BY the result's reader (`spectra.results`), which refuses a key
         outside them BY NAME; the data file (`spectra.datafile`), which
         states each key a writer states and checks so as it loads
@@ -30,10 +31,10 @@ from __future__ import annotations
 # TWO WAYS, because this module travels beside the job in both bundles.
 try:                                        # inside molbuilder
     from ..atom_permutation import MAP_KEY
-    from .derived import DERIVED_MODE_KEYS
+    from .derived import DERIVED_MODE_KEYS, THERMAL_KEY
 except ImportError:                         # beside a job, in a bundle
     from atom_permutation import MAP_KEY  # type: ignore[no-redef]
-    from derived import DERIVED_MODE_KEYS  # type: ignore[no-redef]
+    from derived import DERIVED_MODE_KEYS, THERMAL_KEY  # type: ignore[no-redef]
 
 
 ES_KEYS = frozenset({
@@ -46,7 +47,8 @@ MODE_KEYS = frozenset({
     "ir_intensity_km_mol", "eigenvector_canonical", "eigenvector_display",
     "has_imag", "electronic_structure", "dipole_derivative_d_per_ang_amu12",
     # DERIVED (`spectra.derived`, `engines/vibration.md` § 6.6) -- stated by
-    # every writer from v7, checked on read.
+    # every writer, the classes and zero-point values from v7, each mode's
+    # mechanics from v15; checked on read.
     *DERIVED_MODE_KEYS,
 })
 EQUILIBRIUM_KEYS = frozenset({
@@ -64,6 +66,9 @@ RESULT_KEYS = frozenset({
     "ir_fd_step_ang", "raman_route", "raman_fd_step_ang", "phase_raman",
     "phase_ir", "phase_es", "engine_metadata", "runtime_info",
     MAP_KEY, "partial_charges", "optical",
+    # DERIVED (v15): each mode's spread and mean quanta at the modes' own
+    # temperatures (`engines/vibration.md` § 6.2).
+    THERMAL_KEY,
 })
 #: The force-constant run's charges (v11, `engines/vibration.md` § 6.2)...
 PARTIAL_CHARGES_KEYS = frozenset({"displacement_ang", "steps", "charges_e"})

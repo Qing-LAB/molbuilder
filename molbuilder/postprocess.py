@@ -313,10 +313,14 @@ def vibration(path):
     (`engines/vibration.md` § 6.11 § 6) -- ``<label>.spectra.json`` or its
     data file ``<label>.spectra.nc``, read through the result's own reader
     (`sidecars.spectra.read_vibration_result`): ``v.modes[6]`` is mode 7,
-    each its frequency, zero-point amplitude and displacement, element
-    shares, an atom's move for a coordinate and the coordinate back, a
-    state's density, moments, spread and frames, the mode at another
-    frequency (`vibration.Mode`), every atom in the user's order.  A
+    each its frequency and the values the record stores of it -- the
+    zero-point amplitude and displacement, the largest zero-point move,
+    each free atom's share of the motion (summed by element, label or
+    region with ``motion_shares(by=...)``), Gaussian's reduced mass and
+    force constant, the spread and mean quanta at the modes' temperatures
+    (``thermal``) -- and an atom's move for a coordinate and the coordinate
+    back, a state's density, moments, spread and frames, the mode at
+    another frequency (`vibration.Mode`), every atom in the user's order.  A
     temperature not given is the one the record states, and said so."""
     from pathlib import Path
     from .sidecars.spectra import read_vibration_result
