@@ -184,9 +184,8 @@ and an API reviewer** *(the user, 2026-11-23)*.
   `Motion`, `Snapshots`, `pooled`) and the callers of a changed name;
   **R3d2b2b1 (2.81.0, done), transport made generic and the vocabulary the
   toolkit's** — made first, so a set the new writer writes is never laid out
-  by transport's own table of rows; its pieces and visible changes are
-  [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 9's
-  *Built (2.81.0, R3d2b2b1)* list and the changelog's row; **R3d2b2b2, the host toolkit's writer and reader**, in two releases:
+  by transport's own table of rows; its pieces and visible changes are its
+  changelog row; **R3d2b2b2, the host toolkit's writer and reader**, in two releases:
   **R3d2b2b2a, a row's unit said in one place** (built in 2.81.1,
   `fix23-review.md`; the user, 2026-11-24:
   `model/structure.md` § 2.2d — a name that carries its unit leaves `unit`
@@ -203,9 +202,8 @@ and an API reviewer** *(the user, 2026-11-23)*.
   door's block, `spectra.mode_frames` retired; **R3d2b2c, the example
   notebook** and its test:
   - **`vibration`** (L2, travels; numpy and the constants alone) — R3d2b2a,
-    built in 2.80.0: each piece and each visible change is
-    [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 9's
-    *Built (2.80.0, R3d2b2a)* list, which the plan does not restate.
+    built in 2.80.0: each piece and each visible change is its changelog
+    row, which the plan does not restate.
   - **`vibration_frames`** (L2, the host's; imports `vibration`, the
     structure, `frameset`, the result's reader and the run door, never
     transport; imports with `molbuilder-jupyternb`'s packages). Carried from
