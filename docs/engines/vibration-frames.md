@@ -386,10 +386,10 @@ grid = [v.displaced({7: a, 9: b}) for a, b in pairs]          # (0, 0) first
 w = [wa * wb for wa in f7.weights for wb in f9.weights]       # (0, 0) at 4/9
 write_frame_set(topic_dir("P", "structure") / "bdt-m7xm9.xyz", grid, w, vibration=v,
                 rows=[{"name": "sampling_rule", "value": "gauss-hermite x gauss-hermite",
-                       "unit": "1", "note": "modes 7 and 9 thermal at 300 K, each its own 3-point rule"}],
-                frame_rows=[[{"name": "q7_amu12_ang", "value": a, "unit": "amu^1/2 angstrom",
+                       "note": "modes 7 and 9 thermal at 300 K, each its own 3-point rule"}],
+                frame_rows=[[{"name": "q7_amu12_ang", "value": a,
                               "note": "position along mode 7"},
-                             {"name": "q9_amu12_ang", "value": b, "unit": "amu^1/2 angstrom",
+                             {"name": "q9_amu12_ang", "value": b,
                               "note": "position along mode 9"}] for a, b in pairs])
 ```
 
@@ -473,7 +473,10 @@ state — so that route needs five frames at least.
   `frame_rows` one such list per frame given
   ([`model/structure.md`](?doc=model/structure.md) § 2.2d–2.2f:
   `set_customized`, `with_frames`), and `frame0_rows` the person's rows for
-  a frame 0 the writer prepends; a row with no unit says `"1"`. A person's
+  a frame 0 the writer prepends; each row's unit in one place
+  ([`model/structure.md`](?doc=model/structure.md) § 2.2d: blank where its
+  name carries it, any spelling for a number whose name carries none — `"1"`
+  for a count — none for a text). A person's
   frame row named like one of the writer's own — `weight`,
   `displacement_ang`, `max_atom_displacement_ang` — is refused by name.
 
@@ -542,12 +545,18 @@ array (frames × modes — one column for a mode's own set),
 The vocabulary is the toolkit's — one table in `vibration_frames` (the names,
 kinds, units, meanings and page words) — and a person's script may write the same
 names. Every row the toolkit writes carries its meaning as its `note`, the
-meaning for the kind of set it is. The names carry their units; a row's
-`unit` field spells the same unit in ASCII — `cm-1`, `K`, `angstrom`,
-`amu^1/2 angstrom`, and `1` for a name with none (—). A page says a row in
+meaning for the kind of set it is. A row's unit is said in one place
+([`model/structure.md`](?doc=model/structure.md) § 2.2d): a name that carries
+its unit (`frequency_cm1`, `temperature_k`, `displacement_ang`,
+`zero_point_amplitude_amu12_ang`) leaves `unit` blank, and a number whose name
+carries none states `1` in it (—); each row's unit in the table is its
+name's (`Row.unit`, `units.unit_of_name`), as a page shows it
+([`model/datafiles.md`](?doc=model/datafiles.md) § 2c's last column,
+`Row.page_unit`). A set an earlier molbuilder wrote
+is read as written — its counts stating no unit, a unit-named row's unit
+written again (not kept) — and read the same. A page says a row in
 the vocabulary's words where its unit is the vocabulary's **or it states
-none** — the name itself is a claim about the unit, and every set written
-before 2.81.0 states no unit for a name without one — and otherwise by its
+none** — the name itself is a claim about the unit — and otherwise by its
 name and unit as written; the calculation checks nothing of it, and a row the vocabulary
 names, written without a meaning, is said so by the toolkit when it reads its
 own sets. Two rows are prose — the maker's `assumptions` and a snapshot set's
@@ -578,16 +587,16 @@ each on a line of its own ([`engines/transport.md`](?doc=engines/transport.md)
 | | `mode_index_1based` | given | a mode's own set: which mode, counted as the vibration result counts it (`index_1based`) | — | Mode |
 | | `frequency_cm1` | given | a mode's own set: the wavenumber its frames were placed for — the result's own, or a scaled one, the result's then in `result_frequency_cm1` | cm⁻¹ | Frequency (cm⁻¹) |
 | | `result_frequency_cm1` | given | a mode's own set at a scaled frequency: the mode's wavenumber as the result states it; absent when `frequency_cm1` is the result's | cm⁻¹ | Result's frequency (cm⁻¹) |
-| | `zero_point_amplitude_amu12_ang` | given | a mode's own set: the zero-point amplitude $Q_{\mathrm{zp}} = \sqrt{\hbar/2\omega}$ at `frequency_cm1` | amu^½·Å | Zero-point amplitude (amu½·Å) |
+| | `zero_point_amplitude_amu12_ang` | given | a mode's own set: the zero-point amplitude $Q_{\mathrm{zp}} = \sqrt{\hbar/2\omega}$ at `frequency_cm1` | amu½·Å | Zero-point amplitude (amu½·Å) |
 | | `temperature_k` | given | the temperature of the motion the frames sample: a thermal state's — for a mode pumped at random moments, its effective temperature, the one whose thermal state holds the same mean number of quanta ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 2a.1; `vibration.temperature_of_quanta`); a warm driven mode's, the temperature of the environment whose thermal width the swing carries — the swing's own quanta are `swing_quanta`, never folded into it; a snapshot set's thermal modes'. Absent for a set named by its mean quanta, of $n$ quanta, or a cold driven set | K | Temperature (K) |
 | | `quanta` | given | a mode's own set of $n$ quanta exactly: $n$ | — | Quanta n |
 | | `swing_quanta` | given | a driven mode's set: the quanta the push adds, $n_s$; its swing $Q_0 = 2Q_{\mathrm{zp}}\sqrt{n_s}$ | — | Swing quanta |
 | | `mean_quanta` | derived | a mode's own set: the state's total mean number of quanta — at a temperature $n = 1/(e^{\hbar\omega/k_BT} - 1)$; a driven state's adds its swing quanta; given, for a set named by it; absent for a classical state, which counts none | — | Mean quanta n |
-| | `spread_amu12_ang` | derived | a mode's own set: the r.m.s. of the state the frames sample, $\sigma = Q_{\mathrm{zp}}\sqrt{2n+1}$ for a quantum state ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 2a); a set written before 2.81.0 names it `sigma_amu12_ang`, read the same | amu^½·Å | Spread σ (amu½·Å) |
+| | `spread_amu12_ang` | derived | a mode's own set: the r.m.s. of the state the frames sample, $\sigma = Q_{\mathrm{zp}}\sqrt{2n+1}$ for a quantum state ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 2a); a set written before 2.81.0 names it `sigma_amu12_ang`, read the same | amu½·Å | Spread σ (amu½·Å) |
 | | `max_displacement_ang` | measured | a mode's own set: the outermost move — $\max_A\lvert\Delta\mathbf R_A\rvert$ at the outermost frames, $= \lvert q_{\mathrm{out}}\rvert\max_A\lvert\mathbf L_A\rvert$ for any state — the check against a bond length | Å | Outermost move (Å) |
 | each frame's rows | `displacement_ang` | measured | the frame's plain displacement from frame 0, one number per frame, $\sqrt{\sum_A\lvert\Delta\mathbf R_A\rvert^2}$ over every atom — no masses; the atoms' move vectors themselves are the toolkit's `atom_moves_ang` | Å | Displacement (Å) |
 | | `max_atom_displacement_ang` | measured | its largest single atom's, $\max_A\lvert\Delta\mathbf R_A\rvert$ | Å | Largest atom move (Å) |
-| | `q_amu12_ang` | derived | a mode's own set: the frame's position along the mode, the mass-weighted normal coordinate — one number for the whole mode, every atom displaced by $q\,\mathbf L_A$: its size $\sqrt{\sum_A m_A\lvert\Delta\mathbf R_A\rvert^2}$, its sign the side of frame 0 it sits on; a node of the rule, or 0 for a prepended frame 0. A snapshot set's per-mode coordinates are its `info.sampling`'s | amu^½·Å | Position along the mode, q (amu½·Å) |
+| | `q_amu12_ang` | derived | a mode's own set: the frame's position along the mode, the mass-weighted normal coordinate — one number for the whole mode, every atom displaced by $q\,\mathbf L_A$: its size $\sqrt{\sum_A m_A\lvert\Delta\mathbf R_A\rvert^2}$, its sign the side of frame 0 it sits on; a node of the rule, or 0 for a prepended frame 0. A snapshot set's per-mode coordinates are its `info.sampling`'s | amu½·Å | Position along the mode, q (amu½·Å) |
 | | `node_sigma` | derived | a mode's own set: the same position in units of the state's spread, $q/\sigma$ | — | q in units of σ |
 | | `weight` | given | the frame's share of the average: `Σ_f weight_f X_f` is the recipe's estimate of the average of `X` over the motion the set samples — a Gauss rule's weight at its node, $1/N$ for a snapshot, 0 for a prepended frame 0. A share of the average, not the chance of finding the molecule at the frame ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 2b.4) | — | Weight |
 
@@ -750,9 +759,10 @@ coherent state (the classical swing alone, with `classical=True`), and the
 weights say the set's temperature is not used and that `temperature_k`
 names the environment whose thermal width the swing carries (science § 6,
 the cold and the warm told apart; at 0 K the two are one state, and
-nothing is said); a coordinate, frequency or zero-point amplitude row
-written in another unit than its name says is read as the name's unit and
-said (foreign input gets a warning). **Refused by name**:
+nothing is said); each row the weights read is taken in the unit its name
+carries ([`model/structure.md`](?doc=model/structure.md) § 2.2d: a row is
+made so), a set written before 2.81.1 whose row states another read the
+same, unsaid. **Refused by name**:
 what is no frame set's rows (a path, say — naming what it was given by its
 type, and `postprocess.frame_rows` and `frameset.read`); no rows — one
 structure, or frames that state none (a family); a snapshot set, its frames
@@ -823,10 +833,9 @@ drawn whatever became of the pair
 what a set is, an older mode set's assumptions, `weights_for_set` — a set's
 own state its own rule, an even rule's set at its own state saying nothing
 of another (`test_an_even_rules_set_at_its_own_state_says_nothing_of_another`),
-the state named, a swing on a warm set, a coordinate in another unit read
-as written and said
-(`test_a_coordinate_in_another_unit_is_read_as_written_and_said`); *to
-build*, R3d2b2b2: the writer and the reader) and the example notebook's run
+the state named, a swing on a warm set; a row's unit in one place,
+`tests/test_row_units.py`; *to build*, R3d2b2b2b: the writer and the
+reader) and the example notebook's run
 (§ 6.1):
 
 | what | the test |
@@ -938,7 +947,23 @@ and the changelog's row:
   of no unit written with `1` — each read the same by the toolkit from an
   older set.
 
-**To build**, R3d2b2b2 and R3d2b2c ([`plans/plan.md`](?doc=plans/plan.md)
+**Built** (2.81.1, R3d2b2b2a — a row's unit said in one place,
+[`model/structure.md`](?doc=model/structure.md) § 2.2d), each a visible
+change of a written set or a built call:
+
+- the frame generator's sets write no unit beside a row whose name carries
+  it (`frequency_cm1`, `temperature_k`, `displacement_ang`, …; in 2.81.0 the
+  unit in both places), `1` beside a count, none beside a text (in 2.81.0
+  `1`); the vocabulary's unit of a row is its name's (`Row.unit` read by
+  `units.unit_of_name`, its page unit from the units table,
+  `units.UNIT_ON_A_PAGE`);
+- a set's rows written through a script's door hold the unit rule
+  (`set_customized`, `with_frames`' frame rows; in 2.81.0 any unit kept);
+  `weights_for_set` takes each row in its name's unit and says nothing of
+  another (in 2.81.0 said): no row is made so now, and a set written before
+  is read as written (the user, 2026-11-24: no work for older records).
+
+**To build**, R3d2b2b2b and R3d2b2c ([`plans/plan.md`](?doc=plans/plan.md)
 § 2), each a visible change where it changes a built call or a written set —
 this list and the ones above are the one home of each of the toolkit's
 changes:

@@ -40,32 +40,33 @@ def _pair(tmp_path, rows=(), frame_rows=(), info=None, n=2, name="set.xyz"):
 
 
 @pytest.mark.parametrize("where, name, unit, words", [
-    ("frames", "displacement_ang", "angstrom", "Displacement"),
-    ("frames", "displacement_ang", None, "Displacement"),
-    ("frames", "displacement_ang", "nm", None),
-    ("frames", "weight", "1", "Weight"),
-    ("frames", "weight", None, "Weight"),
-    ("structure", "frequency_cm1", "cm-1", "Frequency"),
-    ("structure", "frequency_cm1", "Hz", None),
-    ("structure", "sigma_amu12_ang", "amu^1/2 angstrom", "Spread σ"),
-    ("structure", "bond", None, None),
-], ids=["its unit", "no unit stated", "another unit", "the dimensionless "
-        "unit", "a unitless name, none stated", "a structure row",
-        "a structure row in another unit", "a name written before 2.81.0",
+    ("frames", "displacement_ang", None, ("Displacement", "Å")),
+    ("frames", "displacement_ang", "angstrom", ("Displacement", "Å")),
+    ("frames", "weight", "1", ("Weight", None)),
+    ("frames", "weight", "%", None),
+    ("structure", "frequency_cm1", None, ("Frequency", "cm⁻¹")),
+    ("structure", "sigma_amu12_ang", None, ("Spread σ", "amu½·Å")),
+    ("structure", "bond", "angstrom", None),
+], ids=["its unit in its name", "its unit in its name, said again", "the "
+        "dimensionless unit", "a unitless name in another unit",
+        "a structure row", "a name written before 2.81.0",
         "a name it does not know"])
 def test_a_page_says_a_row_in_the_vocabularys_words_where_its_unit_is_the_vocabularys(
         tmp_path, where, name, unit, words):
     """§ 5.1: a row the vocabulary names is said in its words where its unit
-    is the vocabulary's or it states none -- the name is a claim about the
-    unit -- an older set's name read the same; any other row by its name
-    and unit as written (no words given).  The silent failure: a row
-    written in nm labelled on the page with the vocabulary's angstrom."""
+    is the vocabulary's -- a name that carries one, `unit` blank or the same;
+    a name of none, `1` or blank -- an older set's name read the same; any
+    other row by its name and unit as written (no words given).  The silent
+    failure:
+    a person's row in its own unit labelled on the page with the
+    vocabulary's."""
     from molbuilder.vibration_frames import said_of
     row = (name, 0.5, unit, "what it is")
     path = _pair(tmp_path, rows=[row] if where == "structure" else (),
                  frame_rows=[row] if where == "frames" else ())
     got = said_of(path)[where].get(name)
-    assert (got and got["words"]) == words, got
+    # ...its words and its unit as a page shows it, the units table's.
+    assert (got and (got["words"], got["page_unit"])) == words, got
 
 
 @pytest.mark.parametrize("note", ["a Boltzmann weight at 300 K", None],
@@ -78,7 +79,7 @@ def test_a_rows_meaning_is_the_sets_and_one_written_without_is_said_once(
     warning, never a refusal.  The silent failure: a person's own weights
     shown with the Gauss rule's meaning."""
     from molbuilder.vibration_frames import ROWS, said_of
-    path = _pair(tmp_path, frame_rows=[("weight", 0.5, None, note)], n=3)
+    path = _pair(tmp_path, frame_rows=[("weight", 0.5, "1", note)], n=3)
     got = said_of(path)
     vocabulary = next(r.means for r in ROWS if r.name == "weight")
     assert got["frames"]["weight"]["means"] == (note or vocabulary)
@@ -161,7 +162,7 @@ def test_the_words_are_of_the_frames_drawn_whatever_became_of_the_pair(
     from molbuilder.persist import sha256_of
     from molbuilder.workingcopy_structure import StructureCodec
     from molbuilder.vibration_frames import said_of
-    path = _pair(tmp_path, rows=[("mode_index_1based", 6, None, None),
+    path = _pair(tmp_path, rows=[("mode_index_1based", 6, "1", None),
                                  ("vibration_run", "P/vib/run", None, None)])
     drawn = StructureCodec().load(path, frames=True)
     files = {path.name: sha256_of(path)}
@@ -196,8 +197,8 @@ def test_a_pair_that_does_not_read_is_said_and_gives_no_words(tmp_path):
 
 
 @pytest.mark.parametrize("rows, what", [
-    ([("mode_index_1based", 6, None, None)], "frames of one mode"),
-    ([("samples", 64, None, None)],
+    ([("mode_index_1based", 6, "1", None)], "frames of one mode"),
+    ([("samples", 64, "1", None)],
      "frames, the relaxed geometry and its snapshots"),
     ([("sampling_rule", "monte-carlo", None, None)],
      "frames, the relaxed geometry and its snapshots"),
@@ -234,7 +235,7 @@ def test_a_mode_sets_assumptions_are_said_beside_it(tmp_path, written):
     beside it; a person's driven set said to be thermal."""
     from molbuilder.vibration_frames import (assumptions_of_a_mode, said_of,
                                              thermal_state_words)
-    rows = [("mode_index_1based", 6, None, None),
+    rows = [("mode_index_1based", 6, "1", None),
             ("temperature_k", 300.0, "K", None)]
     info = None
     if written == "before 2.81.0, its spread's name":
@@ -268,15 +269,13 @@ _NU, _QZP = 1000.0, 1.0
 
 
 def _mode_set(m=3, temperature_k=300.0, with_temperature=True, *,
-              extra=(), without=(), q_unit="amu^1/2 angstrom",
-              no_q_at=None):
+              extra=(), without=(), no_q_at=None):
     """A mode's own set's rows as `frameset.read` hands them, made through
     the Structure API as a script makes one: its frames at the m-point
     Gauss-Hermite rule's nodes for the thermal spread at ``temperature_k``,
     each weighted by the rule -- the set's own weights; ``extra`` structure
     rows ``(name, value)`` added, the structure rows named in ``without``
-    left out, the coordinate written in ``q_unit``, frame ``no_q_at``
-    stating none."""
+    left out, frame ``no_q_at`` stating none."""
     from molbuilder.frameset import read
     from molbuilder.structure import Structure
     from molbuilder.vibration import thermal_spread_amu12_ang
@@ -288,18 +287,19 @@ def _mode_set(m=3, temperature_k=300.0, with_temperature=True, *,
     x, w = x[order], w[order]
     s = Structure.from_xyz(_H2)
     s = s.with_frames([s.positions] * m)
-    stated = [("mode_index_1based", 7, None), ("frequency_cm1", _NU, "cm-1"),
+    stated = [("mode_index_1based", 7, "1"), ("frequency_cm1", _NU, None),
               ("zero_point_amplitude_amu12_ang", _QZP, "amu^1/2 angstrom")]
     if with_temperature:
         stated.append(("temperature_k", temperature_k, "K"))
-    for name, value, unit in [*stated, *((n, v, None) for n, v in extra)]:
+    for name, value, unit in [*stated, *((n, v, "1") for n, v in extra)]:
         if name not in without:
             s.set_customized(name, value, unit=unit)
     for f in range(m):
         if f != no_q_at:
             s.set_customized("q_amu12_ang", math.sqrt(2.0) * sigma * x[f],
-                             unit=q_unit, frame=f)
-        s.set_customized("weight", w[f] / math.sqrt(math.pi), frame=f)
+                             frame=f)
+        s.set_customized("weight", w[f] / math.sqrt(math.pi), unit="1",
+                         frame=f)
     return read(s)
 
 
@@ -343,7 +343,7 @@ def test_an_even_rules_set_at_its_own_state_says_nothing_of_another():
     s.set_customized("temperature_k", 300.0, unit="K")
     for f in range(len(q)):
         s.set_customized("q_amu12_ang", float(q[f]), frame=f)
-        s.set_customized("weight", float(w[f]), frame=f)
+        s.set_customized("weight", float(w[f]), unit="1", frame=f)
     got = weights_for_set(read(s), temperature_k=300.0)
     assert got.weights == pytest.approx(list(w), abs=1e-12)
     assert got.said == (), got.said
@@ -386,17 +386,6 @@ def test_a_swing_named_alone_on_a_warm_set_says_its_temperature_is_not_used():
     thermal = weights_for_set(_mode_set(3), classical=True)
     assert thermal.said[0] == ("the classical state at the set's "
                                "temperature, 300 K (its temperature_k row)")
-
-
-def test_a_coordinate_in_another_unit_is_read_as_written_and_said():
-    """§ 5.1, the product's stance (foreign input gets a warning): a set's
-    coordinate written in another unit than its name says is read as the
-    name's unit -- the weights given -- and said.  The silent failure:
-    weights computed from coordinates a hundred times off, unsaid."""
-    from molbuilder.vibration_frames import weights_for_set
-    got = weights_for_set(_mode_set(3, q_unit="nm"))
-    assert any(s.startswith("q_amu12_ang is written in another unit")
-               for s in got.said), got.said
 
 
 @pytest.mark.parametrize("rows, ask, refused", [

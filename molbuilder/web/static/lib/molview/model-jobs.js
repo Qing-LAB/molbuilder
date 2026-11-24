@@ -527,10 +527,13 @@ export function structureForServer(structure, coordinates) {
 
 
 /* ONE ROW of the structure's named values (`model/structure.md` § 2.2d), in
- * its one form -- the same rule `Structure`'s `_customized_row` applies on the
- * server: a non-empty name; a value that is a number, text or true/false; a
- * unit and a note that are text, kept only when they say something.  THROWS
- * with the reason, which the Metadata page says (§ 8.4a). */
+ * its one form -- its shape, as `Structure`'s `_customized_row` reads it on
+ * the server: a non-empty name; a value that is a number, text or
+ * true/false; a unit and a note that are text, kept only when they say
+ * something.  THROWS with the reason, which the Metadata page says (§ 8.4a).
+ * The unit rule -- a name that carries its unit leaves `unit` blank, any
+ * other number states one -- is the server's, asked when a person makes a
+ * row (`rowMade`, the Info page's Apply). */
 export function customizedRow(name, value, unit, note) {
     if (typeof name !== "string" || !name) {
         throw new Error("A named value needs a name.");
@@ -1030,11 +1033,26 @@ export async function resolveFilter(structure, rule, ask) {
 }
 
 
+/* A ROW AS IT IS MADE (`model/structure.md` § 2.2d; web-api.md's
+ * /api/structure/row): the named value the Info page applies, asked of the
+ * one rule every maker of a row asks on the server (`structure.made_row`)
+ * -- its unit said in one place: blank where the name carries it, a text's
+ * `1` not kept -- answered as the row in its one form, or the rule's
+ * refusal thrown in its words (§ 6.9).  Nothing is written. */
+export async function rowMade(ask, name, value, unit, note) {
+    const answer = await postJson(ask, "/api/structure/row",
+                                  { name: name, value: value,
+                                    unit: unit || null, note: note || null });
+    return answer.row;
+}
+
+
 /* ══ The one way this module talks to the server ═════════════════════════════
  *
- * § 11.1 names FOUR routes, and this file calls exactly those four: load a
- * structure, perform one geometry edit, resolve a cell, resolve a filter. The
- * field-level JSON of these payloads belongs to web-api.md.
+ * § 11.1 names FIVE routes, and this file calls exactly those five: load a
+ * structure, perform one geometry edit, resolve a cell, resolve a filter, make
+ * a named value's row. The field-level JSON of these payloads belongs to
+ * web-api.md.
  */
 async function postJson(ask, route, body) {
     /* THE ONE READER (ui-contract.md § 12), HANDED IN at mount as the

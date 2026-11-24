@@ -2740,3 +2740,28 @@ def test_a_structure_with_no_recorded_contract_is_flagged_at_all(app_at, pairs):
     assert out["none"] is True, (
         "the viewer invented a calculation block on a structure that never "
         "came from a run")
+
+
+def test_a_named_value_is_made_by_the_servers_one_rule(app_at, pairs):
+    """§ 9.3, `model/structure.md` § 2.2d: the Info page's Apply asks
+    `customized.made` -- the server's one rule for a row a person makes
+    (`/api/structure/row`) -- which answers the row in its one form, its
+    unit said in one place, or throws the rule's refusal in its words; it
+    changes nothing.  THE SILENT FAILURE: a row whose unit contradicts its
+    name, or a count stating none, made in the browser and carried into
+    every file after it."""
+    out = _run(app_at, pairs, """
+        const m = createModel({ owner: "s", workspace: ws });
+        await opened(m, "H2");
+        let refused = null;
+        try { await m.customized.made("weight", 0.5, {}); }
+        catch (e) { refused = String((e && e.message) || e); }
+        const kept = await m.customized.made("temperature_k", 300,
+                                             { unit: "K" });
+        console.log(JSON.stringify({ refused, kept,
+                                     rows: m.customized.list() }));
+        """)
+    assert "('weight'): a number whose name carries no unit" in (
+        out["refused"] or ""), out
+    assert out["kept"] == {"name": "temperature_k", "value": 300}, out
+    assert out["rows"] == [], "asking how a row is made changed the structure"

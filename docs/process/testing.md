@@ -957,7 +957,13 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   working with old files … very soon we won't have anything to migrate.
   Having it or not doesn't impact our work. This is design")*: `jobset
   migrate` and the readers of an older release's records stay as they are,
-  and no work goes into them.
+  and no work goes into them. One exception, the user's choice at 2.81.1's
+  commit: `tests/test_row_units.py` hands today's doors a row an earlier
+  molbuilder wrote — a count stating no unit, the one row no door makes now
+  — to show the save, the download, the hand-over and the codec's write
+  carry what they read rather than judge it
+  ([`model/structure.md`](?doc=model/structure.md) § 2.2d); no code exists
+  for older rows.
 - **API tests check what molbuilder prepares; end-to-end tests make the run**
   *(user, 2026-10-04: "you have to rely on more api and framework test rather
   than fucking e2e test. e2e test is only necessary when i say so";

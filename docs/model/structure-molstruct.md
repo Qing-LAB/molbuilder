@@ -45,7 +45,7 @@ plus the structure's **metadata fields** spread in alongside them.
   "vacuum": [0.0, 0.0, 12.0],
   "annotations": {"charge": {"kind": "value", "data": {"0": 0.1}}},
   "customized": {"rows":   [{"name": "temperature", "value": 300, "unit": "K"}],
-                 "frames": [[], [{"name": "mode", "value": 31}]]},
+                 "frames": [[], [{"name": "mode", "value": 31, "unit": "1"}]]},
   "atom_order": null,
   "atom_index_map": {"atoms_listed_by": "user_index", "atom_index_base": 0,
                      "user_atom_index": [0, 1],

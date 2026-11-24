@@ -261,6 +261,16 @@ def _persist():
     return persist
 
 
+def _units():
+    """The units table and the unit a name carries (`units`), imported both
+    ways: this module travels in the job bundles beside ``units``."""
+    try:                                    # inside molbuilder
+        from . import units
+    except ImportError:                     # beside a job
+        import units  # type: ignore[no-redef]
+    return units
+
+
 def _order_record_type():
     """The order record's class, imported both ways: this module travels in
     ``mb_pyscf.pyz`` beside ``atom_permutation``."""
@@ -275,10 +285,20 @@ def _order_record_type():
 _ROW_KEYS = ("name", "value", "unit", "note")
 
 
-def _customized_row(raw: Any, where: str) -> Dict[str, Any]:
+def _customized_row(raw: Any, where: str, *,
+                    made: bool = False) -> Dict[str, Any]:
     """One row, validated and in its one form: ``name`` a non-empty string,
     ``value`` a number, text or true/false, ``unit`` and ``note`` text and
-    present only when they say something."""
+    present only when they say something (a unit's surrounding spaces no
+    part of it) -- its unit in one place (`model/structure.md` § 2.2d):
+    beside a name that carries the same unit (`units.unit_of_name`; the
+    table's spelling or its page look, ``Å``), and beside a text or
+    true/false as ``1``, the unit is not kept.  ``made`` -- a row being
+    written, at a door that makes one (:func:`made_row`, and
+    `Structure.with_frames`' frame rows) -- holds THE RULE: a unit beside a
+    name that carries another is refused, a number whose name carries none
+    states one, a text or true/false states none.  A row read from a record
+    already written is read as it is."""
     if not isinstance(raw, dict):
         raise ValueError(
             f"{where}: a row is an object {{name, value, unit?, note?}}; got "
@@ -310,9 +330,69 @@ def _customized_row(raw: Any, where: str) -> Dict[str, Any]:
         if not isinstance(said, str):
             raise ValueError(f"{where} ({name!r}): {key} is text; got "
                              f"{type(said).__name__}")
+        if key == "unit":
+            said = said.strip()
         if said:
             out[key] = said
+    unit = out.pop("unit", None)
+    units = _units()
+    named = units.unit_of_name(name)
+    if isinstance(value, (str, bool)):
+        kind = "text" if isinstance(value, str) else "true/false"
+        if made and unit not in (None, "1"):
+            raise ValueError(
+                f"{where} ({name!r}): a {kind} has no unit; got {unit!r} -- "
+                f"leave unit blank")
+        if unit not in (None, "1"):
+            out["unit"] = unit
+    elif named is not None:
+        # THE NAME'S UNIT in the table's spelling or as a page shows it --
+        # `Å` beside `bond_ang`, copied from molbuilder's own card -- is the
+        # same unit, said once by the name.
+        given = units.unit_spelled(unit)
+        same = unit is None or given == named
+        if made and not same:
+            ending = units.UNIT_IN_NAME[named]
+            spelled = units.UNIT_IN_NAME.get(given) if given else None
+            # THE RENAME the unit given asks for: its ending in place of the
+            # one read (`displacement_ang` in nm, `displacement_nm`) -- after
+            # a one-letter ending, often no unit at all (`lattice_a`, the
+            # lattice constant a), its ending added (`lattice_a_ang`).
+            rename = (None if not spelled
+                      else f"{name}_{spelled}" if len(ending) == 1
+                      else f"{name[:-len(ending)]}{spelled}")
+            raise ValueError(
+                f"{where} ({name!r}): the name ends in _{ending}, which says "
+                f"its unit is {named!r} ({units.UNITS[named]}); unit says "
+                f"{unit!r} -- give the value in {named!r} and leave unit "
+                f"blank, or rename the row so its name says what it is"
+                + (f" ({rename})" if rename else ""))
+        if not same:
+            out["unit"] = unit
+    elif unit is None:
+        if made:
+            raise ValueError(
+                f"{where} ({name!r}): a number whose name carries no unit "
+                f"states its unit in unit -- any spelling ('fs', 'deg'), '1' "
+                f"for a count, an index, a fraction or a flag")
+    else:
+        out["unit"] = unit
+    if "note" in out:
+        out["note"] = out.pop("note")
     return out
+
+
+def made_row(name: Any, value: Any, unit: Optional[str] = None,
+             note: Optional[str] = None, *,
+             where: str = "a named value") -> Dict[str, Any]:
+    """A ROW AS A DOOR THAT MAKES ONE WRITES IT (`model/structure.md`
+    § 2.2d): in its one form, its unit said in one place -- or refused by
+    name, saying the fix (``ValueError``).  THE ONE RULE every maker of a
+    row asks: :meth:`Structure.set_customized`, and MolView's Info page at
+    *Apply* (`/api/structure/row`); `Structure.with_frames`' frame rows
+    pass the same validator."""
+    return _customized_row({"name": name, "value": value, "unit": unit,
+                            "note": note}, where, made=True)
 
 
 def _unique_names(rows: List[Dict[str, Any]], where: str) -> None:
@@ -1812,8 +1892,14 @@ class Structure:
                 f"frame this structure's {self.n_atoms} atoms in its order; "
                 f"got shape {frames.shape}")
         F = len(frames)
+        # EACH FRAME'S ROWS ARE MADE HERE (`model/structure.md` § 2.2d): the
+        # rule holds of them; the structure's rows are carried as read.
         sets = ([[] for _ in range(F)] if frame_rows is None
-                else [list(rows) for rows in frame_rows])
+                else [[_customized_row(
+                          row, f"with_frames: {frame_words(f, F)}'s row "
+                               f"{k + 1}", made=True)
+                       for k, row in enumerate(rows)]
+                      for f, rows in enumerate(frame_rows)])
         if len(sets) != F:
             raise ValueError(
                 f"with_frames: {len(sets)} frame row set(s) for {F} frame(s); "
@@ -1974,8 +2060,8 @@ class Structure:
         frame ``frame``.  A row of that name in that set is replaced where it
         stands; otherwise the row is added at the end."""
         f = self._frame_index(frame)
-        row = _customized_row({"name": name, "value": value, "unit": unit,
-                               "note": note}, "Structure.set_customized")
+        row = made_row(name, value, unit, note,
+                       where="Structure.set_customized")
         section = (_copy.deepcopy(self.customized)
                    or {"rows": [], "frames": [[] for _ in range(self.n_frames)]})
         rows = section["rows"] if f is None else section["frames"][f]
@@ -2852,4 +2938,5 @@ del Structure._frozen_atoms
 TRAVELS_WITH = ("molbuilder.atom_permutation",
                 "molbuilder.engine_atom_index",
                 "molbuilder.persist",
-                "molbuilder.structure_pair")
+                "molbuilder.structure_pair",
+                "molbuilder.units")

@@ -490,6 +490,11 @@ method = "POST"
 takes_no_path = "A structure envelope, a periodicity op and its payload."
 
 [[route]]
+rule = "/api/structure/row"
+method = "POST"
+takes_no_path = "A named value -- its name, value, unit and note -- answered as its row is made, in memory."
+
+[[route]]
 rule = "/api/structure/save"
 method = "POST"
 [[route.path]]

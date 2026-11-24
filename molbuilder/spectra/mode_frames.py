@@ -316,7 +316,7 @@ def frameset_from_mode(run_folder, *, mode: int, temperature_k: float,
     vocabulary = {r.name: r for r in ROWS}
 
     def write(name: str, value: Any, frame: Optional[int] = None) -> None:
-        built.set_customized(name, value, unit=vocabulary[name].unit_spelled,
+        built.set_customized(name, value, unit=vocabulary[name].unit_written,
                              note=vocabulary[name].means, frame=frame)
 
     frames = []

@@ -156,33 +156,33 @@ _C2_CM_K = 1.438776877
 
 #: A mode's own set's rows as `engines/vibration-frames.md` § 5.1's table
 #: states them -- ``(name, kind, unit as written, words, page unit)``, the
-#: structure's and each frame's, a row of no unit written with ``1`` (§ 5) --
+#: structure's and each frame's, each unit in one place
+#: (`model/structure.md` § 2.2d): blank where the name carries it, ``1`` for
+#: a number of none, none for a text --
 #: in its order: what the Transport tab's card shows for the set the
 #: fixture wrote (`engines/transport.md` § 3.8.1); the generator's rule and
 #: masses as `engines/vibration.md` § 5.10 ③ states them.
-_SET_ROWS = (("vibration_run", "given", "1", "Vibration run", None),
-             ("vibration_result_sha256", "given", "1", "Result sha256", None),
-             ("mass_source", "given", "1", "Masses", None),
-             ("assumptions", "given", "1", "Assumptions", None),
-             ("sampling_rule", "given", "1", "Sampling rule", None),
+_SET_ROWS = (("vibration_run", "given", None, "Vibration run", None),
+             ("vibration_result_sha256", "given", None, "Result sha256", None),
+             ("mass_source", "given", None, "Masses", None),
+             ("assumptions", "given", None, "Assumptions", None),
+             ("sampling_rule", "given", None, "Sampling rule", None),
              ("sampling_nodes", "given", "1", "Nodes", None),
              ("mode_index_1based", "given", "1", "Mode", None),
-             ("frequency_cm1", "given", "cm-1", "Frequency", "cm⁻¹"),
-             ("zero_point_amplitude_amu12_ang", "given", "amu^1/2 angstrom",
+             ("frequency_cm1", "given", None, "Frequency", "cm⁻¹"),
+             ("zero_point_amplitude_amu12_ang", "given", None,
               "Zero-point amplitude", "amu½·Å"),
-             ("temperature_k", "given", "K", "Temperature", "K"),
+             ("temperature_k", "given", None, "Temperature", "K"),
              ("mean_quanta", "derived", "1", "Mean quanta n", None),
-             ("spread_amu12_ang", "derived", "amu^1/2 angstrom",
-              "Spread σ", "amu½·Å"),
-             ("max_displacement_ang", "measured", "angstrom",
-              "Outermost move", "Å"))
+             ("spread_amu12_ang", "derived", None, "Spread σ", "amu½·Å"),
+             ("max_displacement_ang", "measured", None, "Outermost move",
+              "Å"))
 _SAMPLING = {"sampling_rule": "gauss-hermite", "sampling_nodes": 3,
              "mass_source": "standard atomic weights"}
-_FRAME_ROWS = (("displacement_ang", "measured", "angstrom",
-                "Displacement", "Å"),
-               ("max_atom_displacement_ang", "measured", "angstrom",
+_FRAME_ROWS = (("displacement_ang", "measured", None, "Displacement", "Å"),
+               ("max_atom_displacement_ang", "measured", None,
                 "Largest atom move", "Å"),
-               ("q_amu12_ang", "derived", "amu^1/2 angstrom",
+               ("q_amu12_ang", "derived", None,
                 "Position along the mode, q", "amu½·Å"),
                ("node_sigma", "derived", "1", "q in units of σ", None),
                ("weight", "given", "1", "Weight", None))
@@ -3035,9 +3035,10 @@ def test_the_frames_average_is_every_frames_curve_at_its_stated_weight(
                   for p in (path, sidecar_path_for(path))},
         "rows": cited.customized_rows()}
     # ...and `summarize` prints the set's rows as written, a whole number
-    # whole, no unit where it is the dimensionless one (§ 3.8.1).
+    # whole, no unit where it is the dimensionless one or the name carries
+    # it (§ 3.8.1).
     _said(run, "summarize", "  the frame set's rows, as written:",
-          "    sampling_nodes 3", f"    temperature_k {_TEMPERATURE_K:g} K")
+          "    sampling_nodes 3", f"    temperature_k {_TEMPERATURE_K:g}\n")
     assert [e["bias_v"] for e in avg["at"]] == list(_BIAS)
     for e in avg["at"]:
         assert e["waits_for"] == [] and e["why"] is None, e

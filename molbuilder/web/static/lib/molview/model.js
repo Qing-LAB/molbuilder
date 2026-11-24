@@ -19,7 +19,7 @@
 import {
     createLoad, createWriteOut, createEdits, createCellEdit, FROZEN_LABEL,
     structureForServer, groupByLabel, effectiveCell, customizedRow,
-    resolveFilter as askServerToFilter,
+    resolveFilter as askServerToFilter, rowMade,
 } from "./model-jobs.js";
 import { toDisplay } from "./_atom.js";
 import { createSelectionStore, createMeasurementStore, createViewStore }
@@ -940,7 +940,9 @@ export function createModel(opts) {
          * viewer answers `false`) and RECORDED on the history, and they are
          * the model's only writers of either list.  A row that does not fit
          * is refused with its reason (a thrown Error), which the Metadata
-         * page says. */
+         * page says.  `made` asks the server how a row a person makes is
+         * written -- its unit said in one place, or refused (`rowMade`); it
+         * changes nothing, and the Info page's Apply sets what it answers. */
         customized: (function () {
             function frameAt(frame) {
                 if (frame == null) return null;
@@ -953,6 +955,10 @@ export function createModel(opts) {
             }
             const namesOf = (rows) => new Set((rows || []).map((r) => r.name));
             return {
+                made(name, value, given) {
+                    const o = given || {};
+                    return rowMade(opts.ask, name, value, o.unit, o.note);
+                },
                 list(frame) {
                     if (!structure) return [];
                     const f = frameAt(frame);

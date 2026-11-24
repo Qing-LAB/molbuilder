@@ -4,8 +4,8 @@ and the tables every NetCDF file molbuilder writes or opens shares
 catalogue, § 9 there; each file's science, its chapter's).
 
 MODULE  ncdata (L2 by the index, `architecture.md`; it imports only numpy,
-        netCDF4 and L1's constants, engine_table, persist, atom_permutation
-        and structure, as it travels beside a job)
+        netCDF4, the units table (`units`) and L1's engine_table, persist,
+        atom_permutation and structure, as it travels beside a job)
 ROLE    :class:`Var` -- one variable: its dimensions, its kind (given, raw,
         derived, state, coordinate), its units, its words; :data:`AXES` --
         every axis of every data file, one name for one concept, which
@@ -14,8 +14,8 @@ ROLE    :class:`Var` -- one variable: its dimensions, its kind (given, raw,
         history, one layout in every file: its count (:func:`scf_cycles_var`,
         the one declaration of a count of SCF rows) and the columns its
         engine declares (§ 3a);
-        :data:`UNITS` -- every unit's one spelling and its meaning, which
-        :func:`check_said` holds every variable to (§ 2c); :func:`state`
+        :func:`check_said`, which holds every variable to the units
+        table (§ 2c; its home `units`, molbuilder's one list); :func:`state`
         -- the file's own title, schema, molbuilder version and source
         (§ 2b); :func:`empty` --
         the array a variable starts as, its fill stated; :func:`write_group`
@@ -70,10 +70,8 @@ import netCDF4
 import numpy as np
 
 try:                                        # inside molbuilder
-    from . import constants as _C
     from . import engine_table as _engines
 except ImportError:                         # beside a job: it travels too
-    import constants as _C  # type: ignore[no-redef]
     import engine_table as _engines  # type: ignore[no-redef]
 
 # TWO WAYS, because this module travels beside the job.
@@ -318,93 +316,16 @@ def axis_values(axis: str, size: int) -> np.ndarray:
     return np.arange(int(size))
 
 
-def _scientific(value: float, digits: int) -> str:
-    """``value`` as a unit's meaning states it -- ``7.748092e-5``, its
-    exponent unpadded."""
-    mantissa, exponent = f"{value:.{digits}e}".split("e")
-    return f"{mantissa}e{int(exponent)}"
-
-
-#: ONE SPELLING FOR EACH UNIT (`model/datafiles.md` § 2c): every unit a data
-#: file states a number in, with what it means in words -- the writer refuses
-#: a number in another spelling, and each file states the meanings of the
-#: units it uses (``unit_meanings``).  A new unit is a row here and there, in
-#: the change that first writes it.
-UNITS: Dict[str, str] = {
-    "1": "no unit -- a count, an index, a fraction or a flag",
-    "%": "per cent",
-    "s": "second",
-    "K": "kelvin",
-    "V": "volt",
-    "A": "ampere",
-    "e": f"the elementary charge, {_scientific(_C.ELEMENTARY_CHARGE_C, 9)} C",
-    "eV": f"electronvolt, {_scientific(_C.ELEMENTARY_CHARGE_C, 9)} J",
-    "eV/angstrom": "electronvolt per angstrom",
-    "kbar": "kilobar, 1e8 Pa",
-    "1/eV": "per electronvolt",
-    "Eh": f"hartree, the atomic unit of energy, {_C.HARTREE_EV:.6f} eV",
-    "Eh^2": "hartree squared",
-    "Eh/K": "hartree per kelvin",
-    "Eh/bohr": f"hartree per bohr, the atomic unit of force (1 bohr = "
-               f"{_C.BOHR_ANGSTROM:.6f} angstrom)",
-    "atm": f"standard atmosphere, {_C.ATM_PA:g} Pa",
-    "G0": f"the conductance quantum, 2e^2/h = "
-          f"{_scientific(_C.CONDUCTANCE_QUANTUM_S, 6)} S",
-    "nm": "nanometre",
-    "cm-1": "wavenumber, per centimetre",
-    "km/mol": "kilometre per mole",
-    "angstrom": "angstrom, 1e-10 m",
-    "angstrom^3": "cubic angstrom",
-    "amu": f"the unified atomic mass unit (dalton), "
-           f"{_scientific(_C.AMU_KG, 8)} kg",
-    "amu^1/2 angstrom": "square-root amu times angstrom",
-    "amu^-1/2": "per square-root amu",
-    "angstrom^2/amu^1/2": "square angstrom per square-root amu",
-    "D/(angstrom amu^1/2)": f"debye ({_scientific(_C.DEBYE_C_M, 5)} C m) per "
-                            f"angstrom per square-root amu",
-    "angstrom^4/amu": "angstrom to the fourth per amu",
-    "mdyn/angstrom": "millidyne per angstrom, 100 N/m -- a force constant as "
-                     "Gaussian prints it",
-    "kcal/mol": f"kilocalorie per mole, {_C.CALORIE_J:g} kJ/mol",
-    "GiB": "gibibyte, 2^30 bytes",
-}
-#: EACH UNIT AS A NAME SPELLS IT (`model/datafiles.md` § 2a rule 2, § 2c's
-#: last column): a number's name ends with it -- ``force_ev_per_ang`` -- and a
-#: number of no unit (``1``) carries none.  The one writer refuses a name that
-#: does not (:func:`check_said`).
-UNIT_IN_NAME: Dict[str, str] = {
-    "1": "",
-    "%": "percent",
-    "s": "s",
-    "K": "k",
-    "V": "v",
-    "A": "a",
-    "e": "e",
-    "eV": "ev",
-    "eV/angstrom": "ev_per_ang",
-    "kbar": "kbar",
-    "1/eV": "per_ev",
-    "Eh": "eh",
-    "Eh^2": "eh2",
-    "Eh/K": "eh_per_k",
-    "Eh/bohr": "eh_per_bohr",
-    "atm": "atm",
-    "G0": "g0",
-    "nm": "nm",
-    "cm-1": "cm1",
-    "km/mol": "km_per_mol",
-    "angstrom": "ang",
-    "angstrom^3": "ang3",
-    "amu": "amu",
-    "amu^1/2 angstrom": "amu12_ang",
-    "amu^-1/2": "per_amu12",
-    "angstrom^2/amu^1/2": "ang2_per_amu12",
-    "D/(angstrom amu^1/2)": "d_per_ang_amu12",
-    "angstrom^4/amu": "ang4_per_amu",
-    "mdyn/angstrom": "mdyn_per_ang",
-    "kcal/mol": "kcal_per_mol",
-    "GiB": "gib",
-}
+#: ONE SPELLING FOR EACH UNIT and each unit as a name spells it
+#: (`model/datafiles.md` § 2c) -- molbuilder's one list of units, kept in
+#: `units` so a structure's rows read it too: the writer refuses a number in
+#: another spelling, and each file states the meanings of the units it uses
+#: (``unit_meanings``).
+try:                                        # inside molbuilder
+    from .units import UNIT_IN_NAME, UNITS, unit_of_name
+except ImportError:                         # beside a job, in a bundle
+    from units import (UNIT_IN_NAME, UNITS,  # type: ignore[no-redef]
+                       unit_of_name)
 
 
 def check_said(var: Var) -> None:
@@ -428,21 +349,21 @@ def check_said(var: Var) -> None:
             raise ValueError(
                 f"variable {var.name} is text and states the unit "
                 f"{var.units!r}: a text has no unit (model/datafiles.md 2c)")
-    elif var.units in UNITS and UNIT_IN_NAME[var.units] and (
-            not (var.name == UNIT_IN_NAME[var.units]
-                 or var.name.endswith("_" + UNIT_IN_NAME[var.units]))
-            or (not UNIT_IN_NAME[var.units].startswith("per_")
-                and var.name.endswith("_per_" + UNIT_IN_NAME[var.units]))):
-        raise ValueError(
-            f"variable {var.name} states the unit {var.units!r} and does "
-            f"not end with it: a name ends with its unit as "
-            f"model/datafiles.md 2c spells it in a name, "
-            f"_{UNIT_IN_NAME[var.units]}")
     elif var.units not in UNITS:
         raise ValueError(
             f"variable {var.name} states the unit {var.units!r}, which is "
-            f"not a spelling of model/datafiles.md 2c (ncdata.UNITS): one "
+            f"not a spelling of model/datafiles.md 2c (units.UNITS): one "
             f"spelling for each unit, '1' for none")
+    elif UNIT_IN_NAME[var.units] and unit_of_name(var.name) != var.units:
+        # THE UNIT A NAME CARRIES, by the one reader of a name's ending
+        # (`units.unit_of_name`), a structure's rows' too.
+        carried = unit_of_name(var.name)
+        raise ValueError(
+            f"variable {var.name} states the unit {var.units!r}, and its name "
+            + ("ends in no unit" if carried is None else
+               f"ends in _{UNIT_IN_NAME[carried]}, {carried!r}")
+            + f": a name ends with its unit as model/datafiles.md 2c spells "
+              f"it in a name, _{UNIT_IN_NAME[var.units]}")
 
 
 def check_axes(dims: Mapping[str, Any], variables: Sequence[Var]) -> None:
@@ -1329,7 +1250,7 @@ def exported(files: Mapping[str, bytes], fmt: str, *, stem: str,
     return Exported(name, out, said)
 
 
-__all__ = ["Var", "Axis", "AXES", "UNITS", "CONVENTIONS", "ROOT_FACTS",
+__all__ = ["Var", "Axis", "AXES", "CONVENTIONS", "ROOT_FACTS",
            "check_axes", "check_said", "state", "ATOM_AXIS", "FLAG_FILL", "NC_LOCK", "as_tables", "empty",
            "read_atom_index_map", "size_of", "flag", "unflag", "number_attr",
            "reading", "OpenedTwice",
@@ -1339,7 +1260,6 @@ __all__ = ["Var", "Axis", "AXES", "UNITS", "CONVENTIONS", "ROOT_FACTS",
            "coordinate", "axis_values", "scf_cycles_var", "scf_history_vars",
            "scf_history_values", "groups", "checked", "read_file",
            "named_now", "key_of", "stated", "copy_stated", "json_attrs",
-           "UNIT_IN_NAME",
            "STRUCTURE_JSON",
            "structure_vars", "structure_values", "structure_attrs",
            "write_structure_group", "read_structure_group",
@@ -1350,7 +1270,7 @@ __all__ = ["Var", "Axis", "AXES", "UNITS", "CONVENTIONS", "ROOT_FACTS",
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
 #: imports there by their bare names (`runwrap.bundle_members`).
 TRAVELS_WITH = ("molbuilder.atom_permutation",
-                "molbuilder.constants",
                 "molbuilder.engine_table",
                 "molbuilder.persist",
-                "molbuilder.structure")
+                "molbuilder.structure",
+                "molbuilder.units")

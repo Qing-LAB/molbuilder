@@ -2364,8 +2364,8 @@ function mountPanel(doc, card, model) {
             label.textContent = row.name;
             line.appendChild(label);
             const value = el("span", "molviewer-info-value");
-            // NO UNIT FOR THE DIMENSIONLESS "1", the spelling a row of no
-            // unit is written with (engines/vibration-frames.md § 5).
+            // NO UNIT FOR THE DIMENSIONLESS "1", the unit a count, an index,
+            // a fraction or a flag states (model/structure.md § 2.2d).
             value.textContent = String(row.value)
                 + (row.unit && row.unit !== "1" ? " " + row.unit : "");
             if (row.note) value.title = row.note;
@@ -2394,7 +2394,10 @@ function mountPanel(doc, card, model) {
         };
         const first = field("name", "name");
         field("value", "value");
-        field("unit", "unit (optional)");
+        // THE UNIT RULE IN THE FIELD'S OWN WORDS (model/structure.md
+        // § 2.2d): blank where the name ends in its unit, else stated --
+        // Apply names a row that breaks it.
+        field("unit", "unit (1 for a count; blank if the name ends in it)");
         field("note", "note (optional)");
         if (count > 0) {
             const which = el("select", "molviewer-filter-text");
@@ -2413,16 +2416,29 @@ function mountPanel(doc, card, model) {
             box.appendChild(which);
         }
         const row = el("div", "molviewer-selection-actions-row");
-        row.appendChild(infoButton("Apply", () => {
+        row.appendChild(infoButton("Apply", async () => {
+            // THE FORM AS CLICKED: the server is asked before anything is
+            // set, so a second click or a Cancel may land meanwhile -- the
+            // answer is for this form, and only while it is still open.
+            const adding = custAdding;
+            if (!adding) return;
+            const frame = adding.frame ? model.currentFrame() : undefined;
             let done;
             try {
-                done = model.customized.set(String(custAdding.name || "").trim(),
-                                     custValue(custAdding.value || ""),
-                                     { unit: custAdding.unit || null,
-                                       note: custAdding.note || null,
-                                       frame: custAdding.frame
-                                           ? model.currentFrame() : undefined });
+                // THE ROW AS THE SERVER MAKES IT (model/structure.md § 2.2d):
+                // its unit said in one place, or the rule's refusal said
+                // here, where the person made it -- then set as answered.
+                const made = await model.customized.made(
+                    String(adding.name || "").trim(),
+                    custValue(adding.value || ""),
+                    { unit: adding.unit || null, note: adding.note || null });
+                if (custAdding !== adding) return;   // cancelled, or applied
+                done = model.customized.set(made.name, made.value,
+                                     { unit: made.unit || null,
+                                       note: made.note || null,
+                                       frame: frame });
             } catch (e) {
+                if (custAdding !== adding) return;
                 infoSay("Not applied -- " + ((e && e.message) || e));
                 return;
             }

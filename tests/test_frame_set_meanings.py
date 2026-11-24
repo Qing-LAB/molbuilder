@@ -10,8 +10,8 @@ made through the Structure API, as a person's script makes it, and each of
 transport's readers is asked -- the page's answer, the record's average and
 citation, `summarize`'s lines and the data file's frame part.
 
-The silent failures it guards: a person's row in another unit refused, or
-relabelled with words it never had; a harmonic mode's assumptions stated
+The silent failures it guards: a person's own row refused by a calculation,
+or relabelled with words it never had; a harmonic mode's assumptions stated
 beside frames a person built.
 """
 import math
@@ -25,19 +25,21 @@ _OWN = "a Boltzmann weight at 300 K over the frames' harmonic energies"
 
 def _frames(weights=(0.5, 0.5), note=_OWN):
     """Frames of H2, each stating its ``weight`` (``None``: none) with
-    ``note``, and a displacement in nm; the structure a mode's number, a
-    frequency at full precision and a row of its maker's own."""
+    ``note``, and a stretch of its maker's own in nm; the structure a mode's
+    number, a frequency at full precision -- its unit in its name, its
+    ``unit`` blank (`model/structure.md` § 2.2d) -- and a row of its
+    maker's own."""
     from molbuilder.structure import Structure
     s = Structure.from_xyz("2\nH2\nH 0 0 0\nH 0 0 0.74\n")
     s = s.with_frames([s.positions] * len(weights))
     for f, w in enumerate(weights):
         if w is not None:
-            s.set_customized("weight", w, frame=f, note=note)
-        s.set_customized("displacement_ang", 0.05 * f, unit="nm", frame=f)
-    s.set_customized("mode_index_1based", 6)
-    s.set_customized("frequency_cm1", 2548.365564447995, unit="cm-1",
+            s.set_customized("weight", w, unit="1", frame=f, note=note)
+        s.set_customized("bond_stretch", 0.05 * f, unit="nm", frame=f)
+    s.set_customized("mode_index_1based", 6, unit="1")
+    s.set_customized("frequency_cm1", 2548.365564447995,
                      note="the mode's wavenumber")
-    s.set_customized("seed", 20261123)
+    s.set_customized("seed", 20261123, unit="1")
     s.set_customized("sampling_nodes", 3, unit="1")
     s.set_customized("bond", "H-H", note="the bond the frames stretch")
     return s
@@ -45,23 +47,22 @@ def _frames(weights=(0.5, 0.5), note=_OWN):
 
 def test_the_page_is_answered_the_rows_as_written():
     """§ 3.8.1: the describe door's frames are the rows as written -- each
-    name, value, unit and meaning -- a row in another unit than a
-    vocabulary's carried, never refused, and no words of transport's own.
-    The silent failure: a row of the person's relabelled, or the citation
-    refused for a unit."""
+    name, value, unit and meaning -- a person's own row in its own unit
+    carried, and no words of transport's own.  The silent failure: a row of
+    the person's relabelled, or the citation refused for it."""
     from molbuilder.frame_average import answer
     definition = answer(_frames())["definition"]
     assert definition["structure"] == [
-        {"name": "mode_index_1based", "value": 6, "unit": None, "note": None},
+        {"name": "mode_index_1based", "value": 6, "unit": "1", "note": None},
         {"name": "frequency_cm1", "value": 2548.365564447995,
-         "unit": "cm-1", "note": "the mode's wavenumber"},
-        {"name": "seed", "value": 20261123, "unit": None, "note": None},
+         "unit": None, "note": "the mode's wavenumber"},
+        {"name": "seed", "value": 20261123, "unit": "1", "note": None},
         {"name": "sampling_nodes", "value": 3, "unit": "1", "note": None},
         {"name": "bond", "value": "H-H", "unit": None,
          "note": "the bond the frames stretch"}]
     assert definition["columns"] == [
-        {"name": "weight", "unit": None, "note": _OWN},
-        {"name": "displacement_ang", "unit": "nm", "note": None}]
+        {"name": "weight", "unit": "1", "note": _OWN},
+        {"name": "bond_stretch", "unit": "nm", "note": None}]
     assert definition["frames"] == [[0.5, 0.0], [0.5, 0.05]]
     assert set(definition) == {"structure", "columns", "frames", "weights",
                                "weight_sum", "warnings"}, definition
@@ -86,7 +87,7 @@ def test_the_record_reads_the_weights_alone_and_says_its_own_assumptions(
                           same_volts)
     assert (block["weights"] is not None) is average, block
     assert len(block["warnings"]) == warned, block
-    assert not any("displacement_ang" in w for w in block["warnings"])
+    assert not any("bond_stretch" in w for w in block["warnings"])
     assert block["assumptions"] == (list(ASSUMPTIONS) if average else [])
     # TRANSPORT'S FIVE (science § 7, items 2-6), a set stating a mode
     # included: the harmonic mode's is its maker's own row.
@@ -107,7 +108,7 @@ def test_summarize_prints_each_row_as_written():
                           citation_block(s, {}))
     rows = lines[lines.index("  the frame set's rows, as written:") + 1:]
     assert rows == ["    mode_index_1based 6",
-                    "    frequency_cm1 2548.365564447995 cm-1",
+                    "    frequency_cm1 2548.365564447995",
                     "    seed 20261123", "    sampling_nodes 3",
                     "    bond H-H"], lines
 
@@ -130,10 +131,10 @@ def test_frames_with_no_average_say_why():
 
 @pytest.mark.parametrize("page", ["the citation", "the Results report"])
 def test_a_page_opens_whatever_rows_a_set_writes(page):
-    """§ 3.8.1, `model/structure.md` § 2.2f: nothing is refused for a row --
-    a set with a row in another unit than a maker's vocabulary says has its
-    citation's frames answered as written, that row among them, and its
-    Results report's average taken at its weights.  The silent failure: the
+    """§ 3.8.1, `model/structure.md` § 2.2f: a calculation refuses no row --
+    a set with a person's own row in its own unit has its citation's frames
+    answered as written, that row among them, and its Results report's
+    average taken at its weights.  The silent failure: the
     Transport tab's picker, Task setup's folder or the Results tab answering
     an error, or no average, for a person's own row."""
     from molbuilder.frame_average import answer, average_said
@@ -141,7 +142,7 @@ def test_a_page_opens_whatever_rows_a_set_writes(page):
     s = _frames()
     if page == "the citation":
         columns = answer(s)["definition"]["columns"]
-        assert {"name": "displacement_ang", "unit": "nm",
+        assert {"name": "bond_stretch", "unit": "nm",
                 "note": None} in columns, columns
         return
     said = average_said(2, read(s), [], [], same_volts)

@@ -10,9 +10,9 @@ at 2.77.23 is [`archive/2026-11-22-plan-consolidation.md`](?doc=archive/2026-11-
 
 ---
 
-## ▶ Where we are *(2026-11-23)*
+## ▶ Where we are *(2026-11-24)*
 
-**2.81.0.** F0–F11 and F7a are closed (2.56.2–2.77.2). F12, *Proven*,
+**2.81.1.** F0–F11 and F7a are closed (2.56.2–2.77.2). F12, *Proven*,
 walked its three roads in the browser on real runs and ran the full batch
 (6106 fast and 805 e2e tests, none failed, at 2.77.2); its two review rounds
 ([`archive/audits/2026-11-18-f12-review/`](?doc=archive/audits/2026-11-18-f12-review/TRIAGE-round1.md))
@@ -20,7 +20,7 @@ sorted every finding into the releases below. **The finish plan** *(the
 user, 2026-11-19: "a consolidated plan to get things finished, not to drag
 things along")*: five releases, R1–R5, each with its review rounds. R1 and R2
 are done; R3, one home per fact on the server side, grew from one release
-into parts as reviews and the user's decisions added work, fourteen of them
+into parts as reviews and the user's decisions added work, fifteen of them
 shipped:
 
 | version | part | what it did | record |
@@ -42,6 +42,7 @@ shipped:
 | 2.79.0 | R3d2b1 | a vibration's record states each mode's mechanics: each atom's share of the motion, the largest zero-point move, Gaussian's reduced mass and force constant, the spread and mean quanta at the modes' temperatures (schema 15, data file @11) | `fix20-review.md` |
 | 2.80.0 | R3d2b2a | the molecule's motion in `vibration`: every state's own frames, draws and re-weighting; modes set apart and drive groups; snapshots, their error and pooling | `fix21-review.md` |
 | 2.81.0 | R3d2b2b1 | transport reads each frame's weight alone and carries every other row as written (data file @14, record @19); a frame set's words and provenance the motion toolkit's, on every page that shows one, the Results tab's frame-set card new; `reaveraged` for any state | `fix22-review.md` |
+| 2.81.1 | R3d2b2b2a | a structure's row says its unit once — a name that carries it leaves `unit` blank, any other number states one; held where a row is made (a script's doors, the Metadata page's Apply, which asks the server), every record already written read and carried as written; the units table one row per unit in `units.py` | `fix23-review.md` |
 
 Records: `archive/audits/2026-11-18-f12-review/fix<N>-review.md`. Since
 2.77.23 the host env holds `molbuilder-source.pth` on the development machine
@@ -166,7 +167,7 @@ and an API reviewer** *(the user, 2026-11-23)*.
   NaN in the data file; its force constant positive, $\mu\lvert\omega\rvert^2$,
   as Gaussian prints it; `vibration.mean_quanta` refusing a frequency that is
   not positive; `mdyn/angstrom` a row of the data files'
-  units (`model/datafiles.md` § 2c, `ncdata.UNITS`); every value derived by
+  units (`model/datafiles.md` § 2c, `units.UNITS`); every value derived by
   the module, written by both engines, checked on read; each atom's element
   its species label's name (`Structure.chemical_symbols`, travelling), prep
   having made it an element; `Mode`'s fields by the record's names; the load
@@ -185,7 +186,18 @@ and an API reviewer** *(the user, 2026-11-23)*.
   toolkit's** — made first, so a set the new writer writes is never laid out
   by transport's own table of rows; its pieces and visible changes are
   [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 9's
-  *Built (2.81.0, R3d2b2b1)* list and the changelog's row; **R3d2b2b2, the host toolkit's writer and reader** —
+  *Built (2.81.0, R3d2b2b1)* list and the changelog's row; **R3d2b2b2, the host toolkit's writer and reader**, in two releases:
+  **R3d2b2b2a, a row's unit said in one place** (built in 2.81.1,
+  `fix23-review.md`; the user, 2026-11-24:
+  `model/structure.md` § 2.2d — a name that carries its unit leaves `unit`
+  blank, any other number states one, any spelling, shown as written; the
+  rule holds where a row is made, the script's doors and MolView's Info page
+  at Apply, which asks the server's one rule (`structure.made_row`); a record
+  already written read as it is and carried as read by every copy — the
+  save, the download and the hand-over from any tab among them — the
+  sidecar's form unchanged, v17; the units table one list, in `units.py`,
+  one row per unit, the unit a name carries and its page spelling,
+  `model/datafiles.md` § 2c), then **R3d2b2b2b** —
   `vibration_of_run`, `write_frame_set`, `read_frame_set`, `postprocess`'s
   doors, `frameset from-mode` and *Write frame set…* for any state, the load
   door's block, `spectra.mode_frames` retired; **R3d2b2c, the example
@@ -216,7 +228,9 @@ and an API reviewer** *(the user, 2026-11-23)*.
     and a person's frames whose first is not exactly it, a prepended frame 0
     stating every frame row at 0; each frame's measured rows; the provenance
     as rows; the `assumptions` row; `info.sampling` from the snapshot recipe;
-    rows and frame rows `{name, value, unit, note}`, a row with no unit `"1"`;
+    rows and frame rows `{name, value, unit, note}`, each row's unit in one
+    place (`model/structure.md` § 2.2d: blank where its name carries it, `"1"`
+    for a count, none for a text);
     a person's `frame0_rows` for a prepended frame 0, a person's frame row
     named like the writer's own refused by name; a snapshot set's `seed`,
     `start` and `samples` rows, a pooled set's `pooled` 1 and its parts in

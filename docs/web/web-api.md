@@ -526,6 +526,7 @@ owned by [`molview.md`](?doc=web/molview.md):
 | POST `/api/selection/eval` | Evaluate a selection expression |
 | POST `/api/structure/periodicity` | The Cell page's edits — four single-field ops and `block`, the whole cell — through the frame-contract gate |
 | POST `/api/structure/export` | The pair a save would write, **named and returned** instead of written |
+| POST `/api/structure/row` | `{name, value, unit?, note?}` → `{ok, row}`: **a named value as its row is made** — MolView's Info page asks at *Apply* ([`molview.md`](?doc=web/molview.md) § 9.3), the one place a person makes a row in the browser — the row in its one form, its unit said in one place, or the rule's refusal in its words (400) ([`model/structure.md`](?doc=model/structure.md) § 2.2d). Nothing is written; the save, the export and the hand-over carry a structure's rows as they are |
 
 **Files + projects** — owned by [`projects.md`](?doc=web/projects.md):
 

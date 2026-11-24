@@ -456,6 +456,26 @@ def api_structure_export():
                     "notices": notices})
 
 
+@bp.route("/api/structure/row", methods=["POST"])
+def api_structure_row():
+    """A NAMED VALUE AS A ROW IS MADE (`model/structure.md` § 2.2d), asked
+    by MolView's Info page at *Apply* -- the one place a person makes a row
+    in the browser (`web/molview.md` § 9.3).  Body ``{name, value, unit?,
+    note?}``; answers ``{ok, row}``, the row in its one form -- its unit
+    said in one place: blank where the name carries it, a text's ``1`` not
+    kept -- or the rule's refusal in its words (400).  The one rule every
+    maker asks (`structure.made_row`); nothing is written, and the save,
+    the export and the hand-over carry a structure's rows as they are."""
+    from molbuilder.structure import made_row
+    body = request.get_json(silent=True) or {}
+    try:
+        row = made_row(body.get("name"), body.get("value"), body.get("unit"),
+                       body.get("note"), where="the named value")
+    except ValueError as exc:
+        return err(str(exc), 400)
+    return jsonify({"ok": True, "row": row})
+
+
 def _chosen_frame(whole: Structure, body: Dict[str, Any]) -> Structure:
     """The frame a load answers with -- ``StructureCodec.frame_choice``, the
     one rule (``model/structure.md`` § 2.3): frame 0 unless the body names

@@ -60,12 +60,12 @@ def _write(variables, *, title="the group", stated=True, attrs=None,
      "says": ["variable x states the unit 'Angstrom'", "datafiles.md 2c"]},
     {"variables": (_E, Var("width", ("energy_ev",), "given", "eV", "a width",
                            "the window's width")),
-     "says": ["variable width states the unit 'eV' and does not end with it",
-              "_ev"]},
+     "says": ["variable width states the unit 'eV', and its name ends in "
+              "no unit", "_ev"]},
     {"variables": (_E, Var("width_per_ev", ("energy_ev",), "given", "eV",
                            "a width", "the window's width")),
-     "says": ["variable width_per_ev states the unit 'eV' and does not end "
-              "with it"]},
+     "says": ["variable width_per_ev states the unit 'eV', and its name "
+              "ends in _per_ev, '1/eV'"]},
     {"variables": (_E, Var("t", ("energy_ev",), "raw", "1", "T(E)",
                            "as the run printed it")),
      "says": ["variable t is raw and states no source"]},
@@ -96,7 +96,8 @@ def test_the_writer_refuses_a_file_that_does_not_state_itself(case):
 
 
 def test_a_file_that_states_itself_says_what_its_units_mean():
-    from molbuilder.ncdata import UNITS, reading
+    from molbuilder.ncdata import reading
+    from molbuilder.units import UNITS
     data = _write((_E, Var("dos_per_ev", ("energy_ev",), "raw", "1/eV", "the DOS",
                            "summed over the device", source="T.TBT.AVDOS"),
                    Var("count", (), "given", "1", "a count", "of things"),

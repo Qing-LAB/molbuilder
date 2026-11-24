@@ -53,7 +53,8 @@ flowchart LR
 ## 1. The object (L1 data model)
 
 **Module:** `molbuilder/structure.py`. **Tests:** `tests/test_structure.py`,
-`tests/test_load.py`, `tests/test_pdb_ter.py`.
+`tests/test_load.py`, `tests/test_pdb_ter.py`, `tests/test_row_units.py` (a
+row's unit in one place, § 2.2d).
 
 Adding a new format means a new method on `Structure`, not changes to the
 builders.
@@ -427,7 +428,41 @@ customized parameters". 2026-10-09: "the data structure should be an indexed
 array … the API should be like having a frame as a separate parameter".)*
 
 A **row** is a named value: `name` (a non-empty string), `value` (a number,
-text or true/false), and optionally `unit` and `note`. The section holds the
+text or true/false), and optionally `unit` and `note`.
+
+**A row's unit is said in one place, never two** *(the user, 2026-11-24: "we
+shouldn't allow inconsistency in such important topic"; "when we have a
+quantity that has a unit, then its unit is then blank")*. A name that ends in
+a unit, as the units table spells it in a name (`displacement_ang`,
+`frequency_cm1`, `temperature_k`; how an ending is read — the longest, an
+inverse, a bare name — is [`model/datafiles.md`](?doc=model/datafiles.md)
+§ 2c's, by `units.unit_of_name`), carries its unit, and its `unit` stays
+blank — the same unit there, in the table's spelling or as a page shows it
+(`Å` beside `bond_ang`), is the name's, not kept. A number whose name
+carries none states its unit in `unit` — any spelling, shown as written
+(`deg`, `fs`, `Å`), `1` for a count, an index, a fraction or a flag. A text
+or true/false states none.
+
+**The rule holds where a row is made** *(the user, 2026-11-24; where the
+browser's rows are judged, 2026-11-24: at Apply)*: at the script's doors
+(`set_customized`, and `with_frames`' frame rows, § 2.2e) and at MolView's
+Info page when a person applies a named value — the one place a row is made
+in the browser, which asks the server (`/api/structure/row`,
+[`web/molview.md`](?doc=web/molview.md) § 9.3) — all through one rule,
+`structure.made_row`. A unit beside a name that carries another, a number of
+no unit in its name stating none, or a text or true/false stating one is
+refused by name, saying the fix: the ending it read and the rename (*the
+name ends in _a, which says its unit is 'A' (ampere) … (lattice_a_ang)*), or
+a unit stated, any spelling, `1` for a count. **A row in a record already
+written is read as it is** — a run's deck, a result, a data file, a pair an
+earlier molbuilder saved: nothing molbuilder wrote stops opening, and every
+copy carries it as read — the save, the download and the hand-over from any
+tab, the frame generator, a command's write, `molbuilder describe`, a deck
+compared for the same calculation. Read anywhere, the same unit beside a name
+that carries it is not kept, nor a `1` beside a text or true/false, nor a
+unit's surrounding spaces. The row's one validator,
+`structure._customized_row`, holds both: what every reader keeps, and, where
+a row is made, the rule. The section holds the
 **structure's rows** — about the whole structure — and, for a structure of
 several frames, **each frame's rows**: an array indexed like the frames, one
 row set per frame (§ 2.2e). Names are unique within one set, and a name that
@@ -448,7 +483,7 @@ every other row is the writer's, carried and shown as written.
 | write a row | `Structure.set_customized(name, value, unit=None, note=None, frame=None)` — `frame=None` the structure's rows, an index that frame's; an index outside `0 … F−1` refused, naming `F` |
 | remove one | `Structure.remove_customized(name, frame=None)` |
 | read | `Structure.customized_value(name, frame=None)` — that set only, never a fall-back to the other; `Structure.customized_rows(frame=None)` |
-| the browser | MolView's `data.customized.list(frame)` / `set(name, value, {unit, note, frame})` / `remove(name, {frame})` (`web/molview.md` § 9.3) |
+| the browser | MolView's `data.customized.list(frame)` / `made(name, value, {unit, note})` / `set(name, value, {unit, note, frame})` / `remove(name, {frame})` (`web/molview.md` § 9.3) — `set` checks the row's shape; the unit rule is the server's, asked by `made` (`/api/structure/row`) at the Metadata page's Apply, which sets the row as answered |
 
 **On the wire and on disk** it is one block of the metadata dict, written by
 `metadata_to_dict` and applied by `apply_metadata_dict` like every structural
@@ -457,7 +492,8 @@ unset value, and otherwise written whole:
 
 ```text
 "customized": {
-  "rows":   [ {"name": "temperature_k", "value": 300, "unit": "K"} ],
+  "rows":   [ {"name": "temperature_k", "value": 300},
+              {"name": "sampling_nodes", "value": 3, "unit": "1"} ],
   "frames": [ [ … frame 0 … ], [ … frame 1 … ], … ]      exactly F entries
 }
 ```

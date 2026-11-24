@@ -143,46 +143,63 @@ sha256.
 ## 2c. Units — one spelling each
 
 **Every unit a data file states a number in is a row of the table below**,
-spelled one way in every file; `ncdata.UNITS` holds the same rows, and the
-one writer refuses a number in another spelling. **A name carries its unit
-as the last column spells it** — `force_ev_per_ang`, `dos_total_per_ev`,
-`raman_activity_ang4_per_amu` — and a number with no unit (`1`) carries none
-*(the user, 2026-11-16: "fix all, style too")*. A new unit is a row here and
-there, in the change that first writes it.
+spelled one way in every file, and the one writer refuses a number in another
+spelling. **A name carries its unit as the "in a name" column spells it** —
+`force_ev_per_ang`, `dos_total_per_ev`, `raman_activity_ang4_per_amu` — and a
+number with no unit (`1`) carries none *(the user, 2026-11-16: "fix all, style
+too")*. A new unit is a row here and there, in the change that first writes
+it.
 
-| spelling | means | in a name |
-|---|---|---|
-| `1` | no unit — a count, an index, a fraction or a flag | — |
-| `%` | per cent | `percent` |
-| `s` | second | `s` |
-| `K` | kelvin | `k` |
-| `V` | volt | `v` |
-| `A` | ampere — never ångström | `a` |
-| `e` | the elementary charge, 1.602176634×10⁻¹⁹ C | `e` |
-| `eV` | electronvolt, 1.602176634e-19 J | `ev` |
-| `eV/angstrom` | electronvolt per ångström | `ev_per_ang` |
-| `kbar` | kilobar, 10⁸ Pa | `kbar` |
-| `1/eV` | per electronvolt | `per_ev` |
-| `Eh` | hartree, the atomic unit of energy, 27.211386 eV | `eh` |
-| `Eh^2` | hartree squared | `eh2` |
-| `Eh/K` | hartree per kelvin | `eh_per_k` |
-| `Eh/bohr` | hartree per bohr, the atomic unit of force (1 bohr = 0.529177 Å) | `eh_per_bohr` |
-| `atm` | standard atmosphere, 101325 Pa | `atm` |
-| `G0` | the conductance quantum, 2e²/h = 7.748092×10⁻⁵ S | `g0` |
-| `nm` | nanometre | `nm` |
-| `cm-1` | wavenumber, per centimetre | `cm1` |
-| `km/mol` | kilometre per mole | `km_per_mol` |
-| `kcal/mol` | kilocalorie per mole, 4.184 kJ/mol — a chart's thermochemistry (§ 9.7) | `kcal_per_mol` |
-| `GiB` | gibibyte, 2^30 bytes — a benchmark trial's memory peaks (§ 9.7) | `gib` |
-| `angstrom` | ångström, 10⁻¹⁰ m | `ang` |
-| `angstrom^3` | cubic ångström | `ang3` |
-| `amu` | the unified atomic mass unit (dalton), 1.66053907e-27 kg | `amu` |
-| `amu^1/2 angstrom` | square-root amu times ångström | `amu12_ang` |
-| `amu^-1/2` | per square-root amu | `per_amu12` |
-| `angstrom^2/amu^1/2` | square ångström per square-root amu | `ang2_per_amu12` |
-| `D/(angstrom amu^1/2)` | debye (3.33564×10⁻³⁰ C m) per ångström per square-root amu | `d_per_ang_amu12` |
-| `angstrom^4/amu` | ångström to the fourth per amu | `ang4_per_amu` |
-| `mdyn/angstrom` | millidyne per ångström, 100 N/m — a mode's force constant, as Gaussian prints it (`/modes`, `spectra-data@11`) | `mdyn_per_ang` |
+**The table is molbuilder's one list of units, in `units.py`** — one row per
+unit (`units._TABLE`), its columns `units.UNITS` (each spelling and what it
+means), `units.UNIT_IN_NAME` (each as a name spells it) and
+`units.UNIT_ON_A_PAGE` (each as a page shows it, the last column) — which
+travels with the constants alone, so the structure reads it too, and
+`ncdata`'s checks read it. **The unit a name carries** is read from its
+ending after an underscore by one function, `units.unit_of_name`: the
+longest ending, so `force_ev_per_ang` is eV/angstrom; a name ending in a
+unit's inverse (`x_per_ang`) carries none of the table's; the one-letter
+endings `_a`, `_k`, `_s`, `_v`, `_e` are read too; and a bare name — a
+lattice constant `a` — is a name, never a unit. A data file's variable
+states the unit its name carries (`ncdata.check_said` asks it); a
+structure's row whose name carries a unit leaves its own `unit` blank, and
+any other number states its unit there in any spelling, shown as written
+([`structure.md`](?doc=model/structure.md) § 2.2d). The vibration frame
+sets' words take a row's page unit from the last column.
+
+| spelling | means | in a name | on a page |
+|---|---|---|---|
+| `1` | no unit — a count, an index, a fraction or a flag | — | — |
+| `%` | per cent | `percent` | % |
+| `s` | second | `s` | s |
+| `K` | kelvin | `k` | K |
+| `V` | volt | `v` | V |
+| `A` | ampere — never ångström | `a` | A |
+| `e` | the elementary charge, 1.602176634×10⁻¹⁹ C | `e` | e |
+| `eV` | electronvolt, 1.602176634e-19 J | `ev` | eV |
+| `eV/angstrom` | electronvolt per ångström | `ev_per_ang` | eV/Å |
+| `kbar` | kilobar, 10⁸ Pa | `kbar` | kbar |
+| `1/eV` | per electronvolt | `per_ev` | 1/eV |
+| `Eh` | hartree, the atomic unit of energy, 27.211386 eV | `eh` | Eₕ |
+| `Eh^2` | hartree squared | `eh2` | Eₕ² |
+| `Eh/K` | hartree per kelvin | `eh_per_k` | Eₕ/K |
+| `Eh/bohr` | hartree per bohr, the atomic unit of force (1 bohr = 0.529177 Å) | `eh_per_bohr` | Eₕ/bohr |
+| `atm` | standard atmosphere, 101325 Pa | `atm` | atm |
+| `G0` | the conductance quantum, 2e²/h = 7.748092×10⁻⁵ S | `g0` | G₀ |
+| `nm` | nanometre | `nm` | nm |
+| `cm-1` | wavenumber, per centimetre | `cm1` | cm⁻¹ |
+| `km/mol` | kilometre per mole | `km_per_mol` | km/mol |
+| `kcal/mol` | kilocalorie per mole, 4.184 kJ/mol — a chart's thermochemistry (§ 9.7) | `kcal_per_mol` | kcal/mol |
+| `GiB` | gibibyte, 2^30 bytes — a benchmark trial's memory peaks (§ 9.7) | `gib` | GiB |
+| `angstrom` | ångström, 10⁻¹⁰ m | `ang` | Å |
+| `angstrom^3` | cubic ångström | `ang3` | Å³ |
+| `amu` | the unified atomic mass unit (dalton), 1.66053907e-27 kg | `amu` | amu |
+| `amu^1/2 angstrom` | square-root amu times ångström | `amu12_ang` | amu½·Å |
+| `amu^-1/2` | per square-root amu | `per_amu12` | amu⁻½ |
+| `angstrom^2/amu^1/2` | square ångström per square-root amu | `ang2_per_amu12` | Å²/amu½ |
+| `D/(angstrom amu^1/2)` | debye (3.33564×10⁻³⁰ C m) per ångström per square-root amu | `d_per_ang_amu12` | D/(Å·amu½) |
+| `angstrom^4/amu` | ångström to the fourth per amu | `ang4_per_amu` | Å⁴/amu |
+| `mdyn/angstrom` | millidyne per ångström, 100 N/m — a mode's force constant, as Gaussian prints it (`/modes`, `spectra-data@11`) | `mdyn_per_ang` | mdyn/Å |
 
 **CF-1.8 and its units**: CF reads a unit through UDUNITS, which has no
 name for the hartree, the conductance quantum or a square-root mass; those
@@ -228,7 +245,7 @@ naming this section — in every file, every group, the root's included.
    difference), `iscf` (an SCF cycle's own number), `cpu` / `gpu`,
    `max`, `mtime`, `n_` (the number of). A count says what it counts
    (`scf_cycles`, `n_modes`, `removed_motions_count`). An axis or a variable of a physical
-   quantity ends with its unit, spelled as § 2c's last column says
+   quantity ends with its unit, spelled as § 2c's "in a name" column says
    (`energy_ev`, `bias_v`, `temperature_k`, `dos_total_per_ev`); the axis of
    counted things names the thing (`atom`, `mode`, `frame`); a subset of a
    counted thing is `<subset>_<thing>` (`free_atom`, `device_atom`,
@@ -246,7 +263,7 @@ naming this section — in every file, every group, the root's included.
    name — variables, attributes, axes — is the file's and follows this
    rule, a value whose record key differs stating that key
    (`ncdata.Var.key`; § 9 gives it). The one writer refuses a number whose
-   name does not end with its unit (`ncdata.UNIT_IN_NAME`).
+   name does not end with its unit (`units.UNIT_IN_NAME`, read by `units.unit_of_name`).
 3. **Every axis has a coordinate of its own name**, so a reader selects by
    value (`ds.sel(bias_v=0.2)`, `ds.sel(mode=7)`): a quantity's values; a
    counted thing's index, its base said in the coordinate's `definition`;

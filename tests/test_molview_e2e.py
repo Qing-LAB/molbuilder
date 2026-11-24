@@ -1043,3 +1043,50 @@ def test_a_movie_exported_holds_every_frame_at_the_size_asked(demo):
     assert (movie.n_frames, list(movie.size)) == (
         6, [before[4] * 4, before[5] * 4]), (movie.n_frames, movie.size, before)
     assert demo.evaluate(held) == before, (demo.evaluate(held), before)
+
+
+def test_a_named_value_applied_is_made_by_the_servers_rule(demo):
+    """§ 9.3, `model/structure.md` § 2.2d: the Metadata page's Apply -- the
+    one place a person makes a row in the browser -- asks the server's one
+    rule: a count stating no unit is not applied, the page saying why in the
+    rule's words and keeping what was typed; its unit stated, it is applied;
+    a unit its name carries is applied without it, the name saying it; a
+    double click applies the row once and says nothing false.  THE SILENT
+    FAILURE: the click waits for the server now -- a row the server refused
+    set anyway, one it answered lost or set as typed, or a second click
+    answered with a refusal of a row already applied."""
+    from playwright.sync_api import expect
+    demo.locator(".molviewer-panel-tab-option",
+                 has_text="Metadata").first.click()
+    _settle(demo)
+    unit = demo.get_by_label("The named value's unit (1 for a count; blank "
+                             "if the name ends in it)").first
+    apply = demo.locator(".molviewer-info-editor").first.get_by_role(
+        "button", name="Apply")
+    said = demo.locator(".molviewer-info-error").first
+
+    def typed(name, value, stated=""):
+        demo.get_by_role("button", name="Add a named value").first.click()
+        demo.get_by_label("The named value's name").first.fill(name)
+        demo.get_by_label("The named value's value").first.fill(value)
+        unit.fill(stated)
+
+    typed("weight", "0.5")
+    apply.click()
+    expect(said).to_contain_text(
+        "Not applied -- the named value ('weight'): a number whose name "
+        "carries no unit")
+    expect(demo.locator('[data-row="weight"]')).to_have_count(0)
+    unit.fill("1")
+    apply.click()
+    expect(demo.locator('[data-row="weight"] .molviewer-info-value')
+           ).to_have_text("0.5")
+    typed("temperature_k", "300", "K")
+    apply.click()
+    expect(demo.locator('[data-row="temperature_k"] .molviewer-info-value')
+           ).to_have_text("300")
+    typed("n_layers", "3", "1")
+    apply.dblclick()
+    expect(demo.locator('[data-row="n_layers"]')).to_have_count(1)
+    _settle(demo)
+    expect(said).to_be_hidden()

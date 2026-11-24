@@ -1697,8 +1697,9 @@ statement it is.
 frame's** *(W39, user 2026-09-27; `archive/2026-10-09-plan-consolidation.md` § 5z.8 F, 2026-10-09)*.  Below the
 `info` entries the page shows the structure's `customized` rows
 ([`model/structure.md`](?doc=model/structure.md) § 2.2d) — one row each, name,
-value, unit and note, no unit shown for the dimensionless `1` a row of no
-unit is written with — and, on a structure of several frames, **the displayed
+value, unit as written and note: no unit shown for a row whose name carries
+it (`temperature_k`: its `unit` is blank, the name says it) nor for a count's
+`1` — and, on a structure of several frames, **the displayed
 frame's rows** under its number (*frame 2 of 7*), following the frame bar: a
 frame change redraws that section alone, through `onFrameChange` (§ 6.4).
 Unlike `info`, a row IS the structure — it says what the structure is for a
@@ -2003,7 +2004,7 @@ rather than maintained separately.
 | Edit the geometry | `applyOp(name)` (§ 11.1) | | **yes** |
 | Edit the cell | `commitPeriodicityOp` — the one way the cell changes | | **yes** |
 | Load or extend the frames | `reloadFrames` · `addFrame` · `addFrames` · `setForces` | | — *(delivery, not a change — § 9.4)* |
-| Write a named value about the structure, or about its frame | `data.customized.set` · `data.customized.remove` (§ 8.4a) | `data.customized.list` — the read | **yes** |
+| Write a named value about the structure, or about its frame | `data.customized.set` · `data.customized.remove` (§ 8.4a) | `data.customized.list` — the read; `data.customized.made` — the row as the server makes it, which changes nothing | **yes** |
 | Tag the selected atoms | the label door on `selection` (§ 9.5) — the atoms it applies to are the selection, but what it writes is the structure | | **yes** |
 | Save a point, and move through the sequence | `save(step)` · `load(step)` (§ 11.2) | `undo`, which is exactly `load(-1)`. `load(0)` is not a move — it puts back the point you were on | **yes** |
 | Know where you are in the history | `state_index` · `uncommitted` | | — |
@@ -2065,6 +2066,7 @@ read answers `null`** — "there is nothing here", which is a different answer f
 | `beginChange()` · `endChange()` | — | the bracket (§ 11.2) |
 | `selection.writeLabel(name, verb, atoms?)` | `verb` — `replace` · `add` · `remove`. `atoms` defaults to the selection | did it apply |
 | `data.customized.list(frame?)` | `frame` — omitted, the structure's rows; an index, that frame's (0-based) | a copy of the rows, `[]` when there are none |
+| `data.customized.made(name, value, opts?)` | `opts` — `{unit?, note?}`; asks `/api/structure/row` (§ 11.1) | a promise of the row as the server makes it — its unit said in one place (`model/structure.md` § 2.2d) · **rejects** with the rule's refusal in its words; changes nothing, so it runs on a read-only viewer too |
 | `data.customized.set(name, value, opts?)` · `data.customized.remove(name, opts?)` | `value` — a number, text or true/false; `opts` — `{unit?, note?, frame?}`. A frame outside the range is refused naming the count; a name the structure's rows hold may not also be a frame's | `true` when it applied (or there was nothing to change) · `false` read-only, nothing loaded, or (`remove`) no such row · **throws** with the reason when the row is refused, which the Metadata page says |
 
 > **`getStructure` lists no field of its own**: it returns every field the
@@ -2142,10 +2144,23 @@ The person's are gated and recorded on the history, and stamp
 is their caller.
 
 **The `customized` doors** (§ 8.4a; `model/structure.md` § 2.2d): `data.customized.list(frame?)`,
-`set(name, value, {unit, note, frame})`, `remove(name, {frame})` — `frame`
-omitted, the structure's rows; an index, that frame's. They are the model's
-only writers of either list, both of them gated (a row is the structure, not a
-note about it) and recorded on the history. **The frame rows move with the
+`made(name, value, {unit, note})`, `set(name, value, {unit, note, frame})`,
+`remove(name, {frame})` — `frame` omitted, the structure's rows; an index,
+that frame's. `set` and `remove` are the model's only writers of either list,
+both of them gated (a row is the structure, not a note about it) and recorded
+on the history; `set` checks the row's shape (`customizedRow`, the shape
+`Structure`'s `_customized_row` reads: a name, a number, text or true/false, a
+unit and a note that are text). **The unit rule** — a name that carries its
+unit leaves `unit` blank, any other number states one, a text none — is the
+server's, asked where a person makes a row: `made` sends the named value to
+`/api/structure/row` (§ 11.1) and answers the row as the server makes it —
+its unit said in one place — or throws the rule's refusal in its words
+([`model/structure.md`](?doc=model/structure.md) § 2.2d); it changes
+nothing. The Info page's *Apply* asks `made`, says a refusal (*Not applied
+-- …*), and `set`s what it answers; its unit field says the rule in its own
+words (*1 for a count; blank if the name ends in it*). The save, the
+download and the hand-over carry a structure's rows as they are — a record
+an earlier molbuilder wrote leaves every viewer as it came. **The frame rows move with the
 frames**: the one place frames arrive in the model — a load, an append, a
 reload, a restore — moves `frames`, `forcesPerFrame` and `rowsPerFrame` in the
 same step, so no list is ever a frame longer than another.
@@ -2380,6 +2395,7 @@ a viewer that threw would make every caller wrap its writes.
 | `commitPeriodicityOp(op, payload)` | yes | **no-op** | `null` |
 | `selection.writeLabel(name, verb, atoms?)` | yes | **no-op** | `false` |
 | `data.customized.set` · `data.customized.remove` | yes | **no-op** | `false` |
+| `data.customized.made` | no — it asks, and changes nothing | **runs** | the row |
 | `data.info.edit` · `data.info.drop` | yes | **no-op** | `false` |
 | `data.info.set` · `data.info.remove` | no — they describe the structure (§ 8.4a) | **runs** | `true` / `false` |
 | `clear()` | yes | **no-op** | `false` |
@@ -3293,16 +3309,18 @@ The operation name **is** the server route segment. The delete operation is
 `delete`, not `deleteAtoms`; the add operation is `add_atom`. Use these names
 exactly.
 
-**The four routes MolView calls** are: load a structure, perform one geometry
-edit, resolve a cell, and resolve a filter. The fourth is § 9.5's — "filtering is
-a question asked of the server, not a scan done here". The list names every
-route the module calls, so a fifth cannot appear unnoticed. On the way in, the server's payload is normalised into
+**The five routes MolView calls** are: load a structure, perform one geometry
+edit, resolve a cell, resolve a filter, and make a named value's row. The fourth
+is § 9.5's — "filtering is a question asked of the server, not a scan done
+here"; the fifth is § 9.3's — the unit rule is the server's, asked where a
+person makes a row (`model/structure.md` § 2.2d). The list names every route
+the module calls, so a sixth cannot appear unnoticed. On the way in, the server's payload is normalised into
 the shapes of § 6.2 — the server's names become this module's names, in one
 place, so nothing downstream has to know both.
 
 **What is on the other side of each.** The routes are the server's, and so is
 their behaviour — what a body must contain, what comes back, and which status a
-refusal carries. That is [`web-api.md`](?doc=web/web-api.md)'s, and the four
+refusal carries. That is [`web-api.md`](?doc=web/web-api.md)'s, and the five
 MolView calls are listed there with their bodies and answers:
 
 | MolView's call | Route | Sends | Answers |
@@ -3311,6 +3329,7 @@ MolView calls are listed there with their bodies and answers:
 | `applyOp(name, args)` | `/api/modify/<name>` | the envelope + the op's arguments + the selection under § 11.1's key | the structure, with the same notices beside it — both routes leave through the one helper that validates what it sends |
 | `commitPeriodicityOp(op, payload)` | `/api/structure/periodicity` | the envelope + `op`, `payload` | the structure in the one shape a load answers with, and its notices — read by the same translator, which takes the cell block and `info` from it |
 | the filter (§ 9.5) | `/api/selection/eval` | `{atoms, rule}` — no coordinates, because no rule matches on position | `{selected_indices}` |
+| `customized.made(name, value, {unit, note})` (§ 9.3) | `/api/structure/row` | `{name, value, unit, note}` — the named value alone, no structure | `{row}`, the row as it is made — its unit said in one place — or the rule's refusal |
 
 The **export** door is not in that list because MolView does not call it: it
 hands the structure to the `files` door, and turning it into bytes is that door's

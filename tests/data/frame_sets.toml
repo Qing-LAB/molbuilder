@@ -25,8 +25,8 @@ cell = [[8.0, 0.0, 0.0], [0.0, 8.0, 0.0], [0.0, 0.0, 8.0]]
 regions = { frozen_atoms = [0] }
 rows = [{ name = "temperature", value = 300, unit = "K" }]
 frame_rows = [[],
-              [{ name = "mode", value = 1 }, { name = "weight", value = 0.1667 }],
-              [{ name = "mode", value = 1 }, { name = "weight", value = 0.1667 }]]
+              [{ name = "mode", value = 1, unit = "1" }, { name = "weight", value = 0.1667, unit = "1" }],
+              [{ name = "mode", value = 1, unit = "1" }, { name = "weight", value = 0.1667, unit = "1" }]]
 # Beside the rows a person wrote (`temperature`, `mode`), a maker's rows
 # (`structure.md` § 2.2f): the frames' `weight`, the `mass_amu` channel and a
 # record in `info` -- carried as written.
@@ -54,7 +54,7 @@ expect = { n_frames = 1, positions = [[4.0, 4.0, 3.00], [4.0, 4.0, 3.74]], rows 
 name = "read at one frame, that frame and every row as written, placed at frame 0's origin (periodicity § 6.0: one offset for the set) -- its weight, the mass_amu channel and the maker's record with it (structure.md § 2.2e)"
 door = "save_load"
 load = { frame = 2 }
-expect = { info = { a_makers_record = { note = "carried as written" } }, value_channels = { mass_amu = [1.008, 1.008] }, n_frames = 1, positions = [[4.0, 4.0, 3.00], [4.0, 4.0, 3.68]], rows = [{ name = "temperature", value = 300, unit = "K" }], frame_rows = [{ name = "mode", value = 1 }, { name = "weight", value = 0.1667 }], engine_offset = [0.0, 0.0, 0.63] }
+expect = { info = { a_makers_record = { note = "carried as written" } }, value_channels = { mass_amu = [1.008, 1.008] }, n_frames = 1, positions = [[4.0, 4.0, 3.00], [4.0, 4.0, 3.68]], rows = [{ name = "temperature", value = 300, unit = "K" }], frame_rows = [{ name = "mode", value = 1, unit = "1" }, { name = "weight", value = 0.1667, unit = "1" }], engine_offset = [0.0, 0.0, 0.63] }
 
 [[case]]
 name = "a frame outside the set is refused, naming how many there are"
