@@ -8,10 +8,12 @@ ROLE    :func:`write_spectra_data` -- the payload the JSON is written from, as
         scalar blocks' texts, counts and flags as attributes and their
         numbers as variables of no dimension, the structure whole as JSON
         text beside the arrays an analysis reaches for; :func:`read_spectra_data` -- the
-        file back as the payload, which is the file's test
+        file back as the payload, which is the file's test;
+        :func:`json_sha256_of` -- the sha256 of the JSON it was written with
 USED-BY `sidecars.spectra.write_spectra_payload`, the one writer of the
         result, at every write on both engines -- beside the job in both
-        bundles (`runwrap.members`)
+        bundles (`runwrap.members`); `sidecars.spectra.read_vibration_result`
+        and `result_sha256_of`, a person's script pointing at the data file
 
 **The file states itself** (`model/datafiles.md` § 2b): its title, its
 schema, the molbuilder that wrote the result, and its source -- the engine
@@ -21,7 +23,9 @@ and its version that computed it; every group its title.
 written with it, which ties each to its pair at every phase's rewrite.  The
 JSON stays the result a person reads and the Results tab loads; molbuilder
 itself reads the ``.nc`` in its round-trip test, for its atom index map
-(`atom_index`), and for a person's script (`postprocess.read_spectra_data`).
+(`atom_index`), and for a person's script (`postprocess.read_spectra_data`,
+`postprocess.vibration` of the data file, its JSON's sha256 the one a frame
+set states).
 
 **What was not computed says so once**: a fill value where the JSON has
 ``null`` (a number's NaN, a text's empty string, an integer's stated fill,
@@ -977,9 +981,19 @@ def read_spectra_data(path, *, data=None) -> Dict[str, Any]:
     return out
 
 
+def json_sha256_of(path) -> str:
+    """THE SHA256 OF THE RESULT JSON the data file at ``path`` was written
+    with -- its root's ``json_sha256``, which ties the two
+    (:func:`write_spectra_data`): the result's identity whichever of its two
+    files a person reads (`engines/vibration-frames.md` § 1)."""
+    with checked(path, schemas=READABLE_DATA_SCHEMAS,
+                 error=SpectraDataError) as (_ds, attrs):
+        return str(attrs["json_sha256"])
+
+
 __all__ = ["DATA_SCHEMA", "GRID_VARS", "MODE", "MODE_VARS",
            "SpectraDataError", "UNSTATED",
-           "write_spectra_data", "read_spectra_data"]
+           "json_sha256_of", "write_spectra_data", "read_spectra_data"]
 
 
 #: The modes' variables by name -- what the writer and the reader ask a

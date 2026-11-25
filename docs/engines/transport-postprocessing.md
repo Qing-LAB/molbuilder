@@ -178,7 +178,7 @@ mean, error = pairs.mean(), pairs.std(ddof=1) / np.sqrt(len(pairs))
 
 The motion toolkit gives the same from the data file's values whole, one
 per frame, frame 0 first — the set read back leaving frame 0 out itself
-(`read_frame_set(...).standard_error(g)` *(the reader to build, R3d2b2b2)*,
+(`read_frame_set(...).standard_error(g)`,
 an `Estimate`, and `parts` for the even and odd shares, [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
 § 3.3, § 7). **More frames** are the same seed drawn further, or another seed: the
 new set's calculation's results join the first's at equal weights, each

@@ -28,11 +28,15 @@ ROLE    ``parse`` -- an engine's file, a run's file → its result (the
         calculation averaged at another state, the motion toolkit's weights
         for its rows (`vibration_frames.weights_for_set`) at transport's
         averaging door (`frame_average.averaged_at`); ``outermost_move`` -- how far
-        a mode's frame set at a temperature moves its atom that moves most
-        (`spectra.mode_frames`); ``vibration`` -- a vibration result to
-        compute with, its modes, their states and the molecule's motion and
-        snapshots (`vibration.Vibration`, through `SpectraResults.vibration`;
-        `engines/vibration-frames.md`); ``read_xv`` / ``read_xv_cell`` -- SIESTA's
+        a mode's frame set in any state moves its atom that moves most
+        (`vibration_frames.outermost_move_of`); ``vibration`` -- a vibration
+        to compute with, from its run's folder or its result file, its
+        modes, their states and the molecule's motion and snapshots
+        (`vibration.Vibration`; `vibration_frames.vibration_of_run`,
+        `SpectraResults.vibration`; `engines/vibration-frames.md`);
+        ``write_frame_set`` / ``read_frame_set`` / ``pooled`` -- the motion
+        toolkit's one writer and reader of a frame set, and snapshot sets
+        joined (`vibration_frames`, `vibration.pooled`); ``read_xv`` / ``read_xv_cell`` -- SIESTA's
         own ``.XV``, IN THE ENGINE'S ORDER, as its docstring says; and where
         a calculation is: ``projects_root``, ``project_dir``, ``topic_dir``,
         ``structure_dir``, ``list_projects``, ``list_topics``,
@@ -355,25 +359,35 @@ def reaveraged(path, *, temperature_k=None, swing_quanta=None, quanta=None,
                 if own else [])]}
 
 
-def outermost_move(path, *, mode: int, temperature_k: float,
-                   nodes=None):
+def outermost_move(path, *, mode: int, nodes=None, temperature_k=None,
+                   quanta=None, swing_quanta=None, mean_quanta=None,
+                   classical=False):
     """THE OUTERMOST MOVE of mode ``mode`` (its number, as the result
-    numbers its modes) of the vibration result ``<label>.spectra.json`` at
-    ``temperature_k`` for ``nodes`` frames, in Angstrom -- the largest atom's
-    move at the outermost frames of the set the frame generator writes
-    there, read through the result's own reader (`spectra.mode_frames.outermost_move`);
-    ``None`` for an imaginary mode, which has no spread.  ``nodes`` unsaid, the frame generator's
-    first rule (`spectra.mode_frames.NODES`)."""
-    from .spectra.mode_frames import outermost_move_of
-    return outermost_move_of(path, mode=mode, temperature_k=temperature_k,
-                             **_said(nodes=nodes))
+    numbers its modes) of a vibration -- its run's folder, its
+    ``<label>.spectra.json`` or its data file (:func:`vibration`) -- in any
+    state of the toolkit's table, named by the same arguments (a thermal
+    or classical state given no temperature at the record's), for its
+    ``nodes``-point rule, in Angstrom: the largest atom's move at the
+    outermost frames of the set written there; ``None`` for an imaginary
+    mode, which has no state.  The path read, and refused, as
+    :func:`vibration` reads it; the move answered, and refused by name, by
+    the motion toolkit (`vibration_frames.outermost_move_of`)."""
+    from .vibration_frames import outermost_move_of
+    return outermost_move_of(
+        vibration(path), mode, classical=classical,
+        **_said(nodes=nodes, temperature_k=temperature_k, quanta=quanta,
+                swing_quanta=swing_quanta, mean_quanta=mean_quanta))
 
 
 def vibration(path):
     """A VIBRATION RESULT'S MODES, as a person computes with them
-    (`engines/vibration.md` § 6.11 § 6) -- ``<label>.spectra.json`` or its
-    data file ``<label>.spectra.nc``, read through the result's own reader
-    (`sidecars.spectra.read_vibration_result`): ``v.modes[6]`` is mode 7,
+    (`engines/vibration.md` § 6.11 § 6) -- the vibration run's folder, read
+    through the run door (`vibration_frames.vibration_of_run`: its run, its
+    result's sha256 and frame 0's relaxation record with it), or
+    ``<label>.spectra.json`` or its data file ``<label>.spectra.nc``, read
+    through the result's own reader (`sidecars.spectra.
+    read_vibration_result`), ``v.result_sha256`` the JSON's either way:
+    ``v.modes[6]`` is mode 7,
     each its frequency and the values the record stores of it -- the
     zero-point amplitude and displacement, the largest zero-point move,
     each free atom's share of the motion (summed by element, label or
@@ -386,10 +400,45 @@ def vibration(path):
     ``v.with_frequency_scale(f)``, ``v.motion(...)``, the molecule's motion and
     its snapshots (`engines/vibration-frames.md` § 1-§ 3); ``v.read_path`` the
     path read, as given.  A temperature not given: the contract's one table,
-    `engines/vibration-frames.md` § 2."""
-    import os
-    from .sidecars.spectra import read_vibration_result
-    return read_vibration_result(path).vibration(read_path=os.fspath(path))
+    `engines/vibration-frames.md` § 2.  Which form a path is, and a path
+    that is neither refused naming both, is the motion toolkit's one door
+    (`vibration_frames.vibration_of`)."""
+    from .vibration_frames import vibration_of
+    return vibration_of(path)
+
+
+def write_frame_set(path, frames=None, weights=None, *, vibration=None,
+                    rows=(), frame_rows=(), frame0_rows=None):
+    """A VIBRATION'S FRAME SET WRITTEN AS ONE PAIR (`engines/vibration-
+    frames.md` § 5): ``write_frame_set(path, frames)`` for a recipe's
+    frames (a mode's own ``Frames``, or ``Snapshots``), or
+    ``write_frame_set(path, positions_ang, weights, *, vibration, rows=(),
+    frame_rows=(), frame0_rows=None)`` for a person's own -- ``path`` from
+    the projects tree's doors (:func:`topic_dir`, :func:`structure_dir`).
+    Answered, and refused by name, by the motion toolkit's one writer
+    (`vibration_frames.write_frame_set`): a ``Written(path, n_frames,
+    said)``."""
+    from .vibration_frames import write_frame_set as _write
+    return _write(path, frames, weights, vibration=vibration, rows=rows,
+                  frame_rows=frame_rows, frame0_rows=frame0_rows)
+
+
+def read_frame_set(path, *, vibration=None):
+    """A VIBRATION'S FRAME SET READ BACK AS WRITTEN (`engines/vibration-
+    frames.md` § 5): every frame, frame 0 included -- a mode's ``Frames``,
+    ``Snapshots``, or a person's ``FrameSet`` -- its vibration the one given,
+    or the run the set names reopened.  Answered, and refused by name, by
+    the motion toolkit's one reader (`vibration_frames.read_frame_set`)."""
+    from .vibration_frames import read_frame_set as _read
+    return _read(path, vibration=vibration)
+
+
+def pooled(*sets):
+    """SNAPSHOT SETS OF ONE MOTION JOINED INTO ONE (`engines/vibration-
+    frames.md` § 3.3) -- answered, and refused by name, by the motion's own
+    module (`vibration.pooled`)."""
+    from .vibration import pooled as _pooled
+    return _pooled(*sets)
 
 
 __all__ = ["AtomIndexMap", "AtomIndexUnknown", "RunStepsError", "atom_index_map",
@@ -397,7 +446,8 @@ __all__ = ["AtomIndexMap", "AtomIndexUnknown", "RunStepsError", "atom_index_map"
            "read_steps_data", "read_raman_data", "read_spectra_data", "read_steps",
            "read_chart_data",
            "read_structure", "read_transport_data", "read_xv", "read_xv_cell", "reaveraged",
-           "frame_rows", "weights_for_set",
+           "frame_rows", "weights_for_set", "write_frame_set",
+           "read_frame_set", "pooled",
            "pdos",
            "outermost_move", "projects_root", "project_dir", "topic_dir",
            "structure_dir", "list_projects", "list_topics", "list_structures",

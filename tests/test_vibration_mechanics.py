@@ -719,22 +719,10 @@ def test_a_held_atom_stays_still_and_adds_nothing_to_its_elements_share():
 # --------------------------------------------------------------------- #
 
 def _model_vibration(record_temperature_k=300.0) -> V.Vibration:
-    """A model molecule -- three atoms, three modes at 120, 700 and 1600 cm-1
-    orthonormal with the masses, ``sum_A m_A L_k,A . L_l,A = delta_kl`` --
-    built as a reader builds a result's: the closed forms of science § 2b.5
-    and § 2c hold for any such set."""
-    masses = np.array([12.0, 1.008, 15.999])
-    u, _ = np.linalg.qr(np.random.default_rng(20261123).standard_normal((9, 3)))
-    rows = u.T.reshape(3, 3, 3) / np.sqrt(masses)[None, :, None]
-    modes = tuple(V.Mode(index_1based=k + 1, frequency_cm1=nu, has_imag=False,
-                         eigenvector_canonical_per_amu12=rows[k])
-                  for k, nu in enumerate((120.0, 700.0, 1600.0)))
-    return V.Vibration(modes=modes, free_atom_idxs=(0, 1, 2),
-                       masses_amu=masses, element_symbols=("C", "H", "O"),
-                       positions_ang=np.array([[0.0, 0.0, 0.0],
-                                               [1.09, 0.0, 0.0],
-                                               [0.0, 1.2, 0.0]]),
-                       record_temperature_k=record_temperature_k)
+    """The model molecule (`support.model_vibration`, the one builder): the
+    closed forms of science § 2b.5 and § 2c hold for any such set."""
+    from support.model_vibration import model_vibration
+    return model_vibration(record_temperature_k)
 
 
 @pytest.mark.parametrize("asked", [
@@ -1195,7 +1183,10 @@ def test_what_a_set_says_and_what_pools():
     largest = snaps.max_atom_displacement_ang
     i = int(np.argmax(largest))
     assert snaps.max_atom_mode_index_1based[0] == 0
-    assert f"{largest[i]:.4f} Å, frame {i}" in snaps.said[0]
+    # A FRAME NAMED FROM 1, as every message names one (`model/structure.md`
+    # § 2.2e).
+    assert f"{largest[i]:.4f} Å, frame {i + 1} of {len(largest)}" \
+        in snaps.said[0]
     frames = v.mode(3).state(300.0).frames(3)
     assert f"{frames.max_atom_displacement_ang.max():.4f} Å" in frames.said[0]
     imaginary = V.Vibration(

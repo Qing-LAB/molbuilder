@@ -36,7 +36,8 @@ ROLE    from what a result states of a mode -- its frequency, whether it is
           their analyses (:class:`Snapshots`, :func:`pooled`).
 USED-BY the result's derived values (`spectra.derived`), the thermochemistry
         (`spectra.normal_modes`), the frame-set maker (`spectra.mode_frames`),
-        the weights for a frame set's rows (`vibration_frames`), the SIESTA
+        the motion toolkit's frame sets (`vibration_frames`: the writer and
+        reader, the outermost move, the weights for a set's rows), the SIESTA
         vibration's Raman displacements (`spectra.siesta_vibration`), the
         spectrum tab's load door (`web.blueprints.spectra`), a result's
         modes (`spectra.results.SpectraResults.vibration`) and the script
@@ -236,6 +237,21 @@ def q_for_largest_move(mode_rows, move_ang: float) -> float:
     return float(move_ang) / largest_move(mode_rows)
 
 
+def outermost_move_ang(state: "State", mode_rows,
+                       nodes: Optional[int] = None) -> float:
+    """THE OUTERMOST MOVE of a mode in ``state`` for its ``nodes``-point
+    rule, in Angstrom (`engines/vibration-frames.md` § 4, § 5.1's
+    ``max_displacement_ang``): the largest single atom's move at the
+    outermost frames, ``|q_out| max_A |L_A|`` -- ``q_out`` the outermost
+    node of the state's own rule (:meth:`State.frames`, its default rule
+    where ``nodes`` is unsaid), ``mode_rows`` the mode over its atoms.  The
+    one rule every door asks: a set's row, the page's readout,
+    ``postprocess.outermost_move``."""
+    rule = state.frames() if nodes is None else state.frames(nodes)
+    q = np.abs(rule.q_amu12_ang)
+    return float(q.max()) * largest_move(mode_rows)
+
+
 def atom_moves(mode_rows, q: float) -> np.ndarray:
     """Every atom's move at the coordinate ``q`` (amu^1/2.Å), in Å along x,
     y, z: ``u_A = q L_A`` -- a held atom's row is zero (§ 2b.2)."""
@@ -354,9 +370,13 @@ def force_constant_mdyn_per_ang(frequency_cm1: float,
 #  Where the molecule sits along a mode -- the states (§ 2b.3)           #
 # --------------------------------------------------------------------- #
 
-#: THE STATES a mode's coordinate can be in (§ 2b.3), each a kind word.
+#: THE STATES a mode's coordinate can be in (§ 2b.3), each a kind word --
+#: and the two families every caller tells them by: the driven states (a
+#: swing, quantum or classical) and the classical ones.
 THERMAL, NUMBER, SWING, CLASSICAL, CLASSICAL_SWING = (
     "thermal", "number", "swing", "classical", "classical swing")
+DRIVEN_KINDS = (SWING, CLASSICAL_SWING)
+CLASSICAL_KINDS = (CLASSICAL, CLASSICAL_SWING)
 
 
 @dataclass(frozen=True, eq=False)
@@ -371,18 +391,28 @@ class Frames:
     degree the rule averages exactly; ``state`` the mode's state the frames
     were made for (``None`` for a bare :class:`State`'s, which has no
     atoms); ``positions_ang`` each frame's geometry, every atom at
-    ``R + Q L`` (frames x atoms x 3; ``None`` without a mode)."""
+    ``R + Q L`` (frames x atoms x 3; ``None`` without a mode);
+    ``read_said`` what reading a written set back said of it
+    (`vibration_frames.read_frame_set`), first in :attr:`said`, and
+    ``read_mode`` the mode a set read back without its vibration states it
+    is of."""
     q_amu12_ang: np.ndarray
     weights: np.ndarray
     exact_to_degree: int
     state: Optional["ModeState"] = field(default=None, repr=False)
     positions_ang: Optional[np.ndarray] = field(default=None, repr=False)
+    read_said: Tuple[str, ...] = field(default=(), repr=False)
+    read_mode: Optional[int] = field(default=None, repr=False)
 
     @property
     def mode_index_1based(self) -> np.ndarray:
-        """The column's mode, ``(1,)`` -- 0 for a bare state's frames."""
+        """The column's mode, ``(1,)`` -- the mode a set read back without
+        its vibration states, 0 for a bare state's frames."""
         mode = None if self.state is None else self.state.mode
-        return np.array([0 if mode is None else int(mode.index_1based)])
+        if mode is None:
+            return np.array([0 if self.read_mode is None
+                             else int(self.read_mode)])
+        return np.array([int(mode.index_1based)])
 
     @property
     def atom_moves_ang(self) -> Optional[np.ndarray]:
@@ -395,19 +425,24 @@ class Frames:
 
     @property
     def max_atom_displacement_ang(self) -> Optional[np.ndarray]:
-        """Each frame's largest single-atom move, Å (frames,)."""
-        return None if self.state is None else self._largest[0]
+        """Each frame's largest single-atom move, Å (frames,) -- from the
+        geometries where the frames have no mode (a set read back without
+        its vibration); ``None`` with neither."""
+        return None if self._largest is None else self._largest[0]
 
     @property
     def max_atom_mode_index_1based(self) -> Optional[np.ndarray]:
         """The mode moving each frame's most-moved atom -- this set's one
         mode, 0 for a frame that moves nothing (frame 0) (frames,)."""
-        return None if self.state is None else self._largest[1]
+        return None if self._largest is None else self._largest[1]
 
     @property
-    def _largest(self) -> Tuple[np.ndarray, np.ndarray]:
-        return _largest_moves(self.state.mode._v, self.mode_index_1based,
-                              self.q_amu12_ang)
+    def _largest(self) -> Optional[Tuple[np.ndarray, np.ndarray]]:
+        if self.state is not None:
+            return _largest_moves(self.state.mode._v, self.mode_index_1based,
+                                  self.q_amu12_ang)
+        return _largest_of_geometries(self.positions_ang,
+                                      self.mode_index_1based)
 
     @property
     def said(self) -> Tuple[str, ...]:
@@ -416,11 +451,12 @@ class Frames:
         person reads against a bond length."""
         largest = self.max_atom_displacement_ang
         if largest is None or not len(largest):
-            return ()
+            return tuple(self.read_said)
         i = int(np.argmax(largest))
-        return (f"the outermost frames move an atom by at most "
+        return (*self.read_said,
+                f"the outermost frames move an atom by at most "
                 f"{largest[i]:.4f} Å ({_frame_words(i, len(largest))}, q = "
-                f"{self.q_amu12_ang[i, 0]:+.4f} amu^1/2·Å)",)
+                f"{self.q_amu12_ang[i, 0]:+.4f} amu^1/2·Å)")
 
 
 @dataclass(frozen=True, eq=False)
@@ -437,6 +473,20 @@ class Weights:
     beyond: float
     exact_to_degree: int
     said: Tuple[str, ...] = ()
+
+
+def _largest_of_geometries(positions_ang, numbers
+                           ) -> Optional[Tuple[np.ndarray, np.ndarray]]:
+    """Each frame's largest single-atom move from frame 0, from the
+    geometries alone -- a set read back without its vibration -- and the
+    mode moving it: the set's one mode, or 0 where the modes are not known
+    or the frame moves nothing; ``None`` with no geometries."""
+    if positions_ang is None:
+        return None
+    p = np.asarray(positions_ang, dtype=float)
+    largest = np.linalg.norm(p - p[:1], axis=-1).max(axis=1)
+    one = int(numbers[0]) if len(numbers) == 1 else 0
+    return largest, np.where(largest > 0.0, one, 0)
 
 
 def _largest_moves(vibration: "Vibration", numbers, q_amu12_ang
@@ -801,7 +851,7 @@ class State:
         classical state, which counts none."""
         if self.kind == NUMBER:
             return float(self.quanta)
-        if self.kind in (CLASSICAL, CLASSICAL_SWING):
+        if self.kind in CLASSICAL_KINDS:
             return None
         return float(self.bath_quanta) + float(self.swing_quanta)
 
@@ -950,7 +1000,7 @@ class State:
 
     def _phases(self, size, seed, start, phase, mode) -> Optional[np.ndarray]:
         """A swing's phases -- given, or its own uniform stream's."""
-        if self.kind not in (SWING, CLASSICAL_SWING):
+        if self.kind not in DRIVEN_KINDS:
             return None
         if phase is not None:
             phase = np.asarray(phase, dtype=float).reshape(-1)
@@ -1547,12 +1597,14 @@ class Vibration:
     takes), ``species_labels`` and ``regions`` as written, the modes'
     temperatures the record states its spreads at; ``frequency_scale`` the
     factor every mode's frequency was scaled by (1 for the result's own);
-    and where it came from -- ``read_path`` the file read, as given;
+    and where it came from -- ``read_path`` the path read, as given (the
+    result file, or the run's folder);
     ``structure`` the structure the result states (its reader fills it);
-    ``result_sha256`` the result JSON's, ``run`` and
-    ``relaxation_calculation`` -- filled from R3d2b2b2, at the read door and
-    where a run's folder is read (`vibration_frames.vibration_of_run`);
-    ``None`` until then."""
+    ``result_sha256`` the result JSON's (the read door's); ``run`` the run's
+    folder and ``relaxation_calculation`` frame 0's record of the relaxation
+    its geometry came from -- filled where a run's folder is read
+    (`vibration_frames.vibration_of_run`), ``None`` else -- and
+    ``relaxation_said``, why there is none, in words."""
     modes: Tuple[Mode, ...]
     free_atom_idxs: Tuple[int, ...] = field(repr=False)
     masses_amu: np.ndarray = field(repr=False)
@@ -1570,6 +1622,7 @@ class Vibration:
     structure: Optional[Any] = field(default=None, repr=False)
     relaxation_calculation: Optional[Mapping[str, Any]] = field(
         default=None, repr=False)
+    relaxation_said: str = field(default="", repr=False)
 
     def __post_init__(self):
         object.__setattr__(self, "masses_amu",
@@ -1581,7 +1634,16 @@ class Vibration:
 
     def mode(self, number: int) -> Mode:
         """The mode numbered ``number``, as the result counts it
-        (``index_1based``) -- refused by name where the result has none."""
+        (``index_1based``) -- THE ONE RULE of a mode's number, every door
+        asking it: a whole number, never true/false and never truncated
+        (2.5 is no mode 2), refused by name, as a number the result holds
+        none of is."""
+        if (isinstance(number, (bool, np.bool_))
+                or not isinstance(number, (numbers.Real, np.integer))
+                or float(number) != int(number)):
+            raise ValueError(f"a mode is named by its number, a whole "
+                             f"number -- not {number!r}")
+        number = int(number)
         for m in self.modes:
             if m.index_1based == number:
                 return m
@@ -1611,10 +1673,11 @@ class Vibration:
         (`engines/vibration-frames.md` § 3.2): every atom at
         ``R^0 + sum_k Q_k L_k``, the modes by number, ``Q`` in amu^1/2.Å --
         the relaxed geometry itself for none."""
-        numbers = [int(k) for k in dict(coordinates)]
+        given = dict(coordinates)
+        numbers = [self.mode(k).index_1based for k in given]
         if not numbers:
             return np.array(self.positions_ang, dtype=float, copy=True)
-        q = [[float(dict(coordinates)[k]) for k in numbers]]
+        q = [[float(v) for v in given.values()]]
         return self.positions_ang + self._moves(numbers, q)[0]
 
     @property
@@ -1639,10 +1702,23 @@ class Vibration:
         if not (math.isfinite(f) and f > 0.0):
             raise ValueError(f"a frequency scale is a positive number; got "
                              f"{factor!r}")
-        total = f * self.frequency_scale
-        modes = tuple(replace(m, frequency_cm1=m._result_frequency * total,
-                              result_frequency_cm1=m._result_frequency)
-                      for m in self.modes)
+        return self._at_total(f * self.frequency_scale)
+
+    def _at_total(self, total: float) -> "Vibration":
+        """The vibration at ``total`` times the result's frequencies -- THE
+        ONE PLACE a vibration is set at a scale (:meth:`with_frequency_scale`
+        and a frame set read back at its own scale ask it): at 1 the
+        result's own modes, as read; else each mode at ``total`` times the
+        result's frequency, the result's own kept."""
+        total = float(total)
+        if total == 1.0:
+            modes = tuple(replace(m, frequency_cm1=m._result_frequency,
+                                  result_frequency_cm1=None)
+                          for m in self.modes)
+        else:
+            modes = tuple(replace(m, frequency_cm1=m._result_frequency * total,
+                                  result_frequency_cm1=m._result_frequency)
+                          for m in self.modes)
         return replace(self, modes=modes, frequency_scale=total)
 
     def motion(self, temperature_k: Optional[float] = None, *,
@@ -1655,9 +1731,7 @@ class Vibration:
         order.  An imaginary mode among them is left out, said; none left to
         move is refused by name."""
         asked = ({m.index_1based for m in self.modes} if modes is None
-                 else {int(k) for k in modes})
-        for k in asked:
-            self.mode(k)
+                 else {self.mode(k).index_1based for k in modes})
         notes: List[str] = []
         imaginary = [m.index_1based for m in self.modes
                      if m.index_1based in asked and m.has_imag]
@@ -1837,8 +1911,8 @@ class Motion:
         ``classical=False``, a driven one quantum unless ``classical=True``.
         Set apart again, the later call's state, said; a member of a drive
         group leaves it, the group drawing as before."""
-        k = int(number)
-        mode = self.vibration.mode(k)
+        mode = self.vibration.mode(number)
+        k = mode.index_1based
         asked = _named(temperature_k, mean_quanta, quanta, swing_quanta,
                        classical)
         if state is not None:
@@ -1887,8 +1961,10 @@ class Motion:
         with ``temperature_k``, their swings classical with ``classical``.
         A mode in another group is refused by name; a mode set apart before
         takes this call's state, said."""
-        quanta = {int(k): v for k, v in dict(swing_quanta).items()}
-        lags = {int(k): float(v) for k, v in dict(lags_rad).items()}
+        quanta = {self.vibration.mode(k).index_1based: v
+                  for k, v in dict(swing_quanta).items()}
+        lags = {self.vibration.mode(k).index_1based: float(v)
+                for k, v in dict(lags_rad).items()}
         if not quanta:
             raise ValueError("a drive group drives one mode at least")
         if set(lags) != set(quanta):
@@ -2023,13 +2099,20 @@ class Snapshots:
     modes); ``antithetic`` whether pairs; ``drawings`` each drawing's
     ``(seed, start, samples)`` -- one for a set drawn at once, one per set
     for a pooled one; ``pieces`` the snapshots of each set a pooled set was
-    given, in order (a pooled set among them one piece)."""
-    motion: Motion = field(repr=False)
+    given, in order (a pooled set among them one piece).  ``motion``
+    ``None`` for a set read back without its vibration
+    (`vibration_frames.read_frame_set`): ``written_positions_ang`` its
+    geometries as written, its analyses whole, its moves from those
+    geometries."""
+    motion: Optional[Motion] = field(repr=False)
     mode_index_1based: np.ndarray = field(repr=False)
     q_amu12_ang: np.ndarray = field(repr=False)
     antithetic: bool
     drawings: Tuple[Tuple[int, int, int], ...]
     pieces: Tuple[int, ...] = ()
+    written_positions_ang: Optional[np.ndarray] = field(default=None,
+                                                        repr=False)
+    read_said: Tuple[str, ...] = field(default=(), repr=False)
 
     @property
     def seed(self) -> Optional[int]:
@@ -2059,7 +2142,11 @@ class Snapshots:
     @property
     def atom_moves_ang(self) -> np.ndarray:
         """Each frame's every-atom move, ``sum_k Q_k L_k`` (frames x atoms x
-        3) -- the displacement map, by the vibration's one rule."""
+        3) -- the displacement map, by the vibration's one rule; read back
+        without the vibration, from the geometries as written."""
+        if self.motion is None:
+            p = np.asarray(self.written_positions_ang, dtype=float)
+            return p - p[:1]
         return self.motion.vibration._moves(self.mode_index_1based,
                                             self.q_amu12_ang)
 
@@ -2067,20 +2154,28 @@ class Snapshots:
     def positions_ang(self) -> np.ndarray:
         """Each frame's geometry, frame 0 the relaxed one (frames x atoms x
         3)."""
+        if self.motion is None:
+            return np.asarray(self.written_positions_ang, dtype=float)
         return self.motion.vibration.positions_ang[None] + self.atom_moves_ang
+
+    @property
+    def _largest(self) -> Tuple[np.ndarray, np.ndarray]:
+        if self.motion is None:
+            return _largest_of_geometries(self.written_positions_ang, ())
+        return _largest_moves(self.motion.vibration, self.mode_index_1based,
+                              self.q_amu12_ang)
 
     @property
     def max_atom_displacement_ang(self) -> np.ndarray:
         """Each frame's largest single-atom move, Å (frames,)."""
-        return _largest_moves(self.motion.vibration, self.mode_index_1based,
-                              self.q_amu12_ang)[0]
+        return self._largest[0]
 
     @property
     def max_atom_mode_index_1based(self) -> np.ndarray:
         """The mode moving each frame's most-moved atom most -- 0 for a frame
-        that moves nothing (frame 0) (frames,)."""
-        return _largest_moves(self.motion.vibration, self.mode_index_1based,
-                              self.q_amu12_ang)[1]
+        that moves nothing (frame 0), and for every frame read back without
+        the vibration (frames,)."""
+        return self._largest[1]
 
     @property
     def said(self) -> Tuple[str, ...]:
@@ -2090,16 +2185,23 @@ class Snapshots:
         pair alone, its error having nothing to be taken from."""
         largest = self.max_atom_displacement_ang
         i = int(np.argmax(largest))
-        spreads = ", ".join(
-            f"mode {k} {self.motion.states[int(k)].spread_amu12_ang:.3g}"
-            for k in self.mode_index_1based)
-        out = [f"the largest single-atom move is {largest[i]:.4f} Å, frame "
-               f"{i}, mode {int(self.max_atom_mode_index_1based[i])} moving "
-               f"it most; each mode's spread (amu^1/2·Å): {spreads}"]
+        if self.motion is None:
+            out = [f"the largest single-atom move is {largest[i]:.4f} Å, "
+                   f"{_frame_words(i, len(largest))}; read without its "
+                   f"vibration, the modes moving it and their spreads are "
+                   f"not known"]
+        else:
+            spreads = ", ".join(
+                f"mode {k} {self.motion.states[int(k)].spread_amu12_ang:.3g}"
+                for k in self.mode_index_1based)
+            out = [f"the largest single-atom move is {largest[i]:.4f} Å, "
+                   f"{_frame_words(i, len(largest))}, mode "
+                   f"{int(self.max_atom_mode_index_1based[i])} moving it "
+                   f"most; each mode's spread (amu^1/2·Å): {spreads}"]
         if self.antithetic and self.samples == 2:
             out.append("one mirrored pair: its error has nothing to be taken "
                        "from")
-        return tuple(out)
+        return (*self.read_said, *out)
 
     def __repr__(self) -> str:
         modes = len(self.mode_index_1based)
@@ -2242,7 +2344,7 @@ def _state_words(k: int, s: ModeState) -> str:
     (`engines/vibration-frames.md` § 5.1's ``set_apart_modes``)."""
     st = s.state
     t = "" if s.temperature_k is None else _temperature_words(s)
-    if st.kind in (SWING, CLASSICAL_SWING):
+    if st.kind in DRIVEN_KINDS:
         words = (f"mode {k}: driven, {_quanta_words(st.swing_quanta)}, "
                  f"{_swing_words(s)}, its own phase")
     elif st.kind == NUMBER:
@@ -2260,14 +2362,19 @@ def pooled(*sets: Snapshots) -> Snapshots:
     """Snapshot sets of one motion joined into one
     (`engines/vibration-frames.md` § 3.3; science § 5.5): the same states,
     drive groups and pairing -- one seed drawn in sequence, or distinct
-    seeds -- in the order given; two motions, pairs with unpaired, or two
-    ranges of one seed that overlap, refused by name.  Its analyses take
+    seeds -- in the order given; two motions, pairs with unpaired, two
+    ranges of one seed that overlap, or a set read back without its
+    vibration, refused by name.  Its analyses take
     one array for the set as written, or each set's values whole, in the
     order of the sets."""
     if not sets:
         raise ValueError("pooling needs a set to pool")
     if len(sets) == 1:
         return sets[0]
+    if any(s.motion is None for s in sets):
+        raise ValueError("a set read back without its vibration pools once "
+                         "its vibration is given: read_frame_set(path, "
+                         "vibration=v)")
     first = sets[0]
     for s in sets[1:]:
         if s.antithetic != first.antithetic:
@@ -2309,12 +2416,13 @@ __all__ = ["checked_temperature_k", "zero_point_amplitude_amu12_ang",
            "mean_quanta", "spread_of_quanta", "thermal_spread_amu12_ang",
            "classical_spread_amu12_ang",
            "thermal_spread_of", "THERMAL_ROW_KEYS", "thermal_row",
-           "mode_over_atoms", "largest_move",
+           "mode_over_atoms", "largest_move", "outermost_move_ang",
            "q_for_largest_move", "atom_moves", "displaced", "coordinate_of",
            "zero_point_displacement_ang", "largest_zero_point_move_ang",
            "motion_shares_of", "shares_by", "reduced_mass_amu",
            "force_constant_mdyn_per_ang", "THERMAL", "NUMBER", "SWING", "CLASSICAL",
-           "CLASSICAL_SWING", "Frames", "Weights", "State", "state",
+           "CLASSICAL_SWING", "DRIVEN_KINDS", "CLASSICAL_KINDS", "Frames",
+           "Weights", "State", "state",
            "temperature_of_quanta", "GIVEN", "THE_RECORDS", "THE_MOTIONS",
            "THE_SETS",
            "ModeState", "Mode", "Vibration", "Drive",

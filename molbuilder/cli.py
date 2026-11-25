@@ -1965,11 +1965,9 @@ def cmd_frameset_from_mode(run, mode, temperature, nodes, out):
             --mode 7 --temperature 300 --out P/structure/mode7.xyz
     """
     from .spectra.mode_frames import FrameSetError, frameset_from_mode
-    from .projects import projects_root
     try:
         got = frameset_from_mode(run, mode=mode, temperature_k=temperature,
-                                 nodes=int(nodes), out=out,
-                                 root=projects_root())
+                                 nodes=int(nodes), out=out)
     except FrameSetError as exc:
         raise click.ClickException(str(exc))
     click.echo(f"wrote {got.path} -- mode {mode}, {len(got.frames)} frames "

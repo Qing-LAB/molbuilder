@@ -963,7 +963,14 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   — to show the save, the download, the hand-over and the codec's write
   carry what they read rather than judge it
   ([`model/structure.md`](?doc=model/structure.md) § 2.2d); no code exists
-  for older rows.
+  for older rows. **A typed vibration**, the user's choice at 2.82.0
+  (2026-11-24): the motion toolkit's fast rows stand on one model molecule
+  built by hand as the result's reader builds a `Vibration`
+  (`tests/support/model_vibration.py` — three modes known on paper, which
+  the science's closed forms need, its geometry carrying digits beyond a
+  pair's six decimals as a relaxation's does); a real computed vibration's
+  road — its run's folder read, a set written and read back — is the
+  end-to-end's (`tests/test_vibration_mechanics_e2e.py`).
 - **API tests check what molbuilder prepares; end-to-end tests make the run**
   *(user, 2026-10-04: "you have to rely on more api and framework test rather
   than fucking e2e test. e2e test is only necessary when i say so";
@@ -1195,7 +1202,9 @@ deliberately not installed there.
   host env finds the checkout from any folder -- `lines`, `run`; and, for a
   test that runs a job's whole work on an env carrying more than the
   bundle's row, `lines_without_molbuilder`, molbuilder alone refused),
-  `suite.py` (a small suite
+  `model_vibration.py` (the one model vibration the mechanics' and the
+  frame sets' fast tests compute with, `model_vibration`, § 6's named
+  exception), `suite.py` (a small suite
   run by the suite's own rules, for a test of the harness itself,
   `linked`), `machines.py` (a machine record's scheduler of each kind,
   `SLURM` and `WORKSTATION`, the GPU tool the load monitor asks,

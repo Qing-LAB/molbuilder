@@ -3251,9 +3251,10 @@ or `chemistry.atomic_mass`'s for a file before v7, which states none.
 temperature, are views too** — each asked with its inputs and derived by one
 function, never stored: `spectra.infrared.infrared_view`, from
 `partial_charges`, for a direction and a partition (§ 5.10 ②); and
-`spectra.mode_frames.outermost_move` — from R3d2b2b2 the motion toolkit's
-`outermost_move`, for any state ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
-§ 1) — the outermost frames' largest atom move for a rule at a temperature,
+the motion toolkit's `outermost_move`, for any state (its rule
+`vibration.outermost_move_ang`; [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 4) — the page's readout a thermal state's until R3d2b2b2b2 gives the page
+any state — the outermost frames' largest atom move for a rule,
 from the mode's zero-point amplitude and its pattern
 (`science/vibrational-averaging.md` § 5). The load door serves each
 (`web/spectra.md` § 3.2, § 4.3).
@@ -3661,7 +3662,7 @@ it**:
 | each free atom's share of a mode's motion, $m_A\lvert L_A\rvert^2/\sum_B m_B\lvert L_B\rvert^2$, and its sums by element, label or region | `vibration.motion_shares_of`, written by both engines; the element shares summed at load | per atom from v15 (§ 3) |
 | the largest single-atom zero-point move, $\max_A\lvert u_{\mathrm{zp},A}\rvert$ | `vibration.largest_zero_point_move_ang`, written by both engines; and the spectra page itself, from the stored displacement (`onWriteFrameSet`) | from v15 (§ 3) |
 | a mode's spread $\sigma(T) = Q_{\mathrm{zp}}\sqrt{\coth(\hbar\omega/2k_BT)}$ and mean quanta $n(T)$ | `vibration.thermal_row`, written by both engines; `vibration`, at load for the temperature the tab asks | at the modes' own temperatures from v15 (§ 3); at another, no — a view |
-| a frame set's outermost move for a rule at a temperature | `spectra/mode_frames.py` (`outermost_move`, `at_temperature`) | in the frame set's own record only |
+| a frame set's outermost move for a rule, in any state | `vibration.outermost_move_ang` (its one rule), asked by the motion toolkit (`vibration_frames.outermost_move`, `outermost_move_of`) and the load door (`spectra/mode_frames.outermost_move`); a mode's thermal spread at a temperature `spectra/mode_frames.at_temperature` | in the frame set's own record only |
 | the distribution of a mode's coordinate in a state other than thermal — $n$ quanta exactly, a steady swing | `vibration.state`, asked through `postprocess.vibration` (§ 6) | no — a view |
 | each atom's move for a mode coordinate the person gives | `vibration.Mode.displacement`, and the coordinate back (`coordinate`), through `postprocess.vibration` (§ 6) | no — a view |
 | the probe's slope $\partial\varepsilon/\partial Q$ and the coupling $g_\nu = (\partial\varepsilon/\partial Q)\,Q_{\mathrm{zp}}$ | nowhere — the page draws $\Delta E/(2A)$ per Å of the display form | no ([`science/normal-modes.md`](?doc=science/normal-modes.md) § 4b.5 F: "not computed today") |
@@ -3715,11 +3716,12 @@ snapshots, and the one view a person computes with, `Vibration` and its
 the record of § 3 — their mechanics the module's (§ 6.6). **Still to come
 into it**: the probe (§ 4, R3d2c). A frame set's re-average asks the
 module's `weights_at` through the motion toolkit's `weights_for_set`
-([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 7). The frame-set maker's `outermost_move` and `at_temperature` — a mode's
-own thermal set's numbers, not a mode's mechanics — go with the rest of
-`spectra/mode_frames.py` to the motion toolkit's own module,
-`vibration_frames` ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
-§ 1; R3d2b2b2, [`plans/plan.md`](?doc=plans/plan.md) § 2).
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 7). The outermost move's rule is the
+module's (`outermost_move_ang`: $\lvert q_{\mathrm{out}}\rvert \max_A \lvert L_A\rvert$, the outermost node of
+a state's own rule times the largest atom's row of the mode), the motion toolkit and the load door asking it. `spectra/mode_frames.py`'s `at_temperature` — a mode's own
+thermal set's numbers, not a mode's mechanics — goes with the rest of `spectra/mode_frames.py` to the motion
+toolkit's own module, `vibration_frames` ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 1; R3d2b2b2b2, [`plans/plan.md`](?doc=plans/plan.md) § 2).
 
 #### 3. The per-mode record
 
@@ -3842,7 +3844,7 @@ probe or `modes_thermal` key it has no variable for** (§ 6.10.5).
 
 ```python
 from molbuilder.postprocess import vibration
-v = vibration("01_freq/run-0/<label>.spectra.nc")    # or the .spectra.json
+v = vibration("01_freq/run-0")                        # the run's folder; or its .spectra.nc / .spectra.json
 m = v.modes[6]                                        # mode 7
 m.frequency_cm1, m.zero_point_amplitude_amu12_ang, m.motion_shares(by="element")
 
@@ -3866,9 +3868,14 @@ snaps.standard_error(values), snaps.parts(values)    # values one per frame, fra
 m.probe.coupling_eh, m.probe.huang_rhys, m.probe.shift_eh   # PySCF, a probed mode
 ```
 
-`vibration(path)` reads either file through the result's one reader
+`vibration(path)` reads the vibration run's folder — through the motion
+toolkit's run door, which adds the run, the result's sha256 and frame 0's
+relaxation record ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 1; `vibration_frames.vibration_of`, the one door telling the two forms
+apart) — or either result file through the result's one reader
 (`sidecars.spectra.read_vibration_result`) into the result's modes
-(`SpectraResults.vibration`): a `vibration.Vibration` holding what every
+(`SpectraResults.vibration`, `v.result_sha256` the JSON's whichever file):
+a `vibration.Vibration` holding what every
 mode shares — `free_atom_idxs`, every atom's `masses_amu` and element
 (`element_symbols`, its species label's name, `Structure.chemical_symbols`),
 `positions_ang`, the record's temperature, the labels, regions and the
@@ -3908,7 +3915,8 @@ structure with no region labels. `m.probe` and
 `with_masses` are still to come (§ 4, § 9 item 3). **The states, their
 arguments and which call takes the record's temperature** are one table,
 [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 2, and
-what each release changes in a built call is § 9 there. A mode's `motion_share` and its
+what each release changes in a built call is its row in
+[`process/changelog.md`](?doc=process/changelog.md). A mode's `motion_share` and its
 `zero_point_displacement_ang` are over its free atoms, as the record's
 (§ 6.3); its moves are every atom's.
 
@@ -3935,9 +3943,9 @@ moving half of it, and the projection giving $Q_{\mathrm{zp}}$ back. Each is
 seen failing on the release before. `postprocess.reaveraged` takes any
 state's arguments, joining the toolkit's weights for the set's rows and
 transport's averaging door, and says the share beyond the frames
-([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 7); from
-R3d2b2b2 `postprocess.outermost_move` takes any state's arguments as its
-rule moves into the motion toolkit (today a thermal state's alone). The
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 7);
+`postprocess.outermost_move` takes any state's arguments, its rule the
+motion toolkit's. The
 snapshots' tests are the motion toolkit's (§ 8 there). The tests: `tests/test_vibration_mechanics.py` — H₂'s
 zero-point amplitude and bond move, a spring between two masses through the
 road's diagonalisation, each state's density, distribution, moments, zeros,

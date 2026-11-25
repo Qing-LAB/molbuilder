@@ -1163,8 +1163,8 @@ $$
 $x_{\mathrm{out}}$ the rule's outermost node (§ 5.1: $\sqrt{3/2}$ for three
 frames, 2.0202 for five, 2.6520 for seven); $\max_A\lvert\mathbf L_A\rvert$ is
 `vibration.largest_move`, the one a Raman phase's $\pm\delta Q$ rests on too
-(`spectra.mode_frames.outermost_move` asks it; from R3d2b2b2 the motion
-toolkit's `outermost_move`, for any state). Each frame states its own largest
+(the motion toolkit's `outermost_move` asks it, for any state:
+`vibration.outermost_move_ang`). Each frame states its own largest
 single-atom move beside it — the check a person reads against a bond length.
 
 **An example — mode 48 of the user's AuBDTAu vibration on Sol**

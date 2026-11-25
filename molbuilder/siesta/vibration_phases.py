@@ -21,7 +21,8 @@ ROLE    the one table of the phases (:data:`PHASES`): what each phase's
         ``continues``).  The index itself, its stamps and its rules are
         every run of points' (`runpoints`).
 USED-BY `jobset.prep`, `spectra.vibration_points`, `spectra.siesta_vibration`,
-        `siesta.vibration_deck`, `spectra.mode_frames`, `spectra.displacement_sweep`,
+        `siesta.vibration_deck`, `vibration_frames` (the run door: a run of
+        points' force-constant call), `spectra.displacement_sweep`,
         `monitor` (the count, through the index's part)
 """
 from __future__ import annotations

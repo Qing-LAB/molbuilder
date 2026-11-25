@@ -1303,7 +1303,8 @@ class SpectraResults:
                 np.array([mass_of(i, labels, self.equilibrium_masses_amu)
                           for i in asked], dtype=float))
 
-    def vibration(self, read_path: str = ""):
+    def vibration(self, read_path: str = "", *,
+                  result_sha256: Optional[str] = None):
         """THE RESULT'S MODES AS A PERSON COMPUTES WITH THEM
         (`vibration.Vibration`, `engines/vibration.md` § 6.11 § 6): each mode
         over every atom in the user's order, held atoms still, by the masses
@@ -1314,8 +1315,10 @@ class SpectraResults:
         its thermochemistry states and the modes' own temperatures its
         ``modes_thermal`` is at (:meth:`_mode_temperatures`) -- each shared
         field the `Vibration`'s, its modes bound to it, with the structure the
-        result states; ``read_path`` the file it was read from.  Refused by
-        name before any geometry exists."""
+        result states; ``read_path`` the file it was read from and
+        ``result_sha256`` the result JSON's (`sidecars.spectra.
+        result_sha256_of`, the read door's).  Refused by name before any
+        geometry exists."""
         from ..vibration import Mode, Vibration
         weighted = self.atoms_weighted()
         if weighted is None:
@@ -1343,7 +1346,8 @@ class SpectraResults:
                          record_temperature_k=temperature,
                          species_labels=labels, regions=regions,
                          mode_temperatures_k=temperatures,
-                         read_path=str(read_path), structure=structure)
+                         read_path=str(read_path), structure=structure,
+                         result_sha256=result_sha256)
 
     def atom_index_map_stated(self):
         """THE ATOM INDEX MAP the result states (v10), or -- a file before

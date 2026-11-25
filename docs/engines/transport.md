@@ -2047,8 +2047,8 @@ The rule that derives the frames is not molbuilder's to own. molbuilder's
 own maker is the motion toolkit
 ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)), which
 reads a vibration run's modes and writes a mode's own set, snapshots of
-every mode, or frames the person built *(to build, R3d2b2b2; until then the
-frame generator, `spectra.mode_frames`, writes a mode's own thermal set)*. But the person may also supply **a
+every mode, or frames the person built (`vibration_frames.write_frame_set`;
+the command line's and the page's set, a mode's own thermal set, through it). But the person may also supply **a
 script of their own** that takes the base structure and writes the frames;
 then the script is the rule, it is recorded beside the frames exactly as the
 toolkit's would be, and the person takes over the responsibility the

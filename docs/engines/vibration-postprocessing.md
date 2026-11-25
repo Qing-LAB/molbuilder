@@ -15,7 +15,7 @@ and [`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessin
 What a finished vibration holds, which call answers what, and worked examples in
 Python: the modes atom by atom, the infrared and the Raman, the thermochemistry,
 the charges and the optical calls. Every example below, save § 2a's (whose
-tests § 2a names) and § 2b's (in part to build), ran on a real calculation before it
+tests § 2a names) and § 2b's (whose tests the toolkit's § 8 names), ran on a real calculation before it
 was written here: on
 SIESTA, a molecule of 4 free atoms held between 48 gold atoms, whose engine
 order differs from its user order; on PySCF, an H2, for what § 2, § 3, § 4 and
@@ -33,11 +33,11 @@ import xarray as xr
 | name | answers |
 |---|---|
 | `read_spectra_data(path)` | `<label>.spectra.nc`: the whole result as data, and its atom index map |
-| `vibration(path)` | the result's modes to compute with: the values the record stores of each — the zero-point amplitude and displacement, the largest zero-point move, each free atom's share of the motion and its sums by element, label or region, Gaussian's reduced mass and force constant, the spread and mean quanta at the file's temperatures — each atom's move for a coordinate and back, a mode's states and their frames, the mode at another frequency (§ 2a) |
+| `vibration(path)` | the vibration run's folder, or its result file (`.spectra.json` or `.spectra.nc`): the result's modes to compute with: the values the record stores of each — the zero-point amplitude and displacement, the largest zero-point move, each free atom's share of the motion and its sums by element, label or region, Gaussian's reduced mass and force constant, the spread and mean quanta at the file's temperatures — each atom's move for a coordinate and back, a mode's states and their frames, the mode at another frequency (§ 2a) |
 | `infrared_view(path, direction=, partition=)` | the infrared the spectrum viewer draws |
 | `raman_view(path, laser_nm=, broaden_ev=)` | a SIESTA vibration's Raman at a laser |
 | `read_optical_data(path)` | `<label>.optical.nc`: the optical calls, each frame's ε₂ |
-| `outermost_move(path, mode=, temperature_k=)` | how far a frame set at that temperature moves the atom moving most |
+| `outermost_move(path, mode=, nodes=, temperature_k=, quanta=, swing_quanta=, mean_quanta=, classical=)` | how far a frame set of that state moves the atom moving most |
 | `read_steps(path)` | the relaxation's or the force constants' steps, in your atoms' order (§ 7) |
 
 The result sits in the run's folder: `01_freq/run-0/<label>.spectra.nc`, with its
@@ -101,8 +101,9 @@ ds.frequency_cm1.attrs["units"], ds.frequency_cm1.attrs["long_name"]
 
 ## 2a. Each mode's mechanics — `vibration`
 
-`vibration(path)` reads the result — its JSON or its `.nc`, one answer — as
-modes to compute with, every atom in your order, the theory
+`vibration(path)` reads the vibration run's folder — the run, the result's
+sha256 and frame 0's relaxation record with it — or the result itself, its
+JSON or its `.nc`, one answer, as modes to compute with, every atom in your order, the theory
 [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
 § 2b ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.11 § 6). The
 end-to-end test (`tests/test_vibration_mechanics_e2e.py`) makes the move, the
@@ -149,7 +150,8 @@ imaginary mode has moves for a coordinate given and no state.
 ## 2b. Frames from the modes — the motion toolkit
 
 *(The motion and its snapshots built, 2.80.0; reading a run's folder, the
-writer and the reader to build — [`plans/plan.md`](?doc=plans/plan.md) § 2;
+writer and the reader, 2.82.0 — the command line and the page for any state
+to build, [`plans/plan.md`](?doc=plans/plan.md) § 2;
 the design and every choice is [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md),
 the theory [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
 § 2c, § 5.)* Frames for a calculation over them — transport's, any other —
@@ -198,9 +200,9 @@ beside the warm others, `with_mode(7, temperature_k=0.0)`
 § 6). After a transport calculation over a snapshot set, its average and that
 average's error are read from its data file, the pairs' means giving the
 error ([`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md)
-§ 3.2). The example notebook, `docs/engines/vibration-frames.ipynb`, runs
-each of these on a vibration result and checks each against the science
-([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 6.1).
+§ 3.2). The example notebook, `docs/engines/vibration-frames.ipynb` *(to
+build, R3d2b2c)*, runs each of these on a vibration result and checks each
+against the science ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 6.1).
 
 ## 3. The infrared and the Raman
 

@@ -4,7 +4,12 @@ The ONE DOOR for this sidecar: the writer (:func:`write_spectra_payload`)
 and the reader (:func:`parse_spectra_json`, the gates of
 ``engines/vibration.md`` § 6.7) both live here, so a caller needs one import
 for both; the registry's FileParser in
-:mod:`molbuilder.parse.sidecars.spectra` asks the reader.
+:mod:`molbuilder.parse.sidecars.spectra` asks the reader.  The result's two
+files are told apart here once (:func:`result_role_of`), which
+:func:`read_vibration_result` -- either file into the one typed result -- and
+:func:`result_sha256_of` -- the JSON's sha256 from either, a frame set's
+provenance -- ask, and the motion toolkit's door to a vibration
+(`vibration_frames.vibration_of`) asks too.
 
 This module is the home of the spectra-JSON reader and its exception
 classes (``SpectraJsonError`` etc.); the FileParser's module asks the reader.
@@ -14,7 +19,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
 # THIS MODULE TRAVELS, and imports the standard library, numpy and netCDF4
 # (through its data file's writer) and the members its `TRAVELS_WITH` names at
@@ -247,6 +252,23 @@ def parse_spectra_json(
     return _validate_dict_to_results(d, repr(p))
 
 
+def result_role_of(path: Union[str, "os.PathLike[str]"]) -> Optional[str]:
+    """WHICH OF A VIBRATION RESULT'S TWO FILES ``path`` names, by the role
+    its name has (`runfiles.WRITTEN`): ``ROLE_SPECTRA``
+    (``<label>.spectra.json``), ``ROLE_SPECTRA_DATA`` (its data file
+    ``<label>.spectra.nc``), ``None`` for another name -- the one place the
+    two are told apart, which :func:`read_vibration_result`,
+    :func:`result_sha256_of` and the vibration door ask."""
+    role = _role_of(Path(os.fspath(path)).name)
+    return role if role in (ROLE_SPECTRA, ROLE_SPECTRA_DATA) else None
+
+
+def _not_a_result(p: Path) -> "SpectraJsonError":
+    return SpectraJsonError(
+        f"{p.name}: a vibration result is <label>{ROLE_SPECTRA} or its data "
+        f"file <label>{ROLE_SPECTRA_DATA}")
+
+
 def read_vibration_result(path: Union[str, "os.PathLike[str]"]
                           ) -> "SpectraResults":
     """A vibration result from either of its two files, by the role its name
@@ -256,7 +278,7 @@ def read_vibration_result(path: Union[str, "os.PathLike[str]"]
     same typed result -- one answer whichever a person points at
     (`engines/vibration.md` § 6.11 § 6).  Another name is refused."""
     p = Path(os.fspath(path))
-    role = _role_of(p.name)
+    role = result_role_of(p)
     if role == ROLE_SPECTRA:
         return parse_spectra_json(p)
     if role == ROLE_SPECTRA_DATA:
@@ -264,12 +286,33 @@ def read_vibration_result(path: Union[str, "os.PathLike[str]"]
         if not p.is_file():
             raise SpectraJsonNotFoundError(f"no data file at {str(p)!r}")
         return _validate_dict_to_results(read_spectra_data(p), repr(str(p)))
-    raise SpectraJsonError(
-        f"{p.name}: a vibration result is <label>{ROLE_SPECTRA} or its data "
-        f"file <label>{ROLE_SPECTRA_DATA}")
+    raise _not_a_result(p)
+
+
+def result_sha256_of(path: Union[str, "os.PathLike[str]"]) -> str:
+    """THE RESULT JSON'S SHA256, whichever of its two files ``path`` is
+    (`engines/vibration-frames.md` § 1): ``<label>.spectra.json``'s own
+    bytes', or the sha256 its data file ``<label>.spectra.nc`` states of the
+    JSON written with it (`spectra.datafile.json_sha256_of`) -- one answer
+    either way, the frame sets' ``vibration_result_sha256``.  Another name
+    is refused, as :func:`read_vibration_result` refuses it."""
+    p = Path(os.fspath(path))
+    role = result_role_of(p)
+    if role == ROLE_SPECTRA:
+        if not p.is_file():
+            raise SpectraJsonNotFoundError(f"no result at {str(p)!r}")
+        return _sha256_of_bytes(p.read_bytes())
+    if role == ROLE_SPECTRA_DATA:
+        from ..spectra.datafile import json_sha256_of
+        if not p.is_file():
+            raise SpectraJsonNotFoundError(f"no data file at {str(p)!r}")
+        return json_sha256_of(p)
+    raise _not_a_result(p)
 
 
 __all__ = [
+    "result_role_of",
+    "result_sha256_of",
     "write_spectra_payload",
     "dump_spectra_json",
     "parse_spectra_json",

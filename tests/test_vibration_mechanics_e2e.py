@@ -1,11 +1,16 @@
 """A real H2 vibration's mechanics and its record (`engines/vibration.md`
 § 6.6, § 6.7, § 6.11 § 6, § 7; `science/vibrational-averaging.md` § 2b.5,
-its end-to-end row): a free H2 run on PySCF down the road, its result read
-by `postprocess.vibration` and by the result's reader from each of its two
-files.  The numbers are held to CODATA's constants and the file's own
-frequency and masses, never to molbuilder's own; the record's rules -- a
-file its own inputs contradict refused, the modes' temperatures the file's
-own -- to the contract, on that run's result.
+its end-to-end row; `engines/vibration-frames.md` § 1, § 4, § 5): a free H2
+run on PySCF down the road, its result read by `postprocess.vibration` from
+the run's folder and each of its two files and by the result's reader, and a
+frame set written from the run's folder and read back reopening its run.
+The numbers are held to CODATA's constants and the file's own frequency and
+masses, never to molbuilder's own -- but for one cross-door check, a run's
+folder's outermost move by `postprocess.outermost_move` against the
+toolkit's for the same state (`engines/vibration-frames.md` § 4: one rule,
+two doors); the record's rules -- a file its own inputs contradict refused,
+the modes' temperatures the file's own -- to the contract, on that run's
+result.
 The closed forms on typed modes are `test_vibration_mechanics.py`.
 """
 from __future__ import annotations
@@ -200,3 +205,49 @@ def test_the_modes_temperatures_are_the_files_own(real_h2_vibration,
     path.write_text(json.dumps(last_bit))
     parse_spectra_json(path)
 
+
+
+def test_a_run_folder_reads_as_its_vibration_and_writes_its_set(
+        real_h2_vibration, tmp_path):
+    """`engines/vibration-frames.md` § 1, § 5, end to end: the run's folder
+    is read as its vibration -- the run, the result JSON's sha256, the same
+    whichever of the result's two files is read, and frame 0's record of
+    the relaxation its geometry came from, or why there is none -- and a
+    set written of it states the run and the sha256 as its provenance rows
+    and that record as frame 0's info.calculation, or says why not.  THE
+    SILENT FAILURE: a set whose provenance names another result than the
+    one its modes came from, or a transport citation stamped with settings
+    from nowhere."""
+    from molbuilder.frameset import read
+    from molbuilder.persist import sha256_of
+    from molbuilder.postprocess import (outermost_move, read_frame_set,
+                                        vibration, write_frame_set)
+    from molbuilder.projects import address
+    from molbuilder.vibration_frames import (
+        outermost_move as vf_outermost_move)
+    from molbuilder.workingcopy_structure import StructureCodec
+    run = real_h2_vibration.attempt("freq")
+    result, data = _files(real_h2_vibration)
+    v = vibration(run)
+    assert v.run == run and v.read_path == str(run)
+    assert v.result_sha256 == sha256_of(result)
+    assert vibration(result).result_sha256 == v.result_sha256
+    assert vibration(data).result_sha256 == v.result_sha256
+    # A PySCF DECK RECORDS NO RELAXATION (§ 1): none, and why, said.
+    assert v.relaxation_calculation is None
+    assert "no transport citation" in v.relaxation_said
+    written = write_frame_set(tmp_path / "h2.xyz",
+                              v.mode(1).state(temperature_k=300.0).frames(3))
+    s = StructureCodec().load(written.path, frames=True)
+    rows = read(s)
+    assert rows.value("vibration_run") == address(run)
+    assert rows.value("vibration_result_sha256") == v.result_sha256
+    assert "calculation" not in (s.info or {})
+    assert v.relaxation_said in written.said
+    # THE SET REOPENS ITS RUN, the one its vibration_run row names (§ 5).
+    back = read_frame_set(written.path)
+    assert back.state is not None and back.state.mode.vibration.run == run
+    # ANY STATE'S OUTERMOST MOVE, from the run's folder (§ 4).
+    swing = v.mode(1).state(swing_quanta=1.0)
+    assert outermost_move(run, mode=1, swing_quanta=1.0, nodes=5) == \
+        vf_outermost_move(swing, 5)

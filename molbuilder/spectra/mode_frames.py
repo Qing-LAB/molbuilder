@@ -1,59 +1,47 @@
-"""A MODE'S FRAME SET -- one vibration mode written as one multi-frame
-structure pair a transport calculation cites (`engines/vibration.md`
-§ 5.10 ③; its rows the vibration frame sets' vocabulary,
-`engines/vibration-frames.md` § 5.1; its rule
-`science/vibrational-averaging.md` § 5).  To be retired in R3d2b2b2, the
-toolkit's writer taking its place.
+"""A MODE'S FRAME SET FROM THE COMMAND LINE AND THE PAGE -- one vibration
+mode, thermal at a temperature, written as one multi-frame pair a transport
+calculation cites (`engines/vibration.md` § 5.10 ③), through the motion
+toolkit's run door and one writer (`vibration_frames.vibration_of_run`,
+`vibration_frames.write_frame_set`; `engines/vibration-frames.md` § 5).
+To be retired in R3d2b2b2b2, the doors writing a mode's own set in any
+state through the toolkit itself.
 
-MODULE  spectra.mode_frames (L2; the run door, the vibration result's reader, the
-        structure and its codec, the vibration frame sets' vocabulary
-        (`vibration_frames`), numpy)
-ROLE    :func:`frameset_from_mode` -- the one generator, and
+MODULE  spectra.mode_frames (L2; the vibration frame sets' toolkit
+        (`vibration_frames`), the vibration's mechanics (`vibration`), the
+        structure's codec, transport's electrode check)
+ROLE    :func:`frameset_from_mode` -- the doors' frame set, and
         :class:`ModeFrames`, what it wrote and what it says;
         :func:`outermost_move` and :func:`at_temperature` -- what a
-        temperature means for a mode before its set is written: its mean
-        number of quanta, its spread and the outermost frames' largest atom
-        move for each rule (`science/vibrational-averaging.md` § 5), and of a
-        result's mode by its number (:func:`outermost_move_of`);
-        :func:`mode_at` -- where a mode is, by its number, the one lookup
-USED-BY the command line (`molbuilder frameset from-mode`), the spectrum
-        viewer's doors (`POST /api/spectra/frameset`; what a temperature
-        means, at `POST /api/spectra/load`) and the post-processing layer
-        (`postprocess.outermost_move`)
+        temperature means for a mode row before its set is written: its
+        mean number of quanta, its spread and the outermost frames' largest
+        atom move for each rule (`vibration.outermost_move_ang`, the one
+        rule)
+USED-BY the command line (`molbuilder frameset from-mode`) and the
+        spectrum viewer's doors (`POST /api/spectra/frameset`; what a
+        temperature means, at `POST /api/spectra/load`)
 
 **Its extent is the person's: a temperature** (the user, 2026-10-28) --
 the junction's, or for a mode pumped out of equilibrium its effective one.
 It sets the mode's mean number of quanta ``n`` and the spread of the
 Gaussian the frames sample, ``sigma = Q_zp sqrt(2n + 1)``; each frame sits
-at a Gauss-Hermite node of it with the rule's own weight, and the
+at a node of the state's own Gauss rule with the rule's own weight, and the
 outermost frames' largest atom move is measured and reported -- the check
 a person reads against a bond length.
 """
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
-import numpy as np
-
-from ..identity import as_typed
-from ..persist import sha256_of
+# THE TOOLKIT'S REFUSAL, which this module's callers catch.
+from ..vibration_frames import FrameSetError
 
 #: The rules the generator writes -- three frames by default, five or seven
 #: on request, each the check of the one before
 #: (`science/vibrational-averaging.md` § 5.1, § 5.3).
 NODES = (3, 5, 7)
 
-#: How its frames sample the mode, as its ``sampling_rule`` row states it
-#: (`model/structure.md` § 2.2f).
-SAMPLING_RULE = "gauss-hermite"
-
-
-class FrameSetError(ValueError):
-    """The frame set cannot be written -- the message names what is missing
-    and where it is read from."""
 
 
 @dataclass(frozen=True)
@@ -79,51 +67,6 @@ class ModeFrames:
                 else str(self.path))
         return {"path": path, "frames": [dict(f) for f in self.frames],
                 "said": list(self.said)}
-
-
-def _ordered_nodes(n: int) -> Tuple[np.ndarray, np.ndarray]:
-    """The ``n``-point Gauss-Hermite rule's nodes ``x`` and weights
-    ``w / sqrt(pi)`` -- frame 0 the node at 0, then each pair of nodes
-    nearest first, its positive side first (`engines/vibration.md`
-    § 5.10 ③)."""
-    x, w = np.polynomial.hermite.hermgauss(n)
-    order = sorted(range(n), key=lambda i: (round(abs(x[i]), 12), -x[i]))
-    return x[order], w[order] / math.sqrt(math.pi)
-
-
-def _relaxation_record(run, res) -> Tuple[Optional[Dict[str, Any]], str]:
-    """THE RECORD OF THE RELAXATION a vibration run's geometry came from
-    (`engines/vibration.md` § 5.10 ③) and, where there is none, why: the
-    run's own `relax` call relaxed it at the one template's settings,
-    so its own deck's record (`runs.view_of`); a structure stated already
-    relaxed states its own -- the calculation's structure beside it, its
-    ``info.calculation``.  WHETHER IT WAS STATED RELAXED is what the run's
-    own result ``res`` states (``relaxation.already_relaxed``, written on
-    either engine) -- never the description as it stands now, which may
-    have changed since, nor a SIESTA deck's block, which a PySCF deck has
-    none of (F12's reviews, F-D2: a PySCF set never read the stated
-    structure's record)."""
-    from ..jobset.rung import structure_path
-    from ..runs import view_of
-    from ..workingcopy_structure import StructureCodec
-    if not (res.relaxation or {}).get("already_relaxed"):
-        own = (view_of(run).info or {}).get("calculation")
-        return own, ("" if own is not None else
-                     f"{run.label}'s deck records no settings (a PySCF deck "
-                     f"states none), so this set states no info.calculation "
-                     f"and is no transport citation")
-    path = structure_path(run.place.task, run.place.root)
-    stated = (StructureCodec().load(path).info or {}).get("calculation") \
-        if path is not None else None
-    if stated is None:
-        return None, (
-            f"the structure {run.label} measured was stated already relaxed "
-            f"and states no record of the relaxation it came from, so this "
-            f"set states no info.calculation and is no transport citation -- "
-            f"save the structure from its relaxation run (the Results tab, or "
-            f"`{as_typed('xv2xyz', '--from-run')}`) and run the vibration "
-            f"from it")
-    return stated, ""
 
 
 def _checked_nodes(nodes: int) -> int:
@@ -154,19 +97,20 @@ def outermost_move(mode: Dict[str, Any], temperature_k: float,
                    nodes: int) -> Optional[float]:
     """THE OUTERMOST MOVE of a mode row at ``temperature_k`` for the
     ``nodes``-point rule, in Angstrom: the largest atom's move at the
-    outermost frames, ``√2 · x_out · σ · max_A |L_A|`` with ``σ`` the
-    mode's spread at that temperature (`science/vibrational-averaging.md`
-    § 5) -- what :func:`frameset_from_mode` measures on the frames it
-    writes, by the same node rule.  ``None`` for a mode with no zero-point
-    amplitude (an imaginary one)."""
-    from ..vibration import largest_move, thermal_spread_of
+    outermost frames, ``|q_out| max_A |L_A|`` for the thermal state at that
+    temperature (`science/vibrational-averaging.md` § 5) -- the one rule
+    (`vibration.outermost_move_ang`) a written set's
+    ``max_displacement_ang`` row takes.  ``None`` for a mode with no
+    zero-point amplitude (an imaginary one)."""
+    from ..vibration import outermost_move_ang, state
     nodes = _checked_nodes(nodes)
-    sigma = thermal_spread_of(mode, temperature_k)
-    if sigma is None:
+    q_zp = mode.get("zero_point_amplitude_amu12_ang")
+    if q_zp is None:
         return None
-    largest = largest_move(mode["eigenvector_canonical"])
-    x_out = float(np.abs(_ordered_nodes(nodes)[0]).max())
-    return math.sqrt(2.0) * x_out * float(sigma) * largest
+    return outermost_move_ang(
+        state(float(q_zp), float(mode["frequency_cm1"]),
+              temperature_k=float(temperature_k)),
+        mode["eigenvector_canonical"], nodes)
 
 
 def at_temperature(mode: Dict[str, Any],
@@ -192,224 +136,55 @@ def at_temperature(mode: Dict[str, Any],
 
 
 def frameset_from_mode(run_folder, *, mode: int, temperature_k: float,
-                       nodes: int = NODES[0], out,
-                       root: Optional[Path] = None) -> ModeFrames:
-    """THE ONE GENERATOR (`engines/vibration.md` § 5.10 ③): vibration run
-    ``run_folder``'s mode ``mode`` -- counted as its result counts it,
-    ``index_1based`` -- written as one multi-frame pair at ``out`` (its
-    ``.xyz``), its frames at the ``nodes`` Gauss-Hermite nodes of the
-    Gaussian the mode spreads over at ``temperature_k``.  ``root`` is the
-    projects tree the run's folder is stated from in its ``vibration_run`` row.
+                       nodes: int = NODES[0], out) -> ModeFrames:
+    """THE COMMAND LINE'S AND THE PAGE'S FRAME SET (`engines/vibration.md`
+    § 5.10 ③): vibration run ``run_folder``'s mode ``mode`` -- counted as its
+    result counts it, ``index_1based`` -- thermal at ``temperature_k``,
+    its frames the ``nodes``-point rule of that state, written as one pair
+    at ``out`` (its ``.xyz``) by the motion toolkit's one writer
+    (`vibration_frames.write_frame_set`), its run read by the toolkit's
+    run door (`vibration_frames.vibration_of_run`).
 
-    Refused, naming what to do: no run of ours -- or a calculation whose
-    description does not read, in its reader's words -- no result in it, a
-    result stating no masses, a mode it does not hold or an imaginary one,
-    a temperature that is not a number of kelvin, 0 or more, another rule
-    than :data:`NODES`, a pair already at ``out``."""
-    from ..chemistry import MASS_SOURCE
-    from ..projects import address
-    from ..runfiles import ROLE_SPECTRA
-    from ..runs import on_label_at, place_of, run_of
-    from ..siesta.vibration_phases import force_constants_call
-    from ..sidecars.molstruct import sidecar_path_for
-    from ..sidecars.spectra import SpectraJsonError, parse_spectra_json
-    from ..vibration import (mean_quanta, thermal_spread_amu12_ang,
-                             zero_point_amplitude_amu12_ang)
-    from ..structure import AtomChannel, Structure
-    from ..vibration_frames import (MASS_CHANNEL, ROWS, assumptions_of_a_mode,
-                                    thermal_state_words)
+    Refused, naming what to do (:class:`FrameSetError`): what the run door
+    and the writer refuse, a mode the result does not hold or an imaginary
+    one, a temperature that is not a number of kelvin, 0 or more, another
+    rule than :data:`NODES`."""
+    from ..structure import Structure
+    from ..transport.compose import frames_moving_the_leads
+    from ..vibration_frames import (_checked_target, _mode_of,
+                                    vibration_of_run, write_frame_set)
     from ..workingcopy_structure import StructureCodec
-
     nodes = _checked_nodes(nodes)
     temperature_k = _checked_temperature(temperature_k)
-    out = Path(out)
-    # THE NAME A STRUCTURE IS WRITTEN UNDER, the codec's rule.
-    refused = StructureCodec.refused_name(out)
-    if refused is not None:
-        raise FrameSetError(refused)
-    taken = [p for p in (out, sidecar_path_for(out)) if p.exists()]
-    if taken:
-        raise FrameSetError(
-            f"{', '.join(p.name for p in taken)} already "
-            f"{'exists' if len(taken) == 1 else 'exist'} -- a pair is never "
-            f"written over, since a transport calculation citing it is "
-            f"pinned to it: choose another name")
-
-    # THE RUN, AND ITS RESULT, through the one door for a result on the
-    # label (`runs.on_label_at`): a run's own folder, or a run of points'
-    # root, where its finish writes it (`engines/vibration.md` § 5.11 § 2).
-    place = place_of(Path(run_folder))
-    if not place.ours or place.problem:
-        # WHY IT IS NO RUN, in the run door's words: a calculation whose
-        # description does not read says so, naming its way out.
-        raise FrameSetError(
-            f"{run_folder}: its calculation's description does not read -- "
-            f"{place.problem}" if place.problem else
-            f"{run_folder}: no run of ours -- name the folder of the "
-            f"vibration run whose mode is written")
-    result = on_label_at(Path(run_folder), ROLE_SPECTRA)
-    if result is None:
-        raise FrameSetError(
-            f"{run_folder}: the run holds no vibration result "
-            f"({place.task.label}{ROLE_SPECTRA}) -- one whose finish has "
-            f"written it")
-    # THE RUN WHOSE DECK MEASURED THE FORCE CONSTANTS: the folder named --
-    # PySCF's one run -- or, a run of points' root, its force-constant call
-    # (`vibration_phases.force_constants_call`).
-    run = run_of(Path(run_folder)) or run_of(force_constants_call(run_folder))
-    if run is None:
-        raise FrameSetError(
-            f"{run_folder}: holds {result.name} but no run that measured it")
-    try:
-        res = parse_spectra_json(result)
-    except SpectraJsonError as exc:
-        raise FrameSetError(f"{result.name}: {exc}") from exc
-    if res.equilibrium_masses_amu is None:
-        raise FrameSetError(
-            f"{result.name} states no masses (a result before schema 7): "
-            f"the mode's coordinate is weighted by them -- run the "
-            f"vibration again with this molbuilder")
-    m = res.modes[mode_at(res, mode, result.name)]
-    q_zp = zero_point_amplitude_amu12_ang(m.frequency_cm1, m.has_imag)
-    if q_zp is None:
+    _checked_target(out)
+    v = vibration_of_run(run_folder)
+    m = _mode_of(v, mode)
+    if m.has_imag:
         raise FrameSetError(
             f"mode {mode} is imaginary ({m.frequency_cm1:g} cm-1): it has no "
             f"amplitude, and the geometry is no minimum along it")
-    stated = res.structure_stated()
-    if stated is None:
-        raise FrameSetError(f"{result.name} states no geometry yet")
-    base = Structure.from_dict(stated)
-
-    # THE MODE OVER EVERY ATOM: the canonical eigenvector on the free atoms,
-    # zero on every held one -- so no held atom moves.
-    # THE SPREAD AT THE TEMPERATURE -- n quanta, sigma = Q_zp sqrt(2n + 1)
-    # (`science/vibrational-averaging.md` § 5) -- and each frame at a node,
-    # q_j = sqrt(2) sigma x_j, by THE ONE DISPLACEMENT RULE
-    # (`vibration`): R + q·L, what a Raman phase's plan applies at ±δQ too
-    # (§ 5.11 § 3).
-    from ..vibration import displaced, mode_over_atoms
-    L = mode_over_atoms(m.eigenvector_canonical, res.free_atom_idxs,
-                        base.n_atoms)
-    n_quanta = mean_quanta(m.frequency_cm1, temperature_k)
-    sigma = thermal_spread_amu12_ang(q_zp, m.frequency_cm1, temperature_k)
-    x, weights = _ordered_nodes(nodes)
-    qs = [math.sqrt(2.0) * sigma * float(xj) for xj in x]
-    r0 = np.asarray(base.positions, dtype=float)
-    built = base.with_frames(np.stack([displaced(r0, L, q) for q in qs]))
-
-    # FRAME 0'S SETTINGS -- the record of the relaxation its geometry came
-    # from, the one a transport citation takes its settings from
-    # (`engines/vibration.md` § 5.10 ③, `transport.md` § 3.1).
-    said: List[str] = []
-    calculation, why = _relaxation_record(run, res)
-    if calculation is not None:
-        built.set_info("calculation", calculation)
-    else:
-        said.append(why)
-
-    # THE ROWS, in the vibration frame sets' vocabulary
-    # (`engines/vibration-frames.md` § 5.1): each with its unit and its
-    # meaning, the row's note, as the vocabulary states them.
-    masses = [float(v) for v in res.equilibrium_masses_amu]
-    built.set_channel(MASS_CHANNEL, AtomChannel(
-        "value", {i: v for i, v in enumerate(masses)}))
-    vocabulary = {r.name: r for r in ROWS}
-
-    def write(name: str, value: Any, frame: Optional[int] = None) -> None:
-        built.set_customized(name, value, unit=vocabulary[name].unit_written,
-                             note=vocabulary[name].means, frame=frame)
-
-    frames = []
-    for q, w in zip(qs, weights):
-        frames.append({"q_sigma": q / sigma,
-                       "max_atom_displacement_ang":
-                           float(np.linalg.norm(q * L, axis=1).max()),
-                       "weight": float(w)})
-    # THE OUTERMOST MOVE, measured on the frames written -- what the person
-    # reads against a bond length.
-    outermost = max(f["max_atom_displacement_ang"] for f in frames)
-    # WHERE THE MODES CAME FROM, as rows a calculation carries with the
-    # others (§ 5): the run's folder and its result JSON's sha256.
-    stated = {"vibration_run": (address(run_folder, root) if root is not None
-                                else str(Path(run_folder).resolve())),
-              "vibration_result_sha256": sha256_of(result),
-              "mass_source": MASS_SOURCE,
-              "assumptions": assumptions_of_a_mode(
-                  thermal_state_words(float(temperature_k))),
-              "sampling_rule": SAMPLING_RULE,
-              "sampling_nodes": int(nodes),
-              "mode_index_1based": int(m.index_1based),
-              "frequency_cm1": float(m.frequency_cm1),
-              "zero_point_amplitude_amu12_ang": float(q_zp),
-              "temperature_k": float(temperature_k),
-              "mean_quanta": float(n_quanta),
-              "spread_amu12_ang": float(sigma),
-              "max_displacement_ang": outermost}
-    # IN THE VOCABULARY'S ORDER (`engines/vibration-frames.md` § 5.1).
-    for r in ROWS:
-        if r.where == "structure" and r.name in stated:
-            write(r.name, stated[r.name])
-    for f, (q, row) in enumerate(zip(qs, frames)):
-        measured = {"displacement_ang": float(np.linalg.norm(q * L)),
-                    "max_atom_displacement_ang":
-                        row["max_atom_displacement_ang"],
-                    "q_amu12_ang": q,
-                    "node_sigma": row["q_sigma"],
-                    "weight": row["weight"]}
-        for r in ROWS:
-            if r.where == "frame":
-                write(r.name, measured[r.name], frame=f)
-
-    # AN ELECTRODE ATOM THE FRAMES MOVE -- written, and said in the words
-    # of the one check a transport citation asks of every frame
-    # (`compose.frames_moving_the_leads`, within `wizard.FROZEN_TOL_ANG`;
-    # `engines/transport.md` § 2a.9), so what the person is told is what
-    # the citation does.
-    from ..transport.compose import frames_moving_the_leads
-    moving = frames_moving_the_leads(built, out)
-    if moving:
-        said.append(moving)
-    StructureCodec().write(built, out)
-    return ModeFrames(path=out, mean_quanta=float(n_quanta),
-                      sigma_over_zero_point=float(sigma / q_zp),
-                      frames=tuple(frames), said=tuple(said))
+    s = m.state(temperature_k=temperature_k)
+    f = s.frames(nodes)
+    written = write_frame_set(out, f)
+    sigma = float(s.spread_amu12_ang)
+    frames = tuple({"q_sigma": float(q) / sigma,
+                    "max_atom_displacement_ang": float(move),
+                    "weight": float(w)}
+                   for q, move, w in zip(f.q_amu12_ang[:, 0],
+                                         f.max_atom_displacement_ang,
+                                         f.weights))
+    # AN ELECTRODE ATOM THE FRAMES MOVE -- said in the words of the one
+    # check a transport citation asks of every frame
+    # (`compose.frames_moving_the_leads`; `engines/transport.md` § 2a.9),
+    # until R3d2b2b2b2 leaves it to the citation alone.
+    built: Structure = StructureCodec().load(written.path, frames=True)
+    moving = frames_moving_the_leads(built, written.path)
+    return ModeFrames(path=written.path, mean_quanta=float(s.mean_quanta),
+                      sigma_over_zero_point=sigma / float(
+                          m.zero_point_amplitude_amu12_ang),
+                      frames=frames,
+                      said=tuple(written.said) + ((moving,) if moving else ()))
 
 
-def mode_at(res, mode, name: str) -> int:
-    """WHERE MODE ``mode`` IS among the vibration result ``res``'s modes
-    (`sidecars.spectra.parse_spectra_json`) -- its number as the result
-    numbers its modes, a whole number -- or refused naming the modes there
-    are (:class:`FrameSetError`); ``name`` the result's file name."""
-    import numbers
-    if (isinstance(mode, bool) or not isinstance(mode, numbers.Real)
-            or int(mode) != mode):
-        raise FrameSetError(f"a mode is named by its number, a whole number "
-                            f"-- not {mode!r}")
-    found = [k for k, m in enumerate(res.modes)
-             if int(m.index_1based) == int(mode)]
-    if not found:
-        raise FrameSetError(f"{name} holds modes 1 to {len(res.modes)}; "
-                            f"there is no mode {mode}")
-    return found[0]
-
-
-def outermost_move_of(result, *, mode, temperature_k: float,
-                      nodes: int = NODES[0]) -> Optional[float]:
-    """THE OUTERMOST MOVE of mode ``mode`` (its number) of the vibration
-    result ``result`` (``<label>.spectra.json``) at ``temperature_k`` for
-    ``nodes`` frames, in Angstrom (:func:`outermost_move`) --
-    ``postprocess.outermost_move``'s question, answered here; ``None`` for
-    an imaginary mode, which has no spread."""
-    from ..sidecars.spectra import SpectraJsonError, parse_spectra_json
-    result = Path(result)
-    try:
-        res = parse_spectra_json(result)
-    except SpectraJsonError as exc:
-        raise FrameSetError(f"{result.name}: {exc}") from exc
-    row = res.to_dict()["modes"][mode_at(res, mode, result.name)]
-    return outermost_move(row, temperature_k, nodes)
-
-
-__all__ = ["NODES", "SAMPLING_RULE", "FrameSetError", "ModeFrames",
-           "at_temperature", "frameset_from_mode", "mode_at",
-           "outermost_move", "outermost_move_of"]
+__all__ = ["NODES", "FrameSetError", "ModeFrames",
+           "at_temperature", "frameset_from_mode", "outermost_move"]

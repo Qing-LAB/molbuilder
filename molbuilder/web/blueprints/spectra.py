@@ -378,15 +378,16 @@ def api_spectra_load():
 
 @bp.route("/api/spectra/frameset", methods=["POST"])
 def api_spectra_frameset():
-    """A MODE'S FRAME SET, written through the one generator
-    (`engines/vibration.md` § 5.10 ③; `web/spectra.md` § 4.3):
-    ``{path, mode, temperature_k, nodes, out}`` -- the vibration result the
-    page shows, whose folder is its run's, the temperature the frames
-    sample, the rule (the generator's default when unsaid), and the pair's
-    ``.xyz``, each path inside the tree (the fence, `web-api.md` § 2.1), the
-    ``.xyz`` where a file may be written (`files._writable`).
-    Answers ``{ok, path, frames, said}``, or the generator's refusal in its
-    words (400)."""
+    """A MODE'S FRAME SET, written by the doors' frame set
+    (`spectra.mode_frames.frameset_from_mode`: the run door, the state's own
+    rule and the motion toolkit's one writer; `engines/vibration-frames.md`
+    § 4, § 5; `web/spectra.md` § 4.3): ``{path, mode, temperature_k, nodes,
+    out}`` -- the vibration result the page shows, whose folder is its
+    run's, the temperature the frames sample, the rule (the state's default
+    when unsaid), and the pair's ``.xyz``, each path inside the tree (the
+    fence, `web-api.md` § 2.1), the ``.xyz`` where a file may be written
+    (`files._writable`).  Answers ``{ok, path, frames, said}``, or the
+    writer's refusal in its words (400)."""
     from molbuilder.spectra.mode_frames import FrameSetError, frameset_from_mode
     from molbuilder.projects import projects_root
     from .files import _resolve_within_roots, _writable
@@ -411,7 +412,7 @@ def api_spectra_frameset():
         got = frameset_from_mode(
             run, mode=mode,
             temperature_k=body.get("temperature_k"),
-            out=out, root=root, **rule)
+            out=out, **rule)
     except FrameSetError as exc:
         return err(str(exc), 400)
     return jsonify({"ok": True, **got.to_wire(root)})

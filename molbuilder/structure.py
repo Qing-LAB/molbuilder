@@ -131,8 +131,10 @@ XYZ_DECIMALS = 6
 #: (:func:`farthest_apart`): far below any physics, above the rounding of a
 #: geometry's text -- six decimals of an Å, at most sqrt(3) * 5e-7, about
 #: 8.7e-7 Å per atom (`XYZ_DECIMALS`).
-#: Asked by a recorded junction checked against its composition and by two
-#: decks' engine input (`engines/transport.md` § 1.1, § 6.1).
+#: Asked by a recorded junction checked against its composition, by two
+#: decks' engine input (`engines/transport.md` § 1.1, § 6.1), and by the
+#: frame-set writer -- a person's first frame taken as frame 0, a held atom
+#: moved (`engines/vibration-frames.md` § 5).
 SAME_PLACE_ANG = 1e-6
 
 

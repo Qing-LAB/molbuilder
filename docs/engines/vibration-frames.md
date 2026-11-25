@@ -26,10 +26,11 @@ modes".)*
 **Built and to build.** One mode's states, their densities, moments, draws
 and Gauss frames, the weights for frames placed elsewhere, the reading of a
 result as modes, the molecule's motion and its snapshots, the rows'
-vocabulary and what a page says of a cited set, and the weights for a set's
-rows are built (2.78.0, 2.80.0, 2.81.0, 2.81.1 — each release's visible
+vocabulary and what a page says of a cited set, the weights for a set's
+rows, a run's folder read as its vibration, the one writer and its reader
+are built (2.78.0, 2.80.0, 2.81.0, 2.81.1, 2.82.0 — each release's visible
 changes are its row in [`process/changelog.md`](?doc=process/changelog.md));
-everything this chapter marks *(to build)* is the plan's R3d2b2b2b and
+everything this chapter marks *(to build)* is the plan's R3d2b2b2b2 and
 R3d2b2c ([`plans/plan.md`](?doc=plans/plan.md) § 2) — the probe's use of the
 nodes (§ 6) is R3d2c's.
 
@@ -82,58 +83,65 @@ the frames are.
 | module | layer | holds |
 |---|---|---|
 | `vibration` | L2, **travels** beside a job in both vibration bundles — numpy and the constants alone | the mechanics of every mode, and the molecule's motion built from them: `state`, `State` (`pdf`, `cdf`, `moment`, `draw`, `frames`, `weights_at`), `Frames`, `Mode`, `ModeState` (each of `State`'s calls handed on, `draw` and `weights_at` among them, and its fields — `swing_quanta`, `quanta`, `bath_quanta`, `zero_point_amplitude_amu12_ang`, `classical_spread_amu12_ang`), `Vibration` — its `displaced({...})`, the one rule $\mathbf R^0 + \sum_k Q_k\mathbf L_k$ ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.11 § 2), and its `motion()` — the molecule's motion and its snapshots (`Motion`, `Snapshots`, `pooled`), the analyses of a snapshot set's results (§ 7), `temperature_of_quanta` |
-| `vibration_frames` *(in part to build, R3d2b2b2)* | L2, the **host's** — it imports `vibration`, the structure, `frameset`, the result's reader and the run door, never transport; it imports with `molbuilder-jupyternb`'s packages, numpy beside molbuilder's own modules, so the example notebook runs it there ([`web/jupyter.md`](?doc=web/jupyter.md) § 7) | built: the rows' vocabulary (`ROWS`, § 5.1), a mode's own set's `assumptions` row (`assumptions_of_a_mode`, its thermal state in `thermal_state_words`) and a set's own assumptions as its maker states them, an older set's said for it (`assumptions_of_set`, § 6), the pages' words and provenance from it (`said_of`, § 6), the weights for a set's rows at a state (`weights_for_set`, § 7) — asked by the web layer, `postprocess` and, until R3d2b2b2 retires it, today's frame generator (`spectra.mode_frames`, which writes its sets in the vocabulary); *to build*: **a run's folder read as a `Vibration`** (`vibration_of_run`, below), the one frame-set writer and its reader (`write_frame_set`, `read_frame_set`), a mode's own set's outermost move and numbers for any state (`outermost_move`, `at_temperature` its thermal case, folded from `spectra/mode_frames.py`) |
+| `vibration_frames` | L2, the **host's** — it imports `vibration`, the structure, `frameset`, the result's reader and the run door, never transport; it imports with `molbuilder-jupyternb`'s packages, numpy beside molbuilder's own modules, so the example notebook runs it there ([`web/jupyter.md`](?doc=web/jupyter.md) § 7) | built: the rows' vocabulary (`ROWS`, § 5.1), a mode's own set's `assumptions` row (`assumptions_of_a_mode`, its thermal state in `thermal_state_words`) and a set's own assumptions as its maker states them, an older set's said for it (`assumptions_of_set`, § 6), the pages' words and provenance from it (`said_of`, § 6), the weights for a set's rows at a state (`weights_for_set`, § 7), **a run's folder read as a `Vibration`** (`vibration_of_run`, below), the one frame-set writer and its reader (`write_frame_set` → `Written`, `read_frame_set` → `Frames`, `Snapshots` or `FrameSet`, § 5), a mode's state's outermost move for any state (`outermost_move`, its rule `vibration.outermost_move_ang`) — asked by the web layer, `postprocess` and the doors' frame set (`spectra.mode_frames`, writing through the one writer until R3d2b2b2b2 retires it); *to build*: `at_temperature` for any state, folded from `spectra/mode_frames.py` (R3d2b2b2b2) |
 
 **No call of `vibration` reaches `vibration_frames`**: the foundation's
 module never depends on the module built on it. The writer and the reader are
 functions of `vibration_frames`, which `molbuilder.postprocess` hands on — the
 one import of a person's script ([`model/parse.md`](?doc=model/parse.md) § 3):
 `from molbuilder.postprocess import vibration, write_frame_set,
-read_frame_set, pooled` *(to build, R3d2b2b2: today `postprocess` hands on
-`vibration`, `frame_rows`, `weights_for_set` and `reaveraged`, and `pooled`
-is `vibration.pooled`)*. `postprocess.reaveraged` joins two calls — the
+read_frame_set, pooled` — beside `frame_rows`, `weights_for_set`,
+`reaveraged` and `outermost_move`. `postprocess.reaveraged` joins two calls — the
 toolkit's weights for a set's rows and transport's own averaging door — and
 adds no rule of its own (§ 7).
 
 **What `v` knows.** `v = vibration(path)` takes the result file — its JSON
-or its `.nc`, one answer — or *(to build)* the vibration run's folder, read
+or its `.nc`, one answer — or the vibration run's folder, read
 through the run door as `read_steps` takes one
 ([`engines/vibration-postprocessing.md`](?doc=engines/vibration-postprocessing.md)
 § 7). It carries what every frame set needs, each under its own name; the
 `Vibration` holds every field below. The result's reader fills the file's
 — the modes, the shared fields, `v.structure` (the structure the result
 states) and `v.read_path`; the run's — `v.run`, `v.relaxation_calculation` —
-are filled where a run's folder is read, by `vibration_of_run`, and
-`v.result_sha256` at the read door, both *(to build, R3d2b2b2)*; `None` until
-then:
+are filled where a run's folder is read, by `vibration_of_run` (`None`
+else), and `v.result_sha256` at the read door, whichever file:
 
 | attribute | what | from |
 |---|---|---|
-| `v.modes`, `v.mode(n)` | each mode — its number (`index_1based`), frequency, whether it is imaginary, its canonical eigenvector over the free atoms ($\sum_A m_A\lvert\mathbf L_A\rvert^2 = 1$), and the record's stored values ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.11 § 6) | the result's modes — a result of schema 7 or later ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.3) |
+| `v.modes`, `v.mode(n)` | each mode — its number (`index_1based`), frequency, whether it is imaginary, its canonical eigenvector over the free atoms ($\sum_A m_A\lvert\mathbf L_A\rvert^2 = 1$), and the record's stored values ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.11 § 6) | the result's modes ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.3) — a result before schema 7, which states no masses, read with the table's, as its reader reads it |
 | `v.free_atom_idxs`, `v.masses_amu`, `v.element_symbols`, `v.positions_ang`, `v.species_labels`, `v.regions`, `v.mode_temperatures_k` | what every mode shares — the free atoms, every atom's mass, element (its species label's name) and position at the geometry the modes were taken at, the labels and regions as written, and the modes' temperatures the file states its spreads at; a mode reaches each through its vibration (`m.masses_amu`, …) | the result's `equilibrium.masses_amu`, its structure, its `modes_thermal` |
 | `v.structure` | the geometry the modes were taken at, in the user order, its labels, held atoms and box — frame 0, and every frame's atoms | the result's `structure` ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.10.1) |
 | `v.record_temperature_k` | the vibration record's temperature — the one a mode's thermal or classical state given none takes, said so (§ 2) | `thermo.temperature_K` |
 | `v.read_path` | the path read, as given | the read |
 | `v.run`, `v.result_sha256` | the run's folder and **the JSON's sha256** — the `.nc` states it as `json_sha256`, so it is the same whichever file was read: the set's provenance rows (§ 5) | the run door; the file |
-| `v.relaxation_calculation` | frame 0's `info.calculation`, the settings a transport citation takes its own from ([`engines/transport.md`](?doc=engines/transport.md) § 3.1, § 2a.7) — **the record of the relaxation frame 0's geometry came from** *(the user, 2026-10-24, on the recommendation)*: where the vibration's own run relaxed it — its `relax` call ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 1) — that run's settings, through the run door's view (`runs.view_of`, `parse.contract.contract_of`); where the structure was stated already relaxed, the record that structure states — its `info.calculation`, written when it was saved from its optimization *(measured on AuBDTAu, 2026-10-24: its vibration ran at a 1×1×1 k-grid and 300 Ry, its relaxation at 5×5×1 and 400 Ry; a transport citing a set stamped with the vibration's settings defaulted to the cheaper ones)* | the run door's view |
+| `v.relaxation_calculation`, `v.relaxation_said` | frame 0's `info.calculation`, the settings a transport citation takes its own from ([`engines/transport.md`](?doc=engines/transport.md) § 3.1, § 2a.7) — **the record of the relaxation frame 0's geometry came from** *(the user, 2026-10-24, on the recommendation)*: where the vibration's own run relaxed it — its `relax` call ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 § 1) — that run's settings, through the run door's view (`runs.view_of`, `parse.contract.contract_of`); where the structure was stated already relaxed, the record that structure states — its `info.calculation`, written when it was saved from its optimization *(measured on AuBDTAu, 2026-10-24: its vibration ran at a 1×1×1 k-grid and 300 Ry, its relaxation at 5×5×1 and 400 Ry; a transport citing a set stamped with the vibration's settings defaulted to the cheaper ones)*; where there is none, `v.relaxation_said` says why, in words a set written of it says | the run door's view |
 
-**A run's folder → its `Vibration`, one door** *(to build)*:
+**A run's folder → its `Vibration`, one door**:
 `vibration_frames.vibration_of_run(run_folder)` reads the run's result through
 its reader and gives the run, the JSON's sha256, the structure and frame 0's
-relaxation record — today's frame generator's rule
-(`spectra/mode_frames.py`), moved here. `postprocess.vibration`,
-`molbuilder frameset from-mode` and *Write frame set…* each ask it, and
-`read_frame_set` reopens a set's vibration through it (§ 5); `vibration`
-never asks the run door. A result read from outside a run's folder — an export, a copy — writes a set with no
-`vibration_run` and no `info.calculation`, said so; so does a PySCF deck's,
-which records no relaxation, and a stated-relaxed structure that states none.
+relaxation record, refusing by name what is no run of ours and a run with no
+result (`FrameSetError`, naming the run's folder, the one form it reads) and
+what the result's reader refuses — a result before schema 7 is read as that
+reader reads it, with the table's masses. `molbuilder frameset from-mode` and
+*Write frame set…* ask it, and `read_frame_set` reopens a set's vibration
+through it (§ 5). **Either form → its `Vibration`, one door**:
+`vibration_frames.vibration_of(path)`, which `postprocess.vibration` hands on,
+tells a run's folder (to the run door) from a result file (either of its two,
+to the result's reader, the JSON's sha256 with it) and refuses a path that is
+neither naming both (`TWO_FORMS`): not there (`SpectraJsonNotFoundError`, a
+`FileNotFoundError`), a file of another name (`SpectraJsonError`), a folder
+that holds no run's result (`FrameSetError`). `vibration` never asks the run
+door. A vibration not read from its run's folder — its result file, an export, a copy — writes a set with no
+`vibration_run` and no `info.calculation`, said with the way on (read the run's folder); a PySCF deck's, which
+records no relaxation, and a stated-relaxed structure that states none, write
+one with its `vibration_run` and no `info.calculation`, said so.
 Such a set is no transport citation until its relaxation is recorded — said,
 never refused.
 
 **Each object knows where it came from**: a `Mode` carries its result
 (`m.vibration`, left out of the mode's repr and comparison, so `Vibration` →
 `Mode` → `Vibration` never recurses), and `Frames` the state it was made for
-(`f.state`, a `ModeState`), so the writer (§ 5, *to build*),
+(`f.state`, a `ModeState`), so the writer (§ 5),
 `write_frame_set(path, f)`, reaches the run, the structure and the state's
 rows; a `Frames` made from a bare `State`, of no mode, has no geometries and
 is refused by name by the writer.
@@ -151,7 +159,8 @@ kept beside it (`m.result_frequency_cm1`), the factor for the harmonic
 picture's overestimate
 ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
 § 2b.1); the scaled vibration states the factor (`v.frequency_scale`), and
-every set made from it (`frequency_scale`, § 5.1). One mode's own,
+every set made from it (`frequency_scale`, § 5.1); scales compound, and a
+total of 1 is the result's own modes, as read. One mode's own,
 `m.with_frequency(...)`.
 
 ---
@@ -193,7 +202,7 @@ states none*):
 
 | call | a temperature not given |
 |---|---|
-| `m.state(...)`, `v.motion(...)`, `postprocess.outermost_move(...)` *(to build, R3d2b2b2: today it asks a temperature always)* for a thermal state, or a classical one at a temperature | **the vibration record's** (`v.record_temperature_k`), said (`s.temperature_from`, `motion.temperature_from`: `"the record's"` — and each of a motion's states says it too); a record stating none asks for one |
+| `m.state(...)`, `v.motion(...)`, `postprocess.outermost_move(...)` for a thermal state, or a classical one at a temperature | **the vibration record's** (`v.record_temperature_k`), said (`s.temperature_from`, `motion.temperature_from`: `"the record's"` — and each of a motion's states says it too; `outermost_move` answers a number, its state's as `m.state` takes it); a record stating none asks for one |
 | `motion.with_mode(k, ...)` for a thermal state, or a classical one at a temperature | **the motion's** (`motion.temperature_k`), said (`s.temperature_from`: `"the motion's"`, and in `motion.set_apart_modes`) |
 | `m.state(...)` for a driven state, $n$ quanta, mean quanta, the bare classical swing | none is needed |
 | the weights for a set's rows at a state (`vibration_frames.weights_for_set`, which `postprocess.reaveraged` asks, § 7), for a thermal or classical state | **the frame set's own `temperature_k` row**, as the data file carries it in its structure, said as the weights' first words, the state named (*the thermal state at the set's temperature, 300 K (its temperature_k row)*); a set stating none — of $n$ quanta, of mean quanta, a cold driven set, a person's set — is refused by name, naming the temperature to give |
@@ -225,7 +234,7 @@ drive groups:
 
 ```python
 from molbuilder.postprocess import vibration, structure_dir
-v = vibration(structure_dir("P", "spectrum", "V") / "01_freq/run-0")   # the run's folder (to build, § 1; its result file today)
+v = vibration(structure_dir("P", "spectrum", "V") / "01_freq/run-0")   # the run's folder (§ 1)
 motion = v.motion(temperature_k=300.0)                  # every real mode thermal at 300 K
 motion = motion.with_mode(7, swing_quanta=4)            # mode 7 driven: its coherent state
 motion = motion.with_drive({9: 2.0, 11: 1.0},           # one laser on modes 9 and 11:
@@ -317,7 +326,7 @@ snaps.max_atom_displacement_ang  # (65,): each frame's largest single-atom move
 snaps.max_atom_mode_index_1based # (65,): the mode moving that atom most (0 for frame 0)
 snaps.weights                    # (65,): 0 for frame 0, then 1/64 each
 snaps.said                       # summary sentences (below)
-written = write_frame_set(topic_dir("P", "structure") / "bdt-300K-64.xyz", snaps)  # (to build, § 5)
+written = write_frame_set(topic_dir("P", "structure") / "bdt-300K-64.xyz", snaps)  # § 5
 ```
 
 `atom_moves_ang[i]` is every mode's `Mode.displacement` at frame $i$'s
@@ -373,7 +382,7 @@ every snapshot's.
 The recipes are two of many. A two-mode grid to see a cross term, a driven
 mode's own frames on top of snapshots of the rest, frames from a model of the
 person's own — each is built from the two calls every recipe uses: the
-geometry (`v.displaced`, § 3.2) and the writer (§ 5, *to build*). A
+geometry (`v.displaced`, § 3.2) and the writer (§ 5). A
 two-mode set by the product of the two modes' own Gauss rules, exact to
 degree 5 in each mode, its centre first:
 
@@ -407,14 +416,14 @@ the state's own distribution**, $m$ frames that reproduce the state's
 averages $\langle Q^k\rangle$ for every $k \le 2m-1$
 ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
 § 2a.3, the steps and the three- and five-frame formulas worked; § 2b.4) —
-every state's, in the order below; the writer is *(to build)* (§ 5):
+every state's, in the order below; the writer is § 5's:
 
 ```python
 f = v.mode(7).state(temperature_k=300.0).frames(nodes=3)
 f.q_amu12_ang, f.weights          # (3, 1): (0, +q1, -q1); (2/3, 1/6, 1/6) for a bell curve
 f.positions_ang                   # (3, n_atoms, 3): each frame's geometry, R + Q L
 f.max_atom_displacement_ang, f.said, f.exact_to_degree
-written = write_frame_set(topic_dir("P", "structure") / "bdt-m7-300K.xyz", f)  # (to build, § 5)
+written = write_frame_set(topic_dir("P", "structure") / "bdt-m7-300K.xyz", f)  # § 5
 ```
 
 | state | the rule |
@@ -437,8 +446,14 @@ move, and the outermost frames' on the set's rows — the check a person reads
 against a bond length; `postprocess.outermost_move(path, *, mode,
 nodes=None, temperature_k=None, quanta=None, swing_quanta=None,
 mean_quanta=None, classical=False)` gives it for any state before a set is
-written — § 2's arguments, its rule `vibration_frames.outermost_move` *(to
-build: today a thermal state's alone; the plan § 2)*.
+written — § 2's arguments, `nodes` any whole number (3 when unsaid), asking
+the toolkit's `vibration_frames.outermost_move_of(v, mode, *, nodes=None,
+**state)` (a mode named by its whole number; an imaginary mode's `None`; a
+refusal `FrameSetError`), of a state `vibration_frames.outermost_move(s,
+nodes=None)`, their one rule `vibration.outermost_move_ang`
+($\lvert q_{\mathrm{out}}\rvert\max_A\lvert\mathbf L_A\rvert$, the outermost
+node of the state's own rule), the set's `max_displacement_ang` row the
+same number.
 
 **The order and the symmetry**: the node at $Q = 0$ first,
 then each pair nearest first, its positive side first — $(0, +q_1, -q_1,
@@ -462,7 +477,7 @@ state — so that route needs five frames at least.
 
 ## 5. The frame set it writes
 
-**One writer** *(to build)*, a function of `vibration_frames` handed on by
+**One writer**, a function of `vibration_frames` handed on by
 `postprocess`, in two forms:
 
 - `write_frame_set(path, frames)` for the recipes — `frames` a `Frames` or a
@@ -477,8 +492,25 @@ state — so that route needs five frames at least.
   ([`model/structure.md`](?doc=model/structure.md) § 2.2d: blank where its
   name carries it, any spelling for a number whose name carries none — `"1"`
   for a count — none for a text). A person's
-  frame row named like one of the writer's own — `weight`,
-  `displacement_ang`, `max_atom_displacement_ang` — is refused by name.
+  frame row — in `frame_rows` or `frame0_rows` — named like one of the
+  writer's own — `weight`,
+  `displacement_ang`, `max_atom_displacement_ang` — or a person's structure
+  row named like its provenance rows — `vibration_run`,
+  `vibration_result_sha256`, `mass_source`, `frequency_scale` — is refused
+  by name. So, by name (`FrameSetError`), are a pair already at the path
+  (asked before anything is read), frames of a bare state, a set read back
+  without its vibration (given its vibration, it is written again), a
+  person's set read back (a `FrameSet`: written again as a person's frames,
+  its positions and weights, leaving out the writer's own rows), a
+  person's frames given without their vibration or their weights, or with
+  weights or frame rows not one per frame, a row that is no mapping
+  `{name, value, unit?, note?}` (in `rows`, `frame_rows` or `frame0_rows`),
+  a set of one frame (a frame set holds two frames or more,
+  [`model/structure.md`](?doc=model/structure.md) § 2.2f: one frame is the
+  relaxed geometry alone, the structure itself), and a recipe's frames given
+  the weights, vibration or rows it brings. A vibration read from its result
+  file rather than its run's folder writes a set with no `vibration_run`,
+  said with the way on — read the run's folder, `vibration(run_folder)`.
 
 Both go through the structure's one writer. `path` is a path as Python takes
 one — from the projects tree's doors (`topic_dir`, `structure_dir`), so the
@@ -492,7 +524,7 @@ relaxed geometry first are the file's frames 1 … after the prepended one.
 
 | it writes | how |
 |---|---|
-| **frame 0, the set's reference** ([`model/structure.md`](?doc=model/structure.md) § 2.2f) | the relaxed geometry — this rule's one home: a mode's own set with an odd rule has its node there, at the rule's weight; an even rule's set and a snapshot set get it prepended at weight 0; a person's frames keep their first frame as frame 0 where it **is** the relaxed geometry — the same numbers, as `v.displaced({})` or a node at $Q = 0$ gives it (§ 4: every rule's middle node is 0 exactly), never a near-copy — and otherwise get it prepended at weight 0. Exact in memory; the file holds every position to $10^{-6}$ Å, as every pair does |
+| **frame 0, the set's reference** ([`model/structure.md`](?doc=model/structure.md) § 2.2f) | the relaxed geometry — this rule's one home: a mode's own set with an odd rule has its node there, at the rule's weight; an even rule's set and a snapshot set get it prepended at weight 0; a person's frames keep their first frame as frame 0 where it **is** the relaxed geometry as a pair holds positions — within the structure's one rule of two places (`structure.SAME_PLACE_ANG`, $10^{-6}$ Å: a pair's six decimals, so a set read back and written again is the set it was; the user, 2026-11-24) — the relaxed geometry written there exactly, as `v.displaced({})` or a node at $Q = 0$ gives it (§ 4: every rule's middle node is 0 exactly); a first frame farther off is no frame 0 and gets it prepended at weight 0. Exact in memory; the file holds every position to $10^{-6}$ Å, as every pair does |
 | **a prepended frame 0's rows** | for a recipe, every frame row its other frames state, at its value there: `q_amu12_ang` 0 (each mode's, for snapshots), `node_sigma` 0, `displacement_ang` 0, `max_atom_displacement_ang` 0, `weight` 0; for a person's frames, the writer's own measured rows computed there, `weight` 0, and the person's `frame0_rows` — a person's frame row absent at frame 0 said |
 | **each frame's `weight`**, the one row a calculation reads | as given; weights not summing to 1 within the container's tolerance written as given and said ([`model/structure.md`](?doc=model/structure.md) § 2.2f) |
 | **each frame's measured rows**, for every set | `displacement_ang`, `max_atom_displacement_ang` — computed from the coordinates alone |
@@ -500,7 +532,7 @@ relaxed geometry first are the file's frames 1 … after the prepended one.
 | **the maker's assumptions**, one row | `assumptions`: the harmonic modes, each mode's state, independence or the drive groups, for snapshots the statistics of a finite set, and for a set with a driven mode that the field's own action on the electrons and its forced motion of the other infrared-active modes are left out — science § 7's items 1, 7, 8 and 9, the sentences it asks to be stated beside the numbers, carried as written by any calculation like every row; a person's set carries the person's own `assumptions` row, or none, said |
 | the masses | the pair's `mass_amu` channel, every atom's |
 | what made the frames, as rows with their meanings | § 5.1's; for a set the person built, the rows and frame rows the person gives |
-| per-frame coordinates along every mode | `info.sampling`, from the snapshot recipe only — the modes included, each set-apart mode's state and each drive group, each frame's coordinate along each mode, indexed as the set is written (frame 0's all zero); read back by `read_frame_set` |
+| per-frame coordinates along every mode | `info.sampling`, from the snapshot recipe only — everything that made its frames: `modes` (included), `temperature_k`, `temperature_from` and `classical` (the background), `frequency_scale`, `states` (each mode's state by `vibration.State`'s fields, with its `temperature_k`, `temperature_from` and `frequency_cm1`), `set_apart`, `drives` (each group's `modes`, `lags_rad` and `key`), `left_out`, `notes`, `antithetic`, `drawings`, `pieces`, and `q_amu12_ang`, each frame's coordinate along each mode, indexed as the set is written (frame 0's all zero); read back by `read_frame_set`, its motion rebuilt whole |
 | frame 0's `info.calculation` | `v.relaxation_calculation` (§ 1) |
 
 The pair's `info` and channels travel with it wherever a structure travels —
@@ -516,7 +548,7 @@ person's frames moving a held atom are written and said, never refused.
 Which atoms are the leads is transport's to know: a calculation citing the
 set says which electrode atoms its frames move beyond the leads' tolerance
 ([`engines/transport.md`](?doc=engines/transport.md) § 2a.9), running as set
-— the writer never says it *(from R3d2b2b2b, the plan § 2: today's frame-set doors
+— the writer never says it *(from R3d2b2b2b2, the plan § 2: today's frame-set doors
 still say it)*.
 
 **A mode at a scaled frequency** (`m.with_frequency(...)`,
@@ -527,8 +559,7 @@ frames were placed for, and the result's own frequency beside them
 One pair, `.xyz` and `.molstruct.json`; **a pair already at the path is
 refused**, never written over: a calculation citing it is pinned to it.
 
-**Reading a set back** — `read_frame_set(path, *, vibration=None)` *(to
-build)* — returns the set **as written, every frame, frame 0 included**: a
+**Reading a set back** — `read_frame_set(path, *, vibration=None)` — returns the set **as written, every frame, frame 0 included**: a
 `Frames` (a mode's own set; its `state` rebuilt from its rows and its
 vibration — the one given, or the run its `vibration_run` names reopened
 through `vibration_of_run` (§ 1); `None` where that run does not read, said),
@@ -538,7 +569,28 @@ memory, item $i$ is frame $i$ (§ 3.3). **One shape for all three**: `q_amu12_an
 array (frames × modes — one column for a mode's own set),
 `mode_index_1based` (modes,), `positions_ang` (frames, atoms, 3), `weights`,
 `max_atom_displacement_ang`, `max_atom_mode_index_1based` (frames,), `said`;
-`exact_to_degree` on `Frames`, `seed`, `antithetic` on `Snapshots`.
+`exact_to_degree` on `Frames`, `seed`, `antithetic` on `Snapshots`. A set
+is a `Snapshots` only where it holds `info.sampling`, a `Frames` only where
+it states the toolkit's own rule (§ 4) — `sampling_rule` `gauss-hermite` or
+`gauss` and `sampling_nodes`, its degree $2m - 1$ — its mode's number,
+frequency and zero-point amplitude read, and every frame states its
+coordinate; any other — a person's set written in the vocabulary's names —
+a `FrameSet`, said. A toolkit set whose rows name a state the table of § 2
+refuses is read without its state, said. A vibration given that is no
+vibration, or not the set's — its result's sha256 not the set's
+`vibration_result_sha256`, or an older set's `info.vibration` — is refused by
+name, whichever kind the set is, as a motion refuses another vibration's
+state (§ 3.1); a vibration given at another frequency scale than the set's
+is brought to the set's (its `frequency_scale` row); a run reopened whose
+result is not the set's reads the set without it, said with the way on —
+give the vibration it was written from. A mode's own set read back takes the
+temperature from its own row (`s.temperature_from`, `"the set's"`). Read
+without its vibration — none given, and the run its `vibration_run` names
+not read, or none named — a set still gives its geometries, weights, moves
+and analyses, its words saying why it has no vibration (first in `said`);
+such a `Snapshots` pools once its vibration is given. A set that states no
+frame set's rows, or a pair that does not read, is refused by name
+(`FrameSetError`).
 
 ### 5.1 The vocabulary, row by row
 
@@ -568,12 +620,12 @@ each on a line of its own ([`engines/transport.md`](?doc=engines/transport.md)
 |---|---|---|---|---|---|
 | the `.xyz` | every frame's coordinates | given | frame 0 the relaxed geometry the modes were taken at, the set's reference; frames 1… displaced along the modes | Å | — |
 | the `mass_amu` channel | each atom's mass | given | the masses the modes' coordinates are weighted by — the vibration result's own, `equilibrium.masses_amu`, which the vibration's deck stated and its analysis weighted the Hessian by; every atom, a positive finite number | amu | — |
-| the structure's rows | `vibration_run` | given | the vibration run the modes were read from — its folder in the projects tree; absent for a result read from outside a run, said | — | Vibration run |
+| the structure's rows | `vibration_run` | given | the vibration run the modes were read from — its folder in the projects tree; absent for a vibration not read from its run's folder, said | — | Vibration run |
 | | `vibration_result_sha256` | given | the sha256 of that run's result JSON | — | Result sha256 |
 | | `mass_source` | given | which masses the `mass_amu` channel holds, by name, and so which $Q$ is measured with; `standard atomic weights`, a molbuilder vibration's: the isotope-averaged standard atomic weights (`chemistry.atomic_mass`) the vibration's deck stated, as its result states them; every $\mathbf L$ is normalised with them, $\sum_A m_A \lvert\mathbf L_A\rvert^2 = 1$ | — | Masses |
 | | `frequency_scale` | given | the factor every mode's frequency was scaled by (`v.with_frequency_scale`), each pattern kept; absent when none | — | Frequency scale |
-| | `assumptions` | given | the maker's assumptions, in words — what the weights' average holds under: harmonic modes, each mode's state, the modes' independence or the drive groups, for snapshots a finite set's statistical error, and for a set with a driven mode the field's own action on the electrons and its forced motion of the other infrared-active modes left out ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 7, items 1, 7, 8, 9); a person's set, the person's own | — | Assumptions |
-| | `sampling_rule` | given | the recipe, by name, that placed the frames and gave their weights: `gauss-hermite` — a thermal state's Gauss rule; `gauss` — another state's own Gauss rule (driven, $n$ quanta), its state in the rows below; `monte-carlo` — snapshots of every included mode drawn from its state, each frame of weight $1/N$; a set the person built, the person's words | — | Sampling rule |
+| | `assumptions` | given | the maker's assumptions, in words — what the weights' average holds under: harmonic modes, each mode's state, the modes' independence or the drive groups, for snapshots every mode not included at the relaxed geometry (an imaginary one named: no harmonic state) and a finite set's statistical error, and for a set with a driven mode the field's own action on the electrons and its forced motion of the other infrared-active modes left out ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 7, items 1, 7, 8, 9); a person's set, the person's own | — | Assumptions |
+| | `sampling_rule` | given | the recipe, by name, that placed the frames and gave their weights: `gauss-hermite` — a bell curve's Gauss rule, a thermal or classical state's; `gauss` — another state's own Gauss rule (driven, $n$ quanta), its state in the rows below; `monte-carlo` — snapshots of every included mode drawn from its state, each frame of weight $1/N$; a set the person built, the person's words | — | Sampling rule |
 | | `sampling_nodes` | given | a mode's own set: $m$, the rule's number of nodes, one frame at each (for example 3: a thermal set's $q = 0, \pm\sqrt3\,\sigma$, weights $\tfrac23, \tfrac16, \tfrac16$) | — | Nodes |
 | | `samples` | given | a snapshot set: $N$, the snapshots drawn — the frames after frame 0 | — | Snapshots |
 | | `seed` | given | a snapshot set: the seed, a whole number 0 or more, each mode's streams are keyed by (with the mode's number); absent for a pooled set | — | Seed |
@@ -583,12 +635,12 @@ each on a line of its own ([`engines/transport.md`](?doc=engines/transport.md)
 | | `antithetic` | given | a snapshot set: 1 when each snapshot is followed by its mirror (frames $2j-1$ and $2j$ a pair), 0 when every snapshot is drawn alone | — | Mirrored pairs |
 | | `modes` | given | a snapshot set: the modes included, by number ("every real mode" when all) | — | Modes |
 | | `set_apart_modes` | given | a snapshot set: each mode given a state of its own, in words — its state, its frequency where it is not the result's, and each drive group with its modes and lags, as `Motion.set_apart_modes` says them, e.g. "mode 7: driven, 4 swing quanta, the zero-point width, its own phase; mode 7 at 672 cm-1, the result's 700; modes 9 and 11: one drive, 2 and 1 swing quanta, lags 1.57 and 0.12 rad, the zero-point width; mode 13: one drive, 1 swing quantum, lag 0.3 rad, a classical swing carrying the classical bell curve at 300 K; mode 15: thermal at 77 K (the motion's)"; absent when none | — | Modes set apart |
-| | `quantum` | given | 1 when the set's thermal background is quantum (zero-point motion included), 0 when classical; each set-apart mode's own in `info.sampling` | — | Quantum |
+| | `quantum` | given | 1 when the set's motion is quantum — zero-point motion included — 0 when classical: a mode's own set its state's; a snapshot set its background's, where a mode not set apart keeps it (absent where every mode is set apart), each set-apart mode's own in `info.sampling` | — | Quantum |
 | | `mode_index_1based` | given | a mode's own set: which mode, counted as the vibration result counts it (`index_1based`) | — | Mode |
 | | `frequency_cm1` | given | a mode's own set: the wavenumber its frames were placed for — the result's own, or a scaled one, the result's then in `result_frequency_cm1` | cm⁻¹ | Frequency (cm⁻¹) |
 | | `result_frequency_cm1` | given | a mode's own set at a scaled frequency: the mode's wavenumber as the result states it; absent when `frequency_cm1` is the result's | cm⁻¹ | Result's frequency (cm⁻¹) |
 | | `zero_point_amplitude_amu12_ang` | given | a mode's own set: the zero-point amplitude $Q_{\mathrm{zp}} = \sqrt{\hbar/2\omega}$ at `frequency_cm1` | amu½·Å | Zero-point amplitude (amu½·Å) |
-| | `temperature_k` | given | the temperature of the motion the frames sample: a thermal state's — for a mode pumped at random moments, its effective temperature, the one whose thermal state holds the same mean number of quanta ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 2a.1; `vibration.temperature_of_quanta`); a warm driven mode's, the temperature of the environment whose thermal width the swing carries — the swing's own quanta are `swing_quanta`, never folded into it; a snapshot set's thermal modes'. Absent for a set named by its mean quanta, of $n$ quanta, or a cold driven set | K | Temperature (K) |
+| | `temperature_k` | given | the temperature of the motion the frames sample: a thermal state's — for a mode pumped at random moments, its effective temperature, the one whose thermal state holds the same mean number of quanta ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 2a.1; `vibration.temperature_of_quanta`); a warm driven mode's, the temperature of the environment whose thermal width the swing carries — the swing's own quanta are `swing_quanta`, never folded into it; a snapshot set's background, where a mode not set apart keeps it. Absent for a set named by its mean quanta, of $n$ quanta, or a cold driven set | K | Temperature (K) |
 | | `quanta` | given | a mode's own set of $n$ quanta exactly: $n$ | — | Quanta n |
 | | `swing_quanta` | given | a driven mode's set: the quanta the push adds, $n_s$; its swing $Q_0 = 2Q_{\mathrm{zp}}\sqrt{n_s}$ | — | Swing quanta |
 | | `mean_quanta` | derived | a mode's own set: the state's total mean number of quanta — at a temperature $n = 1/(e^{\hbar\omega/k_BT} - 1)$; a driven state's adds its swing quanta; given, for a set named by it; absent for a classical state, which counts none | — | Mean quanta n |
@@ -812,7 +864,7 @@ giving its error per energy:
   set as written, or each set's values whole, one array per set given (a
   pooled set given one piece), in the order of the sets, their error from all
   their pairs or frames;
-- `read_frame_set(path)` (§ 5, *to build*) gives the `Snapshots` of a set
+- `read_frame_set(path)` (§ 5) gives the `Snapshots` of a set
   written before, so a calculation's results pair with it by the file.
 
 ---
@@ -834,8 +886,18 @@ what a set is, an older mode set's assumptions, `weights_for_set` — a set's
 own state its own rule, an even rule's set at its own state saying nothing
 of another (`test_an_even_rules_set_at_its_own_state_says_nothing_of_another`),
 the state named, a swing on a warm set; a row's unit in one place,
-`tests/test_row_units.py`; *to build*, R3d2b2b2b: the writer and the
-reader) and the example notebook's run
+`tests/test_row_units.py`; the writer and the reader — each recipe's kind of
+set — a mode's own set in each state, a scaled one, snapshots driven,
+classical, scaled, of some modes, a drive left, pooled — written with its rows
+and read back as written, a snapshot set's motion whole (its words, the
+modes set apart, its drive groups' keys, pooled with the seed drawn further,
+written again the same), a mode set's derived rows against § 2b.3's closed
+forms, a person's frames and a person's set in the vocabulary's names, the
+refusals and what is said, the outermost move the written row's and its
+door by a mode's number) and `tests/test_vibration_mechanics_e2e.py` (a real
+run's folder read as its vibration, the read door's sha256 from either file,
+a set's provenance and relaxation record, the set reopening its run), and the
+example notebook's run
 (§ 6.1):
 
 | what | the test |

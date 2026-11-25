@@ -74,6 +74,30 @@ class TestLoadEndpoint:
         assert r.status_code == 400 and refused in said["error"], said
         assert not out.exists()
 
+    def test_a_pair_already_there_is_refused_before_the_run_is_read(
+            self, web_client, isolated_projects_root):
+        """`engines/vibration-frames.md` § 5: the pair's name is asked before
+        anything is read -- a pair already at ``out`` is refused in the
+        writer's words, its run never read (here no run at all).  The silent
+        failure: a refusal naming the run when the name was the fault, its
+        way out (another run) refused again for the name."""
+        from molbuilder.projects import populate_project_skeleton
+        from molbuilder.structure import Structure
+        from molbuilder.workingcopy_structure import StructureCodec
+        tree = isolated_projects_root
+        populate_project_skeleton(tree / "P", project_name="P")
+        out = tree / "P" / "structure" / "frames.xyz"
+        # A PAIR ALREADY THERE, written by the codec as any structure is.
+        StructureCodec().write(Structure.from_xyz(
+            "2\nH2\nH 0 0 0\nH 0 0 0.74\n"), out)
+        body = {"path": str(tree / "x.spectra.json"), "mode": 1, "nodes": 3,
+                "temperature_k": 300, "out": str(out)}
+        r = web_client.post("/api/spectra/frameset", data=json.dumps(body),
+                            content_type="application/json")
+        said = r.get_json()
+        assert r.status_code == 400 and "already exist" in said["error"], \
+            said
+
     @pytest.mark.parametrize("ask", [{"temperature_k": "warm"},
                                      {"frameset_temperature_k": -1}],
                              ids=["not a number", "below zero"])
