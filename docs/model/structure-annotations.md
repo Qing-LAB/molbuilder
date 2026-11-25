@@ -346,7 +346,7 @@ read from `channelKinds` instead of a literal list in `ui.js`.)*
 
 **`mass_amu`, a vibration's maker's channel** *(2026-10-10; 2026-10-18)* —
 each atom's mass, the one the modes' coordinates are weighted by, written by
-a vibration's frame-set maker, the motion toolkit (from R3d2b2b2; the frame generator, `spectra.mode_frames`, until then)
+a vibration's frame-set maker, the motion toolkit
 ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 5;
 [`model/structure.md`](?doc=model/structure.md) § 2.2f). Like every value
 channel it is the writer's: carried and remapped with the structure, never

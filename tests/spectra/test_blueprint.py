@@ -47,19 +47,32 @@ class TestSpectraPage:
 class TestLoadEndpoint:
 
     @pytest.mark.parametrize("ask, refused", [
-        ({}, "temperature"),
+        ({}, "asked every time"),
         ({"temperature_k": -5}, "temperature"),
         ({"temperature_k": "warm"}, "temperature"),
         ({"temperature_k": 300, "nodes": 9}, "3, 5 or 7"),
-    ], ids=["none", "below zero", "not a number", "nine frames"])
-    def test_a_frame_set_asked_without_its_temperature_or_rule_is_refused(
+        ({"swing_quanta": 1, "temprature_k": 300},
+         "did you mean 'temperature_k'"),
+        ({"quanta": 1}, "no run of ours"),
+        ({"swing_quanta": 2}, "no run of ours"),
+        ({"mean_quanta": 0.5}, "no run of ours"),
+    ], ids=["no state", "below zero", "not a number", "nine frames",
+            "a misspelled key", "n quanta, no temperature",
+            "a driven mode, no temperature", "mean quanta"])
+    def test_a_frame_set_asked_without_its_state_or_rule_is_refused(
             self, web_client, isolated_projects_root, ask, refused):
-        """`engines/vibration.md` § 5.10 ③: the write door refuses, in the
-        generator's words and before it reads any run, a temperature stated
-        nowhere -- never defaulted -- one that is not a number of kelvin, 0
-        or more, and another rule than three, five or seven frames.  The
-        silent failure: a set written at a temperature the person never
-        stated, or at a rule the page does not offer."""
+        """`engines/vibration-frames.md` § 2, § 6: the write door asks the
+        state every time -- refused in the toolkit's words (its rows,
+        `test_vibration_frames.py`) and before it reads any run: no state
+        named (never the record's temperature assumed), a temperature that
+        is not a number of kelvin, 0 or more, another frame count than
+        three, five or seven, a key the door does not take (with the one it
+        is close to); a state that needs no temperature -- n quanta, a
+        driven mode, mean quanta -- goes on to the run (here no run at
+        all).  The silent failures: a set written at a state the person
+        never stated -- a misspelled temperature left out, the cold driven
+        state written -- at a rule the page does not offer, or a valid state
+        refused for a temperature it does not need."""
         from molbuilder.projects import populate_project_skeleton
         tree = isolated_projects_root
         # The pair asked where a file may be written: a project's folder,
@@ -98,16 +111,26 @@ class TestLoadEndpoint:
         assert r.status_code == 400 and "already exist" in said["error"], \
             said
 
-    @pytest.mark.parametrize("ask", [{"temperature_k": "warm"},
-                                     {"frameset_temperature_k": -1}],
-                             ids=["not a number", "below zero"])
-    def test_a_temperature_that_is_not_one_is_refused_by_name(self, web_client,
-                                                              ask):
-        """`web/spectra.md` § 4.1, § 4.3: a temperature that is not a number of
-        kelvin, 0 or more, is refused by name, before any result is read.  The
-        silent failure: a spread or a frame set at a temperature nobody said."""
+    @pytest.mark.parametrize("ask, refused", [
+        ({"temperature_k": "warm"}, "temperature_k"),
+        ({"frameset_state": {"temperature_k": -1}}, "temperature"),
+        ({"frameset_state": {}}, "asked every time"),
+        ({"frameset_state": {"temprature_k": 300}},
+         "did you mean 'temperature_k'"),
+    ], ids=["the animation's, not a number", "the frame set's, below zero",
+            "the frame set's, no state", "a misspelled key"])
+    def test_a_temperature_or_state_that_is_not_one_is_refused_by_name(
+            self, web_client, ask, refused):
+        """`web/spectra.md` § 4.1, § 4.3: the animation's temperature that is
+        not a number of kelvin, 0 or more, and a frame set's state that names
+        none, a value the table refuses (its rows,
+        `test_vibration_frames.py`), or a key it does not take (with the one
+        it is close to), are refused by name, before any result is read.
+        The silent failure: a spread or a frame set's readout at a state
+        nobody said."""
         r = web_client.post("/api/spectra/load", json={"path": "x", **ask})
-        assert r.status_code == 400 and "temperature_k" in r.get_json()["error"]
+        assert r.status_code == 400 and refused in r.get_json()["error"], \
+            r.get_json()
 
     def test_no_input_400(self, web_client):
         r = web_client.post(

@@ -461,6 +461,30 @@ rows § 5.1). The
 shape is the bell curve's when $Q_0 \ll \sigma_T$, the U's when
 $Q_0 \gg \sigma_T$.
 
+**One frequency drives every rung — in the harmonic picture alone** *(the
+user, 2026-11-24)*. A drive at the mode's frequency, or a photon absorbed at
+it, moves the mode one rung, $n \to n \pm 1$, and it is resonant with every
+rung only because the harmonic ladder's gaps are all $\hbar\omega$. A real
+mode's gaps shrink as it climbs: for a Morse-like bond [Morse1929]
+$E_n = \hbar\omega(n+\tfrac12) - \hbar\omega x_e(n+\tfrac12)^2$, each gap
+$2\hbar\omega x_e$ below the one beneath it — large for a stiff stretch of a
+light atom, small for a soft one. **A narrow-band drive climbs only while that shift stays within
+the line's width** $\Gamma$: past it, the light tuned to $0\to1$ is off
+resonance for $1\to2$. A stiff mode's resonant absorption mostly stops at one
+quantum, and a coherent drive's swing saturates as the mode's frequency moves
+with its amplitude, below § 2a.2's $Q_0 = F_0/(\gamma\omega)$; a soft
+stretch, its shift inside the width, climbs several rungs at one frequency.
+A torsion is another matter: its well is periodic, so its gaps shrink too
+and its positions leave the harmonic shapes near the barrier between two
+wells, however few quanta that takes.
+Spontaneous Raman and inelastic tunnelling electrons are not resonant with a
+rung — the scattered photon or the electron carries away whatever the gap is
+— so they climb every rung, Raman at one laser frequency and the electrons
+at one bias (§ 2a.1), each step's line shifted. The vibration's result states no anharmonic constant ($\omega x_e$),
+so where a mode's ladder leaves resonance is the person's to judge, and many
+quanta are where the harmonic picture itself fails (§ 7, item 1): the doors
+say so beyond 1 eV in a mode ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 6).
+
 ### 2a.3 What the frames need — the spread to second order, the shape beyond
 
 **Expand the transmission about equilibrium** (§ 4.2). For any distribution
@@ -1644,7 +1668,15 @@ calculation carries as written
    asymmetry, the distribution's own, which a harmonic frame set does not
    carry. Each frame's largest single-atom move, stated beside it
    (`normal-modes.md` § 4c.5), is what a person reads to see where it may
-   matter.
+   matter. A mode holding many quanta is where it fails first: its ladder's
+   gaps shrink as it climbs, so a drive at one frequency is resonant with
+   one rung alone once the shift passes the line's width (§ 2a.2), and its
+   positions leave the harmonic shapes. The doors say so beyond 1 eV in a
+   mode, $\langle n\rangle h c\tilde\nu$ — far up its ladder
+   ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 6);
+   a mark, not a bound: a soft stretch climbs several rungs below it, and a
+   torsion leaves the harmonic picture near its barrier, which can be well
+   below it (§ 2a.2).
 2. **Static frames (the electron is fast).** Each frame is a frozen geometry:
    the electron crosses the junction quickly against the vibration,
    $\hbar\omega \ll \max\big(|\varepsilon - E_F|,\ \Gamma\big)$. What a static

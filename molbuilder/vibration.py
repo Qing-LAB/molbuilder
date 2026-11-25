@@ -24,7 +24,7 @@ ROLE    from what a result states of a mode -- its frequency, whether it is
           its spread and mean quanta over a list of temperatures (the row
           the record states, § 6.11 § 3);
         * where the molecule sits along it in each state (§ 2b.3), the states
-          one table (:data:`_STATES`, `engines/vibration-frames.md` § 2) --
+          one table (:data:`STATES`, `engines/vibration-frames.md` § 2) --
           its density, distribution, moments, spread and mean quanta, its
           draws from the mode's own streams of a seed, the frames of its own
           Gauss rule (§ 2b.4) and the weights for frames placed elsewhere
@@ -35,9 +35,9 @@ ROLE    from what a result states of a mode -- its frequency, whether it is
           mode and the drive groups (:class:`Motion`), its snapshots and
           their analyses (:class:`Snapshots`, :func:`pooled`).
 USED-BY the result's derived values (`spectra.derived`), the thermochemistry
-        (`spectra.normal_modes`), the frame-set maker (`spectra.mode_frames`),
-        the motion toolkit's frame sets (`vibration_frames`: the writer and
-        reader, the outermost move, the weights for a set's rows), the SIESTA
+        (`spectra.normal_modes`), the motion toolkit's frame sets
+        (`vibration_frames`: the writer and reader, the doors' set, the
+        outermost move, the weights for a set's rows), the SIESTA
         vibration's Raman displacements (`spectra.siesta_vibration`), the
         spectrum tab's load door (`web.blueprints.spectra`), a result's
         modes (`spectra.results.SpectraResults.vibration`) and the script
@@ -378,6 +378,12 @@ THERMAL, NUMBER, SWING, CLASSICAL, CLASSICAL_SWING = (
 DRIVEN_KINDS = (SWING, CLASSICAL_SWING)
 CLASSICAL_KINDS = (CLASSICAL, CLASSICAL_SWING)
 
+#: A STATE'S OWN RULE'S NODES WHEN UNSAID -- three: the bell curve's
+#: three frames at 0 and +-sqrt(3) sigma, exact to degree 5, five and seven
+#: the check on them (`science/vibrational-averaging.md` § 5.1, § 5.3); the
+#: doors offer it first (`vibration_frames.OFFERED_NODES`).
+DEFAULT_NODES = 3
+
 
 @dataclass(frozen=True, eq=False)
 class Frames:
@@ -653,11 +659,15 @@ def _eigenfunction(n: int, xi) -> np.ndarray:
     return h * np.exp(log_scale - 0.5 * xi * xi)
 
 
-def _position_operator(size: int) -> np.ndarray:
-    """``xi = (a + a^dagger) / sqrt(2)`` on the oscillator's first ``size``
-    states: the matrix ``<j|xi|j+1> = sqrt((j+1)/2)`` -- exact on every state
-    ``xi`` raises from below ``size - 1``."""
-    off = np.sqrt(np.arange(1, size) / 2.0)
+def _position_operator(lo: int, hi: int) -> np.ndarray:
+    """``xi = (a + a^dagger) / sqrt(2)`` on the oscillator's states ``lo`` to
+    ``hi - 1``: the matrix ``<j|xi|j+1> = sqrt((j+1)/2)`` -- exact on every
+    vector it moves without leaving them.  A number state's rule and moments
+    take only the states ``xi`` reaches from ``|n>`` in their steps, ``n``
+    plus or minus as many, so the window is a few states wide -- a number
+    mistyped into the frame-set dialog never builds a matrix of its square
+    while the person types."""
+    off = np.sqrt(np.arange(lo + 1, hi) / 2.0)
     return np.diag(off, 1) + np.diag(off, -1)
 
 
@@ -665,12 +675,13 @@ def _number_state_rule(n: int, nodes: int) -> Tuple[np.ndarray, np.ndarray]:
     """The ``nodes``-point Gauss rule whose weight function is ``P_n`` (in
     ``xi``): the spectral measure of ``xi`` in the state ``|n>``, by
     Lanczos from ``|n>`` and Golub and Welsch's eigenproblem -- exact for
-    its polynomials to degree ``2 nodes - 1``, for any ``n``."""
-    size = n + nodes + 1
-    x_op = _position_operator(size)
-    q = np.zeros(size)
-    q[n] = 1.0
-    q_prev = np.zeros(size)
+    its polynomials to degree ``2 nodes - 1`` -- ``nodes`` steps reach
+    ``n +- nodes`` alone, the operator's window."""
+    lo, hi = max(0, n - nodes), n + nodes + 1
+    x_op = _position_operator(lo, hi)
+    q = np.zeros(hi - lo)
+    q[n - lo] = 1.0
+    q_prev = np.zeros(hi - lo)
     alpha: List[float] = []
     beta: List[float] = []
     b = 0.0
@@ -822,6 +833,13 @@ class State:
         return float(self.zero_point_amplitude_amu12_ang)
 
     @property
+    def is_coherent(self) -> bool:
+        """Whether this is the coherent state -- a driven mode from its
+        ground state, the swing carrying the zero-point width alone, no
+        warmth (§ 2a.2)."""
+        return self.kind == SWING and self.bath_quanta == 0.0
+
+    @property
     def _bath_spread(self) -> float:
         return spread_of_quanta(self._q_zp, self.bath_quanta)
 
@@ -929,9 +947,10 @@ class State:
             if k % 2:
                 return 0.0
             n = self.quanta
-            x_op = _position_operator(n + k // 2 + 1)
-            v = np.zeros(n + k // 2 + 1)
-            v[n] = 1.0
+            lo, hi = max(0, n - k // 2), n + k // 2 + 1
+            x_op = _position_operator(lo, hi)
+            v = np.zeros(hi - lo)
+            v[n - lo] = 1.0
             for _ in range(k // 2):
                 v = x_op @ v
             return float(v @ v) * (math.sqrt(2.0) * self._q_zp) ** k
@@ -966,7 +985,7 @@ class State:
                          * wb[None, :]).ravel()
         return _gauss_rule_of(points, probabilities, m)
 
-    def frames(self, nodes: int = 3) -> Frames:
+    def frames(self, nodes: int = DEFAULT_NODES) -> Frames:
         """The frames that average a response over the state (§ 2b.4,
         `engines/vibration-frames.md` § 4): the Gauss rule of the state's own
         distribution -- Gauss–Hermite for a bell curve, the rule whose
@@ -1122,7 +1141,7 @@ def _swing_phases(amplitude: float, carried_spread: float) -> np.ndarray:
 #: arguments a person gives, exactly one of these sets -- a bath named by
 #: its temperature or by its mean quanta; a driven mode by its swing quanta
 #: alone (the coherent state) or with its warmth's temperature.
-_STATES: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
+STATES: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     (NUMBER, ("quanta",)),
     (THERMAL, ("temperature_k",)),
     (THERMAL, ("mean_quanta",)),
@@ -1133,7 +1152,33 @@ _STATES: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     (CLASSICAL_SWING, ("classical", "swing_quanta", "temperature_k")),
 )
 _STATE_NAMED_BY: Dict[frozenset, str] = {
-    frozenset(names): kind for kind, names in _STATES}
+    frozenset(names): kind for kind, names in STATES}
+
+
+def checked_state(*, temperature_k=None, mean_quanta=None, quanta=None,
+                  swing_quanta=None, classical: bool = False) -> str:
+    """THE STATE A SET OF ARGUMENTS NAMES, checked before any mode is known
+    (§ 2b.3; `engines/vibration-frames.md` § 2): its kind, by the one table
+    (:data:`STATES` -- any other set refused, naming them), and each value
+    by its own rule -- a temperature a number of kelvin, 0 or more; ``quanta``
+    a whole number, 0 or more; swing and mean quanta 0 or more.  What
+    :func:`state` asks first, and the doors before they read a run."""
+    named = _named(temperature_k, mean_quanta, quanta, swing_quanta,
+                   classical)
+    kind = _STATE_NAMED_BY.get(named)
+    if kind is None:
+        ways = "; ".join(" with ".join(names) for _, names in STATES)
+        raise ValueError(f"a state is named one of these ways: {ways} -- "
+                         f"got {', '.join(sorted(named)) or 'nothing'}")
+    if temperature_k is not None:
+        checked_temperature_k(temperature_k)
+    if quanta is not None:
+        _whole(quanta, "a number of quanta", 0)
+    if swing_quanta is not None:
+        _checked_quanta(swing_quanta, "a number of swing quanta")
+    if mean_quanta is not None:
+        _checked_quanta(mean_quanta)
+    return kind
 
 
 def _frame_words(frame: int, n_frames: int) -> str:
@@ -1200,7 +1245,7 @@ def state(zero_point_amplitude: float, frequency_cm1: float, *,
           swing_quanta: Optional[float] = None,
           classical: bool = False) -> State:
     """The state a person names (§ 2b.3), by one of the sets
-    :data:`_STATES` lists:
+    :data:`STATES` lists:
 
     * ``quanta`` -- n quanta exactly;
     * ``temperature_k`` or ``mean_quanta`` -- thermal (or random quanta);
@@ -1216,13 +1261,9 @@ def state(zero_point_amplitude: float, frequency_cm1: float, *,
     if not (math.isfinite(q_zp) and q_zp > 0.0):
         raise ValueError("a state needs the mode's zero-point amplitude -- "
                          "an imaginary mode has none")
-    named = _named(temperature_k, mean_quanta, quanta, swing_quanta,
-                   classical)
-    kind = _STATE_NAMED_BY.get(named)
-    if kind is None:
-        ways = "; ".join(" with ".join(names) for _, names in _STATES)
-        raise ValueError(f"a state is named one of these ways: {ways} -- "
-                         f"got {', '.join(sorted(named)) or 'nothing'}")
+    kind = checked_state(temperature_k=temperature_k,
+                         mean_quanta=mean_quanta, quanta=quanta,
+                         swing_quanta=swing_quanta, classical=classical)
     if kind == NUMBER:
         return State(NUMBER, q_zp, quanta=_whole(quanta, "quanta", 0))
     classical_spread = (0.0 if not classical or temperature_k is None else
@@ -1345,7 +1386,7 @@ class ModeState:
         """The weights for this state of frames (:meth:`State.weights_at`)."""
         return self.state.weights_at(q_amu12_ang, written=written)
 
-    def frames(self, nodes: int = 3) -> Frames:
+    def frames(self, nodes: int = DEFAULT_NODES) -> Frames:
         """The state's frames (:meth:`State.frames`) with the geometries a
         calculation reads: each frame every atom at ``R + Q_j L``, frame 0
         the relaxed geometry exactly."""
@@ -1761,8 +1802,13 @@ def _numbers_words(numbers: Sequence[Any]) -> str:
             ", ".join(words[:-1]) + " and " + words[-1])
 
 
-def _quanta_words(n: float) -> str:
-    return f"{n:g} swing quant{'um' if n == 1.0 else 'a'}"
+def _quanta_words(n: float, kind: str = "swing ", spec: str = "g") -> str:
+    """A COUNT OF QUANTA AS SAID: ``n`` written by ``spec``, ``kind`` the
+    quanta's -- a swing's unless named (``""``, ``"mean "``) -- the noun
+    chosen on the figure written, so a mean that rounds to one is "1
+    quantum" (`web/spectra.md` § 4.3)."""
+    text = format(float(n), spec)
+    return f"{text} {kind}quant{'um' if text == '1' else 'a'}"
 
 
 @dataclass(frozen=True)
@@ -1856,7 +1902,7 @@ class Motion:
         if t > 0.0:
             for k, s in self.states.items():
                 grouped = self._group_of(k) is not None
-                if s.kind == SWING and s.state.bath_quanta == 0.0:
+                if s.state.is_coherent:
                     n_th = float(mean_quanta(s.mode.frequency_cm1, t))
                     warm = (f"the same drive made with temperature_k={t:g} "
                             f"(with_drive on the motion before it)" if grouped
@@ -2332,7 +2378,7 @@ def _swing_words(s: ModeState) -> str:
     carrying the classical bell curve at its temperature."""
     st = s.state
     if st.kind == SWING:
-        return ("the zero-point width" if st.bath_quanta == 0.0 else
+        return ("the zero-point width" if st.is_coherent else
                 f"warm at {_temperature_words(s)}")
     return ("a bare classical swing" if st.classical_spread_amu12_ang == 0.0
             else f"a classical swing carrying the classical bell curve at "
@@ -2348,7 +2394,7 @@ def _state_words(k: int, s: ModeState) -> str:
         words = (f"mode {k}: driven, {_quanta_words(st.swing_quanta)}, "
                  f"{_swing_words(s)}, its own phase")
     elif st.kind == NUMBER:
-        words = f"mode {k}: {st.quanta} quant{'um' if st.quanta == 1 else 'a'} exactly"
+        words = f"mode {k}: {_quanta_words(st.quanta, kind='')} exactly"
     elif st.kind == CLASSICAL:
         words = f"mode {k}: classical at {t}"
     elif s.temperature_k is not None:
@@ -2412,7 +2458,8 @@ def _motion_key(motion: Motion) -> Tuple[Any, ...]:
                   for d in motion.drives))
 
 
-__all__ = ["checked_temperature_k", "zero_point_amplitude_amu12_ang",
+__all__ = ["DEFAULT_NODES", "STATES", "checked_state", "checked_temperature_k",
+           "zero_point_amplitude_amu12_ang",
            "mean_quanta", "spread_of_quanta", "thermal_spread_amu12_ang",
            "classical_spread_amu12_ang",
            "thermal_spread_of", "THERMAL_ROW_KEYS", "thermal_row",

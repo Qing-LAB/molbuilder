@@ -30,6 +30,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 from unittest.mock import ANY
 
 import numpy as np
@@ -325,32 +326,38 @@ class _EveryState:
         /api/spectra/load` answers the file's own fields unchanged -- a `null`
         a `null` -- at every state of a run, and adds, never into the file,
         each mode's element shares where the file states a geometry, and the
-        frame set's numbers at the temperature its thermochemistry states;
-        no temperature stated, none assumed.  THE SILENT FAILURE: the viewer
+        frame set's readout -- the motion toolkit's, on the file's own modes
+        -- at the temperature its thermochemistry states, the state said
+        back; no temperature stated, or no geometry yet, none.  THE SILENT FAILURE: the viewer
         drawing what the file does not state, or a computed field leaking into
         the format, which the writer would then write as if the schema declared
         it."""
-        from molbuilder.spectra.mode_frames import at_temperature
-        path, _states = state
+        from molbuilder.postprocess import vibration
+        from molbuilder.vibration_frames import readout
+        path, states = state
         d = _read(path)
         served = spectra_served(web_client, monkeypatch, path)
         for key in d:
             if key not in ("modes", "methods_text"):
                 assert served[key] == d[key], key
         kelvin = d["thermo"].get("temperature_K")
-        if kelvin is None:
-            assert "frameset_temperature_k" not in served
+        # THE GEOMETRY AS THE ROW STATES IT (§ 6.5): read where it is stated,
+        # none before.
+        v = vibration(path) if states["geometry"] else None
+        if kelvin is None or v is None:
+            assert "frameset_state" not in served
         else:
-            assert served["frameset_temperature_k"] == kelvin
+            assert served["frameset_state"] == {"temperature_k": kelvin}
         assert len(served["modes"]) == len(d["modes"])
         for row, mode in zip(d["modes"], served["modes"]):
             assert {k: mode[k] for k in row} == row
             assert "motion_share_by_element" not in row
             assert "motion_share_by_element" in mode
-            if kelvin is None:
+            if kelvin is None or v is None:
                 assert "frameset" not in mode
             else:
-                assert mode["frameset"] == at_temperature(row, kelvin)
+                assert mode["frameset"] == readout(
+                    v.mode(mode["index_1based"]), {"temperature_k": kelvin})
 
 
 @pytest.fixture(scope="module", params=list(_PYSCF))
@@ -916,7 +923,7 @@ def test_the_thermal_spread_is_served_at_the_temperature_asked(
     computes nothing: `sigma = Q_zp sqrt(coth(hbar omega / 2 k_B T))`
     (`science/vibrational-averaging.md` § 2); asked for no temperature, no mode
     carries the key.  The contract's own table of the formula is
-    `spectra/test_derived.py`'s.  The silent failure: a page drawing a thermal
+    `spectra/test_what_a_temperature_means.py`'s.  The silent failure: a page drawing a thermal
     size the server never derived, or one at another temperature."""
     from molbuilder.constants import CM1_KELVIN
     path = _final(real_water_probed)
@@ -934,30 +941,139 @@ def test_the_thermal_spread_is_served_at_the_temperature_asked(
     assert all("thermal_spread_amu12_ang" not in m for m in served["modes"])
 
 
-def test_what_a_frame_sets_temperature_means_is_served_as_the_script_says_it(
-        real_water_probed, web_client, monkeypatch):
-    """`web/spectra.md` § 4.3: at the frame-set dialog's temperature the load
-    door serves each mode's numbers for each rule, says the temperature back,
-    and a notebook's door (`molbuilder.postprocess.outermost_move`) answers the
-    same.  The contract's own table of the numbers is
-    `spectra/test_derived.py`'s.  The silent failure: a dialog whose numbers are
-    not the frames the generator writes, or a script told another."""
+@pytest.mark.parametrize("asked", [{"temperature_k": 1000.0}, {"quanta": 2},
+                                   {"swing_quanta": 1.5},
+                                   {"swing_quanta": 1.5,
+                                    "temperature_k": 1000.0}],
+                         ids=["thermal", "n quanta", "the coherent state",
+                              "a warm driven mode"])
+def test_what_a_frame_sets_state_means_is_served_as_the_script_says_it(
+        real_water_probed, web_client, monkeypatch, asked):
+    """`web/spectra.md` § 4.3: at the frame-set dialog's state the load door
+    serves each mode's readout for each frame count, says the state back,
+    and a notebook's door (`molbuilder.postprocess.outermost_move`) answers
+    the same outermost move.  The closed forms of each state are
+    `tests/test_vibration_frames.py`'s, the contract's own table
+    `spectra/test_what_a_temperature_means.py`'s.  The silent failure: a dialog whose numbers
+    are not the frames the doors write, or a script told another."""
     from molbuilder.postprocess import outermost_move
-    from molbuilder.spectra.mode_frames import NODES
+    from molbuilder.vibration_frames import OFFERED_NODES
     path = _final(real_water_probed)
-    kelvin = 1000.0
     served = spectra_served(web_client, monkeypatch, path,
-                   frameset_temperature_k=kelvin)
-    assert served["frameset_temperature_k"] == kelvin
+                            frameset_state=asked)
+    assert served["frameset_state"] == asked
     for mode in served["modes"]:
         said = mode["frameset"]
-        assert said["sigma_amu12_ang"] == pytest.approx(
-            said["sigma_over_zero_point"]
+        assert said["spread_amu12_ang"] == pytest.approx(
+            said["spread_over_zero_point"]
             * mode["zero_point_amplitude_amu12_ang"], rel=1e-12)
-        for nodes in NODES:
+        assert ("swing_over_zero_point" in said) == ("swing_quanta" in asked)
+        for nodes in OFFERED_NODES:
             assert said["outermost_move_ang"][str(nodes)] == outermost_move(
-                path, mode=mode["index_1based"], temperature_k=kelvin,
-                nodes=nodes)
+                path, mode=mode["index_1based"], nodes=nodes, **asked)
+
+
+def test_write_frame_set_asks_the_state_and_writes_it(
+        page, real_water_probed, monkeypatch):
+    """`web/spectra.md` § 4.3 (the user's decision, `engines/vibration.md`
+    § 6.11 § 9 item 2): *Write frame set…* asks which state the frames
+    sample -- thermal with its temperature box, n quanta with its number,
+    driven with its swing quanta and the warm tick that brings the box
+    back -- its note saying what the state in the fields means, a field
+    that holds none said in its words, the dialog anchored at its top; many
+    quanta (beyond 1 eV in the mode, the user's choice of 2026-11-24) asked
+    to confirm, a No writing nothing; the set written is that state's.  The
+    silent failures: a field another state needs left asking, a note of a
+    state no longer in the fields, a note that shrinks and lifts *Next*
+    under the pointer, a set far outside the harmonic picture written
+    unsaid, or one written at the temperature the box still held."""
+    from playwright.sync_api import expect
+    from molbuilder.frameset import read
+    from molbuilder.workingcopy_structure import StructureCodec
+    from support.pages import where_and_name_answered
+    from support.spectra_page import spectrum_opened
+    run = real_water_probed
+    project = run.tree.resolve() / "P"
+
+    def opened():
+        """The dialog for mode 1 -- the water's bend, 0.2 eV a quantum."""
+        page.locator("#frameset-btn").click()
+        dialog = page.locator("dialog.mb-dialog").last
+        expect(dialog).to_have_class(re.compile(r"\bmb-dialog-follows\b"))
+        return dialog
+
+    with spectrum_opened(page, run, monkeypatch.setenv):
+        page.wait_for_selector("#modes-tbody tr", state="attached",
+                               timeout=60000)
+        page.locator('#modes-tbody tr[data-mode="1"]').click()
+        dialog = opened()
+        field = lambda name: dialog.locator(
+            f".mb-dialog-field:has([data-role='{name}'])")
+        note = dialog.locator("[data-role='note']")
+        # THERMAL FIRST, its box at the record's temperature, said.
+        expect(field("temperature")).to_be_visible()
+        for name in ("quanta", "swing", "warm"):
+            expect(field(name)).to_be_hidden()
+        expect(note).to_contain_text("The thermal state at ", timeout=60000)
+        # n QUANTA: its number, no temperature; the note follows it; a
+        # number that is none said in the field's words.
+        dialog.locator("[data-role='state']").select_option("quanta")
+        expect(field("quanta")).to_be_visible()
+        expect(field("temperature")).to_be_hidden()
+        dialog.locator("[data-role='quanta']").fill("2.5")
+        expect(dialog.locator("[data-role='error']")).to_have_text(
+            "the quanta are a whole number, 0 or more")
+        dialog.locator("[data-role='quanta']").fill("2")
+        expect(note).to_contain_text("2 quanta exactly", timeout=60000)
+        # DRIVEN: its swing quanta and the warm tick; ticked, the box.
+        dialog.locator("[data-role='state']").select_option("driven")
+        expect(field("swing")).to_be_visible()
+        expect(field("temperature")).to_be_hidden()
+        expect(note).to_contain_text("The coherent state, 1 swing quantum",
+                                     timeout=60000)
+        expect(note).to_contain_text("holds 1 quantum on average")
+        expect(note).to_contain_text("what the coherent state leaves out")
+        dialog.locator("[data-role='warm']").check()
+        expect(field("temperature")).to_be_visible()
+        expect(note).to_contain_text("The warm driven state", timeout=60000)
+        # A MEAN JUST ABOVE ONE at the record's temperature, said as printed.
+        expect(note).to_contain_text("holds 1 quantum on average")
+        # TEN QUANTA, 2 eV: said in the note; the note shorter at two
+        # quanta lifts nothing -- the dialog's top and its Next stay where
+        # they were.
+        dialog.locator("[data-role='state']").select_option("quanta")
+        dialog.locator("[data-role='quanta']").fill("10")
+        expect(note).to_contain_text("may no longer hold", timeout=60000)
+        next_button = dialog.locator("[data-action='confirm']")
+        before = (dialog.bounding_box()["y"], next_button.bounding_box()["y"])
+        dialog.locator("[data-role='quanta']").fill("2")
+        expect(note).to_contain_text("2 quanta exactly", timeout=60000)
+        assert (dialog.bounding_box()["y"],
+                next_button.bounding_box()["y"]) == before
+        # ASKED TO CONFIRM; No writes nothing.
+        dialog.locator("[data-role='quanta']").fill("10")
+        expect(note).to_contain_text("may no longer hold", timeout=60000)
+        next_button.click()
+        modal = page.locator("dialog.molbuilder-warning-modal")
+        expect(modal).to_contain_text("holds many quanta")
+        modal.locator("[data-action='cancel']").click()
+        expect(page.locator("#frameset-status")).to_have_text("not written")
+        # TWO QUANTA, written.
+        dialog = opened()
+        dialog.locator("[data-role='state']").select_option("quanta")
+        dialog.locator("[data-role='quanta']").fill("2")
+        expect(dialog.locator("[data-role='note']")).to_contain_text(
+            "2 quanta exactly", timeout=60000)
+        dialog.locator("[data-action='confirm']").click()
+        where_and_name_answered(page, project, project / "structure", "q2")
+        expect(page.locator("#frameset-status")).to_contain_text(
+            "frame 1 of 3:", timeout=60000)
+    rows = read(StructureCodec().load(project / "structure" / "q2.xyz",
+                                      frames=True))
+    assert rows.value("quanta") == 2
+    assert rows.value("temperature_k") is None
+    assert rows.value("mode_index_1based") == 1
+    assert not (project / "structure" / "mode1.xyz").exists()
 
 
 # --------------------------------------------------------------------- #

@@ -28,7 +28,7 @@ device's two-point self-consistent sweep launched, launched again warm
 newest run; the record.  And the relaxation saved as a structure pair
 (`molbuilder xv2xyz --from-run`); a SIESTA vibration of that pair, its
 two free atoms; a frame set of three written from the vibration's highest
-mode by a script through the structure's API, as the frame generator writes
+mode by a script through the structure's API, as the motion toolkit writes
 one (frame 0 the pair, frames at +/-sqrt(3) sigma, the mode's definition
 stated in full, `model/structure.md` § 2.2f); and a second transport
 calculation citing the set, its two-point self-consistent sweep at every
@@ -128,9 +128,9 @@ _BIAS = (0.0, 0.2)
 #: template's, the cited run's (`engines/transport.md` § 2a.13, § 3.8.2a).
 _OWN_MIXING = {"seed": 0.12, "electrode_L": 0.15, "device": 0.08}
 
-#: The frame set the second calculation cites, written by the frame generator
+#: The frame set the second calculation cites, written by the motion toolkit's doors
 #: from a real SIESTA vibration of the relaxed pair (`molbuilder frameset
-#: from-mode`; `engines/vibration.md` § 5.10 ③): frame 0 the pair, then the
+#: from-mode`; `engines/vibration-frames.md` § 4, § 6): frame 0 the pair, then the
 #: three-point Gauss-Hermite nodes at +/-sqrt(3) sigma, each with its weight
 #: (`science/vibrational-averaging.md` § 5.1), sigma the mode's spread at the
 #: temperature stated.
@@ -142,8 +142,8 @@ _N_FRAMES = len(_NODES_SIGMA)
 #: THE SEVEN-POINT RULE, from Abramowitz & Stegun Table 25.10 (n = 7): its
 #: nodes x and weights w, so each frame sits at q / sigma = sqrt(2) x with
 #: weight w / sqrt(pi) (`science/vibrational-averaging.md` § 5.1) -- the
-#: order the generator writes them in, frame 0 and then each pair, nearest
-#: first and its positive side first (`engines/vibration.md` § 5.10 ③).
+#: order the doors write them in, frame 0 and then each pair, nearest
+#: first and its positive side first (`engines/vibration-frames.md` § 4).
 _X7 = (0.0, 0.816287882859, -0.816287882859, 1.673551628767,
        -1.673551628767, 2.651961356835, -2.651961356835)
 _W7 = (0.810264617557, 0.425607252610, 0.425607252610, 0.054515582819,
@@ -160,8 +160,8 @@ _C2_CM_K = 1.438776877
 #: (`model/structure.md` § 2.2d): blank where the name carries it, ``1`` for
 #: a number of none, none for a text --
 #: in its order: what the Transport tab's card shows for the set the
-#: fixture wrote (`engines/transport.md` § 3.8.1); the generator's rule and
-#: masses as `engines/vibration.md` § 5.10 ③ states them.
+#: fixture wrote (`engines/transport.md` § 3.8.1); the doors' rule and
+#: masses as `engines/vibration-frames.md` § 4 and § 5 state them.
 _SET_ROWS = (("vibration_run", "given", None, "Vibration run", None),
              ("vibration_result_sha256", "given", None, "Result sha256", None),
              ("mass_source", "given", None, "Masses", None),
@@ -457,8 +457,8 @@ def junction(tmp_path_factory):
               "--mode", "direct", "--foreground", "--yes")
         vibration = "P/spectrum/V/01_freq/run-0"
 
-        # THE FRAME SET, written from its highest mode by the generator on
-        # the command line (`engines/vibration.md` § 5.10 ③).
+        # THE FRAME SET, written from its highest mode by the doors on
+        # the command line (`engines/vibration-frames.md` § 6).
         frame_set = "P/structure/frames.xyz"
         mode = _highest_mode(tree, vibration)
         r = molbuilder("frameset", "from-mode", vibration, "--mode",
@@ -707,7 +707,7 @@ def junction(tmp_path_factory):
         StructureCodec().write(
             _family_of(StructureCodec().load(tree / frame_set, frames=True)),
             tree / run.family)
-        # THE SPECTRUM VIEWER'S DOOR to the same generator
+        # THE SPECTRUM VIEWER'S DOOR to the same doors' set
         # (`web/spectra.md` § 4.3), asked with the paths the page sends --
         # the result's folder and the tree picker's choice, each absolute:
         # seven frames of the same mode, then the same path again, which is
@@ -717,7 +717,7 @@ def junction(tmp_path_factory):
         from molbuilder.runs import on_label_at
         run.frameset_shown = client.post("/api/spectra/load", json={
             "path": str(on_label_at(tree / vibration, ROLE_SPECTRA)),
-            "frameset_temperature_k": _TEMPERATURE_K}).get_json()
+            "frameset_state": {"temperature_k": _TEMPERATURE_K}}).get_json()
         ask = {"path": str(on_label_at(tree / vibration, ROLE_SPECTRA)),
                "mode": mode,
                "temperature_k": _TEMPERATURE_K, "nodes": 7,
@@ -3726,26 +3726,28 @@ def test_a_ladder_without_a_transmission_exports_what_exists(
 
 
 def test_the_command_line_says_what_the_temperature_means(junction):
-    """`engines/vibration.md` § 5.10 ③: `molbuilder frameset from-mode`
-    prints the mode's mean number of quanta and its spread against its
-    zero-point amplitude at the temperature stated -- the numbers the pair
-    it wrote states -- then each frame and where the pair is.  The silent
-    failure: a set written at a temperature the person never sees the
-    meaning of, or a printout of other numbers than the file's."""
+    """`engines/vibration-frames.md` § 6: `molbuilder frameset from-mode`
+    prints the mode's state -- here thermal at the temperature stated --
+    its mean number of quanta and its spread against its zero-point
+    amplitude -- the numbers the pair it wrote states -- then each frame and
+    where the pair is.  The silent failure: a set written at a state the
+    person never sees the meaning of, or a printout of other numbers than
+    the file's."""
     from molbuilder.workingcopy_structure import StructureCodec
     pair = StructureCodec().load(junction.tree / junction.frame_set,
                                  frames=True)
     rows = {r["name"]: r["value"] for r in pair.customized_rows(None)}
     said = junction.frameset_cli
-    assert (f"at {_TEMPERATURE_K:g} K the mode holds "
+    assert f"the thermal state at {_TEMPERATURE_K:g} K" in said, said
+    assert (f"it holds "
             f"{rows['mean_quanta']:.4g} quanta on average; its spread is "
             f"{rows['spread_amu12_ang'] / rows['zero_point_amplitude_amu12_ang']:.4f}"
             f" x its zero-point amplitude") in said, said
     assert f"wrote {junction.tree / junction.frame_set}" in said, said
 
 
-def test_the_spectrum_viewers_door_writes_the_same_generators_set(junction):
-    """`web/spectra.md` § 4.3: the viewer's door asks the one generator --
+def test_the_spectrum_viewers_door_writes_the_same_doors_set(junction):
+    """`web/spectra.md` § 4.3: the viewer's door asks the doors' one set --
     seven frames of the same mode at the same temperature, each frame's
     position along the mode and weight as the seven-point rule gives them,
     and its outermost frames moving the atom that moves most as far as the
@@ -3764,7 +3766,8 @@ def test_the_spectrum_viewers_door_writes_the_same_generators_set(junction):
         [w / np.pi ** 0.5 for w in _W7], rel=1e-9)
     shown = junction.frameset_shown
     assert shown["ok"], shown
-    assert shown["results"]["frameset_temperature_k"] == _TEMPERATURE_K
+    assert shown["results"]["frameset_state"] == {
+        "temperature_k": _TEMPERATURE_K}
     (m,) = [m for m in shown["results"]["modes"]
             if m["index_1based"] == junction.frameset_mode]
     assert max(f["max_atom_displacement_ang"] for f in frames) == \
@@ -3814,7 +3817,7 @@ def test_the_tab_cites_a_frame_set_and_says_what_each_frame_is(junction):
     }
     # THE WORDS BESIDE THEM, the vibration frame sets' -- each row its words,
     # page unit and kind, its meaning the set's note -- what the set is,
-    # and where it came from: the run the generator read and its result's
+    # and where it came from: the run the doors read and its result's
     # sha256, as the set's own rows state them.
     said = {
         "structure": {n: {"words": w, "page_unit": pu, "kind": k,
@@ -3836,7 +3839,7 @@ def test_the_tab_cites_a_frame_set_and_says_what_each_frame_is(junction):
         "assumptions": None,
         "said": [],
     }
-    # ...and those rows the generator's: its weights, its nodes, the
+    # ...and those rows the doors': its weights, its nodes, the
     # temperature stated, the mode's quanta and spread at it, and the
     # outermost move measured on the frames written.
     assert [row[-1] for row in expect["frames"]] == pytest.approx(

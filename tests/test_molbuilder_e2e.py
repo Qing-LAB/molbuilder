@@ -33,6 +33,7 @@ from pathlib import Path
 import pytest
 
 
+from support.pages import where_and_name_answered
 from support.sidebar import WAIT_MS, walk_to
 
 
@@ -1235,30 +1236,6 @@ def test_the_timeline_indicator_says_where_you_are(
 #  Saving to the project (tabs.md § 6; molview § 11.3)                  #
 # --------------------------------------------------------------------- #
 
-def _answer_where_and_name(page, project, where, stem):
-    """The one save-where question (`projects.chooseSavePath`), answered as
-    a person answers it: WHERE -- the picker's Choose stays disabled until a
-    folder is selected; opening the project and clicking the folder's row
-    is the selection -- then WHAT TO CALL IT.  The projects root is the
-    tree, never an answer: its row cannot be chosen (`projects.md` § 4.1).
-    The picker opens at the root each time (a closed dialog is gone)."""
-    dialog = page.locator("dialog.molbuilder-tree-picker-dialog")
-    root_row = dialog.locator(
-        f'li.tp-node[data-path="{project.parent}"] > .tp-row')
-    root_row.wait_for(state="visible", timeout=WAIT_MS)
-    assert "tp-row--inert" in (root_row.get_attribute("class") or "")
-    dialog.locator(f'li.tp-node[data-path="{project}"]'
-                   " > .tp-row > .tp-twisty").click()
-    row = dialog.locator(f'li.tp-node[data-path="{where}"] > .tp-row')
-    row.wait_for(state="visible", timeout=WAIT_MS)
-    row.click()
-    page.locator("dialog [data-action='confirm']").first.click()
-    name = page.locator("dialog input[data-role='name']")
-    name.wait_for(state="visible", timeout=WAIT_MS)
-    name.fill(stem)
-    page.locator("dialog [data-action='confirm']").last.click()
-
-
 def test_saving_to_the_project_writes_the_pair_and_remembers_where(
         page, flask_server, labelled_xyz, isolated_projects_root):
     """A save writes BOTH files, and the page records the target.
@@ -1290,7 +1267,7 @@ def test_saving_to_the_project_writes_the_pair_and_remembers_where(
         # TWO QUESTIONS, in this order: WHERE, then what to call it
         # (`tabs.md` § 6 -- the door owns the destination).
         page.locator("#save-to-source-btn").click()
-        _answer_where_and_name(page, project, where, stem)
+        where_and_name_answered(page, project, where, stem)
 
     save_as("saved_by_test")
     page.wait_for_function(
@@ -1606,7 +1583,7 @@ def test_a_picture_saved_under_a_name_taken_leaves_the_first_alone(
                       has_text="Save to project").click()
         page.locator("dialog.molviewer-export-dialog "
                      "[data-action='confirm']").click()
-        _answer_where_and_name(page, project, where, "picture")
+        where_and_name_answered(page, project, where, "picture")
 
     picture()
     first = where / "picture.png"

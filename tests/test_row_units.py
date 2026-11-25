@@ -127,7 +127,7 @@ def test_rows_already_written_are_read_and_carried_as_written(tmp_path):
     written -- a count an earlier molbuilder wrote with no unit, a unit its
     name contradicts -- is read as it is; the same unit beside its name is
     not kept; and molbuilder's own copy of the structure (the codec's write:
-    the frame generator's, a command's) carries the rows as read.  The
+    the motion toolkit's frame sets', a command's) carries the rows as read.  The
     silent failures: a run, a result or a set made last week no longer
     opening; a frame set refused over a row its vibration only carried."""
     from molbuilder.structure import Structure

@@ -457,7 +457,7 @@ a unit stated, any spelling, `1` for a count. **A row in a record already
 written is read as it is** — a run's deck, a result, a data file, a pair an
 earlier molbuilder saved: nothing molbuilder wrote stops opening, and every
 copy carries it as read — the save, the download and the hand-over from any
-tab, the frame generator, a command's write, `molbuilder describe`, a deck
+tab, the motion toolkit's frame sets, a command's write, `molbuilder describe`, a deck
 compared for the same calculation. Read anywhere, the same unit beside a name
 that carries it is not kept, nor a `1` beside a text or true/false, nor a
 unit's surrounding spaces. The row's one validator,
@@ -518,8 +518,7 @@ structure's `customized` rows) and, per frame, its coordinates and its
 construction — the same atoms in the same order, the same species, the same
 cell, each frame's rows saying what it is (a displacement along a normal mode,
 `engines/transport.md` § 2a.9). It is MADE by code that understands this,
-through the doors below — the motion toolkit (from R3d2b2b2; the frame
-generator, `spectra.mode_frames`, until then), a person's script. **It is never
+through the doors below — the motion toolkit, a person's script. **It is never
 edited**: nothing moves atoms, adds or removes them, or rewrites coordinates in
 a frame set; the browser views one and the Molbuilder tab loads one frame of it
 (`web/molview.md` § 9.4, `web/tabs.md` § 2).
@@ -615,8 +614,7 @@ never written into the set.
 **Frame 0 is the set's reference**: the geometry a calculation measures
 each frame's change from ([`engines/transport.md`](?doc=engines/transport.md)
 § 2a.12). What a maker puts there is the maker's; every set the motion
-toolkit writes has the relaxed geometry there (from R3d2b2b2; today's frame
-generator's sets too)
+toolkit writes has the relaxed geometry there
 ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 5, the
 rule's home).
 

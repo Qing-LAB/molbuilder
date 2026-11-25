@@ -706,8 +706,9 @@
      * `/api/spectra/load` sends it with every result
      * (`web/blueprints/spectra.py::_page_constants`) -- the physical
      * constants from their one home (`molbuilder.constants`), each channel's
-     * band floor (`spectra.activity`), the frame-set rules
-     * (`spectra.mode_frames`) and each engine's name (the engine table) --
+     * band floor (`spectra.activity`), the frame counts the doors offer
+     * (`vibration_frames.OFFERED_NODES`) and each engine's name (the engine
+     * table) --
      * and `renderResults` takes it in before any panel draws
      * (`architecture.md` § 3; user: one source per fact). */
     const K = {};
@@ -1147,10 +1148,12 @@
     // `_resolve_within_roots` (~ and $VARS expanded, symlinks followed), so
     // a server-echoed path would not equal the string the caller holds and
     // APPLY would drop every payload.  One string feeds both sides.
-    async function fetchResults(path, signal, ask) {
+    async function fetchResults(path, signal, ask, besides) {
         // WHAT THIS LOAD ASKS, remembered as it leaves -- what a restore of
         // the knobs compares against (`_prefsRestore`): the applied
-        // choices, or those Update asks with (`onViewUpdate`).
+        // choices, or those Update asks with (`onViewUpdate`).  ``besides``
+        // rides with this load alone, never remembered: the frame-set
+        // dialog's state (web/spectra.md § 4.3).
         ask = ask || _askOf();
         const sent = JSON.stringify(ask);
         _lastAsk = sent;
@@ -1162,7 +1165,7 @@
             // AND THE BAR'S CHOICES (web/spectra.md § 2.1): a result that
             // cannot answer says why in `infrared_said` or `raman_said` and
             // loads all the same.
-            body:   Object.assign({ path: path }, ask),
+            body:   Object.assign({ path: path }, ask, besides || {}),
             signal: signal,
         });
         return { path: path, answer: answer, asked: sent };
@@ -1175,15 +1178,9 @@
     let _lastAsk = null;
     function _askOf(choices) {
         const c = choices || state.uiPrefs;
-        // THE FRAME SET'S TEMPERATURE, where the frame-set dialog named one
-        // for this file (web/spectra.md § 4.3); unnamed, the door takes the
-        // run's own thermochemistry temperature.
-        const set = (_setTemp && _setTemp.path === state.fileState.path)
-            ? { frameset_temperature_k: _setTemp.t } : {};
         return Object.assign({ temperature_k: state.animTemperature },
-                             _infraredAsk(c), _ramanAsk(c), set);
+                             _infraredAsk(c), _ramanAsk(c));
     }
-    let _setTemp = null;
 
     /** Load the file ``path`` names -- the file the panel was mounted on,
      *  or a restore asking with its knobs -- and FOLLOW it while
@@ -3650,25 +3647,83 @@
      */
     /* ── A mode's frame set (web/spectra.md § 4.3) ─────────────────────────
      *
-     * The page writes nothing itself: it asks the person the temperature
-     * the frames sample, the rule and where to save, and the one generator
-     * answers (`POST /api/spectra/frameset`, engines/vibration.md § 5.10 ③).
-     * The animation's amplitude above is a drawing choice and never this
-     * input.
+     * The page writes nothing itself: it asks the person the state the
+     * frames sample, the rule and where to save, and the motion toolkit's
+     * doors answer (`POST /api/spectra/frameset`,
+     * engines/vibration-frames.md § 6).  The animation's amplitude above is a
+     * drawing choice and never this input.
      */
-    /* WHAT A TEMPERATURE MEANS FOR EACH MODE (web/spectra.md § 4.3): the
-     * load door's answer at it -- ``{t, modes}``, ``t`` the temperature it
+    /* WHAT A STATE MEANS FOR EACH MODE (web/spectra.md § 4.3): the load
+     * door's answer at it -- ``{state, modes}``, ``state`` the state it
      * computed at and each mode's ``frameset`` -- or null when it did not
      * answer for this file.  The page's own results are left as they are. */
-    async function _askFrameSet(t) {
+    async function _askFrameSet(asked) {
         const path = state.fileState.path;
         if (!path || !state.fileState.results) return null;
-        _setTemp = { path: path, t: t };
-        const a = (await fetchResults(path, undefined)).answer;
+        // THE DIALOG'S STATE IN ITS OWN ASK ALONE (web/spectra.md § 4.3,
+        // § 7): never carried on the tab's later loads, which a state the
+        // door refuses would turn into refusals.
+        const a = (await fetchResults(path, undefined, undefined,
+                                      { frameset_state: asked })).answer;
         if (path !== state.fileState.path || !a.ok || !a.body.results)
             return null;
-        return { t: a.body.results.frameset_temperature_k,
+        return { state: a.body.results.frameset_state,
                  modes: a.body.results.modes || [] };
+    }
+
+    /* A STATE'S ARGUMENTS AS ONE KEY, whatever their order -- what the
+     * door said back is compared with what the box holds by it. */
+    const _stateKey = (s) => s
+        ? JSON.stringify(Object.keys(s).sort().map(k => [k, Number(s[k])]))
+        : "";
+
+    /* THE DIALOG'S STATES (web/spectra.md § 4.3's table), the one list the
+     * dialog's choice, the fields it shows and what it reads and checks come
+     * from: each state's label and fields -- each field, the argument the
+     * doors take it as, whether it is a whole number, its words, and the
+     * tick that asks it (a driven state's temperature, when *warm*). */
+    const _DIALOG_STATES = {
+        thermal: { label: "Thermal", fields: [
+            { field: "temperature", arg: "temperature_k",
+              why: "the temperature is a number of kelvin, 0 or more" }] },
+        quanta: { label: "n quanta", fields: [
+            { field: "quanta", arg: "quanta", whole: true,
+              why: "the quanta are a whole number, 0 or more" }] },
+        driven: { label: "Driven", fields: [
+            { field: "swing", arg: "swing_quanta",
+              why: "the swing quanta are a number, 0 or more" },
+            { field: "temperature", arg: "temperature_k", when: "warm",
+              why: "the temperature is a number of kelvin, 0 or more" }] },
+    };
+    /* Every field and tick a state shows, once: what a change of state
+     * shows or hides. */
+    const _STATE_FIELDS = [...new Set(Object.values(_DIALOG_STATES).flatMap(
+        s => s.fields.flatMap(f => f.when ? [f.field, f.when] : [f.field])))];
+    /* The fields the state in ``v`` asks: a field its tick asks left out
+     * until it is ticked. */
+    const _fieldsAsked = (v) => ((_DIALOG_STATES[v.state] || {}).fields || [])
+        .filter(f => !f.when || v[f.when] === true);
+    /* The fields the state in ``v`` shows: those it asks, and each tick. */
+    const _fieldsShown = (v) => {
+        const fields = (_DIALOG_STATES[v.state] || {}).fields || [];
+        return new Set(_fieldsAsked(v).map(f => f.field)
+            .concat(fields.map(f => f.when).filter(Boolean)));
+    };
+
+    /* THE STATE THE DIALOG'S FIELDS NAME: its arguments as the doors take
+     * them -- or, while a field it asks does not hold one, ``{why}``, the
+     * words of the first that does not.  The doors check them again; this
+     * is what the dialog's *Next* waits for. */
+    function _dialogState(v) {
+        const out = {};
+        for (const f of _fieldsAsked(v)) {
+            const x = v[f.field] === "" ? NaN : Number(v[f.field]);
+            if (!(Number.isFinite(x) && x >= 0)
+                    || (f.whole && !Number.isInteger(x)))
+                return { why: f.why };
+            out[f.arg] = x;
+        }
+        return out;
     }
 
     async function onWriteFrameSet() {
@@ -3683,99 +3738,137 @@
                       "muted");
             return;
         }
-        // THIS MODE'S LARGEST ZERO-POINT ATOM MOVE, the result's own, beside
-        // the field it is compared with.
-        const zp = Array.isArray(mode.zero_point_displacement_ang)
-            ? Math.max(...mode.zero_point_displacement_ang.map(
-                  v => Math.hypot(v[0], v[1], v[2])))
-            : null;
-        // WHAT THE TEMPERATURE MEANS FOR THIS MODE, the load door's
-        // (web/spectra.md § 4.3): its mean number of quanta, its spread
-        // against its zero-point one and the outermost move for the rule
-        // chosen -- said at the temperature the door computed them at, the
-        // run's own thermochemistry temperature until another is typed.
+        // THIS MODE'S LARGEST ZERO-POINT ATOM MOVE, as the record states it
+        // (`largest_zero_point_move_ang`, engines/vibration.md § 6.11 § 1),
+        // beside the outermost move it is compared with.
+        const zp = mode.largest_zero_point_move_ang != null
+            ? Number(mode.largest_zero_point_move_ang) : null;
         const held = state.fileState.results || {};
-        // THE RULES THE GENERATOR WRITES, served with the load, its default
-        // first (`spectra.mode_frames.NODES`, web/spectra.md § 4.3).
+        // THE RECORD'S TEMPERATURE, which the box starts at and the cold
+        // driven state's thermal quanta are said at.
+        const recordT = held.thermo && held.thermo.temperature_K != null
+            ? Number(held.thermo.temperature_K) : null;
+        // THE FRAME COUNTS THE DOORS OFFER, served with the load, the
+        // default first (`vibration_frames.OFFERED_NODES`, § 4.3).
         const RULES = (K.frameset_nodes || []).map(String);
-        // WHAT THE DOOR SAID OF THIS MODE: ``{t, f}``, the temperature it
+        // WHAT THE DOOR SAID OF THIS MODE: ``{state, f}``, the state it
         // computed at and the mode's ``frameset`` there.
         const saidOf = (answer) => {
             const m = (answer.modes || []).find(
                 x => x.index_1based === mode.index_1based);
-            return m && m.frameset ? { t: answer.t, f: m.frameset } : null;
+            return m && m.frameset ? { state: answer.state, f: m.frameset }
+                                   : null;
         };
+        // WHAT THE STATE MEANS FOR THIS MODE, the door's (§ 4.3's table):
+        // the state in the set's words (``state``), its quanta and its
+        // spread against its zero-point one -- a driven state's swing, and
+        // the coherent state's, the thermal quanta it leaves out -- and the
+        // outermost move for the rule chosen.  A count said as the command
+        // line says it: four figures, the noun the figure's -- "1 quantum"
+        // for a mean of 1.0004, "2 quanta".
+        const figures = (x) => String(Number(Number(x).toPrecision(4)));
+        const quanta = (x) => figures(x) + (figures(x) === "1" ? " quantum"
+                                                               : " quanta");
         const meaning = (said, nodes) => {
             const f = said && said.f;
             const move = f && f.outermost_move_ang
                 ? f.outermost_move_ang[nodes] : null;
-            if (!f || said.t == null || move == null) return "";
-            return "At " + said.t + " K the mode holds "
-                + f.mean_quanta.toFixed(3) + " quanta on average, and its "
-                + "spread is " + f.sigma_over_zero_point.toFixed(3)
-                + " times its zero-point spread.  With " + nodes + " frames "
-                + "the outermost frames move the atom that moves most by "
-                + move.toFixed(4) + " Å"
+            if (!f || !f.state || move == null) return "";
+            const head = f.state.charAt(0).toUpperCase() + f.state.slice(1)
+                + ".  The mode holds " + quanta(f.mean_quanta)
+                + " on average"
+                + (f.swing_over_zero_point != null
+                   ? "; its swing turns at " + figures(f.swing_over_zero_point)
+                     + " times its zero-point spread, and its spread is "
+                   : "; its spread is ")
+                + figures(f.spread_over_zero_point)
+                + " times its zero-point spread."
+                + (f.thermal_quanta != null && recordT !== null
+                   ? "  At the record's " + recordT + " K its thermal "
+                     + "quanta would be " + figures(f.thermal_quanta)
+                     + " (spread " + figures(f.thermal_spread_over_zero_point)
+                     + " times the zero-point one) -- what the coherent "
+                     + "state leaves out."
+                   : "");
+            return head + "  With " + nodes + " frames the outermost frames "
+                + "move the atom that moves most by " + move.toFixed(4) + " Å"
                 + (zp !== null ? " (its largest zero-point move: "
-                   + zp.toFixed(4) + " Å)." : ".");
+                   + zp.toFixed(4) + " Å)." : ".")
+                + (f.beyond_harmonic ? "  Note: " + f.beyond_harmonic + "."
+                                     : "");
         };
-        // THE BOX STARTS AT THE RUN'S THERMOCHEMISTRY TEMPERATURE, every
-        // time (web/spectra.md § 4.3) -- the door asked again there when the
-        // page holds its numbers at another; a result that states none
-        // starts it empty.
-        const startAt = held.thermo && held.thermo.temperature_K != null
-            ? Number(held.thermo.temperature_K) : null;
+        // THE DIALOG STARTS THERMAL, ITS BOX AT THE RECORD'S TEMPERATURE,
+        // every time (web/spectra.md § 4.3) -- the door asked again there
+        // when the page holds its numbers at another state; a result that
+        // states none starts it empty.
+        const start = recordT === null ? null : { temperature_k: recordT };
         let said = null;
-        if (startAt !== null) {
-            said = held.frameset_temperature_k === startAt
-                ? saidOf({ t: startAt, modes: held.modes })
-                : (await _askFrameSet(startAt).then(
-                      a => a && saidOf(a)));
+        if (start !== null) {
+            said = _stateKey(held.frameset_state) === _stateKey(start)
+                ? saidOf({ state: held.frameset_state, modes: held.modes })
+                : (await _askFrameSet(start).then(a => a && saidOf(a)));
         }
         const { askFields } = await import("/static/lib/dialog.js");
         const { chooseSavePath } = await import(
             "/static/lib/projects/dialogs.js");
         const { toDisplay } = await import("/static/lib/molview/index.js");
-        let timer = null, inBox = startAt, nodesNow = RULES[0];
+        let timer = null, inBox = start, nodesNow = RULES[0];
+        // EACH STATE'S FIELDS SHOWN FOR IT ALONE (`_DIALOG_STATES`), from the
+        // first: the dialog opens thermal.
+        const opening = _fieldsShown({ state: "thermal", warm: false });
         const asked = await askFields({
             title: "Mode " + mode.index_1based + " as a frame set",
-            hint: "The temperature of the motion the frames sample: the "
-                + "junction's, or for a mode pumped out of equilibrium its "
-                + "effective temperature.  It sets the spread; each frame's "
-                + "weight is the rule's own.",
+            hint: "The state of the motion the frames sample: thermal at a "
+                + "temperature -- the junction's, or for a mode pumped at "
+                + "random moments its effective temperature -- n quanta "
+                + "exactly, or driven by a swing.  Each frame's weight is "
+                + "the state's own rule's.",
             fields: [
+                { name: "state", label: "State", value: "thermal",
+                  options: Object.entries(_DIALOG_STATES).map(
+                      ([key, s]) => [key, s.label]) },
+                { name: "quanta", label: "Quanta n", type: "number",
+                  attrs: { min: "0", step: "1" }, value: "1",
+                  hidden: !opening.has("quanta") },
+                { name: "swing", label: "Swing quanta nₛ", type: "number",
+                  attrs: { min: "0", step: "any" }, value: "1",
+                  hidden: !opening.has("swing") },
+                { name: "warm", label: "Warm: in an environment at the "
+                      + "temperature below", type: "checkbox", value: false,
+                  hidden: !opening.has("warm") },
                 { name: "temperature", label: "Temperature (K)",
                   type: "number", attrs: { min: "0", step: "any" },
-                  value: startAt == null ? "" : startAt },
+                  value: recordT == null ? "" : recordT,
+                  hidden: !opening.has("temperature") },
                 { name: "nodes", label: "Frames", value: RULES[0],
                   options: RULES.map(n => [n, n]) },
             ],
-            note: said && said.t === startAt ? meaning(said, nodesNow) : "",
-            validate: (v) => !(v.temperature !== ""
-                               && Number(v.temperature) >= 0)
-                ? "the temperature is a number of kelvin, 0 or more"
-                : !RULES.includes(v.nodes)
-                ? "the frames are " + RULES.join(", ") : null,
-            // THE NOTE SPEAKS ONLY OF THE TEMPERATURE IN THE BOX: another
+            note: said ? meaning(said, nodesNow) : "",
+            validate: (v) => _dialogState(v).why
+                || (!RULES.includes(v.nodes)
+                    ? "the frames are " + RULES.join(", ") : null),
+            // THE NOTE SPEAKS ONLY OF THE STATE THE FIELDS HOLD: another
             // rule is said from what the door already answered there; a
-            // temperature typed asks the door again once the typing pauses,
-            // and an answer for a temperature no longer in the box is never
+            // state changed asks the door again once the typing pauses,
+            // and an answer for a state no longer in the fields is never
             // said.
-            onInput: (v, { setNote }) => {
+            onInput: (v, { setNote, show }) => {
+                const on = _fieldsShown(v);
+                for (const name of _STATE_FIELDS) show(name, on.has(name));
                 nodesNow = v.nodes;
                 clearTimeout(timer);
-                const t = parseFloat(v.temperature);
-                inBox = v.temperature !== "" && Number.isFinite(t) && t >= 0
-                    ? t : null;
-                setNote(said && said.t === inBox ? meaning(said, nodesNow)
-                        : "");
-                if (inBox === null || (said && said.t === inBox)) return;
+                const named = _dialogState(v);
+                inBox = named.why ? null : named;
+                const now = said && _stateKey(said.state) === _stateKey(inBox);
+                setNote(now ? meaning(said, nodesNow) : "");
+                if (inBox === null || now) return;
                 const asking = inBox;
                 timer = setTimeout(async () => {
                     const got = await _askFrameSet(asking);
-                    const now = got && saidOf(got);
-                    if (!now || now.t !== inBox) return;
-                    said = now;
+                    const fresh = got && saidOf(got);
+                    if (!fresh || _stateKey(fresh.state) !== _stateKey(inBox))
+                        return;
+                    said = fresh;
                     setNote(meaning(said, nodesNow));
                 }, 250);
             },
@@ -3783,6 +3876,26 @@
         });
         clearTimeout(timer);
         if (!asked) return;
+        const frameState = _dialogState(asked);
+        // MANY QUANTA ARE ASKED TO CONFIRM (the user, 2026-11-24): where the
+        // door says the state's quanta put more than 1 eV into the
+        // mode (`vibration_frames.HARMONIC_LIMIT_EV`), the person decides;
+        // nothing is refused.
+        const block = (said && _stateKey(said.state) === _stateKey(frameState))
+            ? said.f
+            : await _askFrameSet(frameState).then(a => (a && saidOf(a) || {}).f);
+        if (block && block.beyond_harmonic) {
+            const go = await root.molbuilder.warningModal.confirm({
+                title: "Mode " + mode.index_1based + " holds many quanta",
+                body: [block.beyond_harmonic + ".",
+                       "The set is written as asked if you go on."],
+                confirmLabel: "Write anyway",
+            });
+            if (!go) {
+                setStatus(els.framesetStatus, "not written", "muted");
+                return;
+            }
+        }
         let out;
         // THE SUFFIX A STRUCTURE IS WRITTEN UNDER, the projects door's
         // (the server's pairing rule), read when asked.
@@ -3805,11 +3918,10 @@
         // THE ONE READER (ui-contract.md § 12).
         const a = await root.molbuilder.server.ask("/api/spectra/frameset", {
             method: "POST",
-            body: {
+            body: Object.assign({
                 path: String(path),
                 mode: mode.index_1based,
-                temperature_k: Number(asked.temperature),
-                nodes: Number(asked.nodes), out: out },
+                nodes: Number(asked.nodes), out: out }, frameState),
         });
         if (!a.ok) {
             setStatus(els.framesetStatus, _refusedWords(a, path), "error");
@@ -3826,8 +3938,8 @@
         const lines = ["wrote " + body.path].concat(
             // NAMED AS THE FRAME-SET CARD NAMES THEM: the display's count
             // from 1 (`model/structure.md` § 2.2e).
-            body.frames.map((f, i) => "frame " + toDisplay(i) + " (of "
-                + body.frames.length + "): q/σ "
+            body.frames.map((f, i) => "frame " + toDisplay(i) + " of "
+                + body.frames.length + ": q/σ "
                 + f.q_sigma.toFixed(4) + ", largest atom move "
                 + f.max_atom_displacement_ang.toFixed(4) + " Å, weight "
                 + f.weight.toFixed(6)),

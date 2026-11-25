@@ -66,7 +66,9 @@ export async function pickPath(opts) {
   const mode = opts.mode || "dir";
   const known = await whenProjectsRoot();
 
-  const dialog = newDialog("molbuilder-tree-picker-dialog");
+  // ANCHORED AT ITS TOP (`.mb-dialog-follows`): its line under the tree
+  // grows with each selection.
+  const dialog = newDialog("molbuilder-tree-picker-dialog mb-dialog-follows");
   dialog.appendChild(dialogTitle(opts.title || "Choose"));
   dialog.appendChild(dialogHint(
     opts.hint || (mode === "dir"

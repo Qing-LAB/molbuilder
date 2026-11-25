@@ -6,11 +6,26 @@ load door serves of it is asked of a real run's result in
 """
 from __future__ import annotations
 
+import numpy as np
 import pytest
 
-from molbuilder.vibration import (thermal_spread_amu12_ang,
-                                  zero_point_amplitude_amu12_ang)
-from molbuilder.spectra.mode_frames import at_temperature
+from molbuilder.vibration import thermal_spread_amu12_ang
+from molbuilder.vibration_frames import readout
+
+
+def _mode_48():
+    """Mode 48 of the user's AuBDTAu as the contract's example states it
+    (`science/vibrational-averaging.md` § 5): 1039.9 cm-1, the atom that
+    moves most 0.3977 amu^-1/2 along it -- built as the result's reader
+    builds a mode, through its `vibration.Vibration`."""
+    from molbuilder.vibration import Mode, Vibration
+    rows = np.array([[0.3977, 0.0, 0.0], [0.0, -0.2, 0.0]])
+    return Vibration(
+        modes=(Mode(index_1based=48, frequency_cm1=1039.9, has_imag=False,
+                    eigenvector_canonical_per_amu12=rows),),
+        free_atom_idxs=(0, 1), masses_amu=np.array([1.0, 1.0]),
+        element_symbols=("H", "H"), positions_ang=np.zeros((2, 3)),
+        record_temperature_k=None).modes[0]
 
 
 def test_a_soft_mode_swings_past_its_zero_point_and_a_stiff_one_does_not():
@@ -34,20 +49,15 @@ def test_what_a_temperature_means_for_a_mode_is_the_contracts_table(
         kelvin, quanta, spread, moves):
     """`web/spectra.md` § 4.3: at a frame set's temperature, a mode's mean
     number of quanta, its spread and the outermost frames' largest atom move
-    for three, five and seven frames.  A row of the contract's own example
-    (`science/vibrational-averaging.md` § 5, mode 48 of the user's AuBDTAu:
-    1039.9 cm-1, the atom that moves most 0.3977 amu^-1/2 along it), to the
-    digits the table prints.  The silent failure: a dialog whose numbers are not
-    the frames the generator writes -- another rule's node, a spread without the
-    temperature."""
-    said = at_temperature(
-        {"frequency_cm1": 1039.9,
-         "zero_point_amplitude_amu12_ang":
-             zero_point_amplitude_amu12_ang(1039.9, False),
-         "eigenvector_canonical": [[0.3977, 0.0, 0.0], [0.0, -0.2, 0.0]]},
-        kelvin)
+    for three, five and seven frames -- the motion toolkit's readout
+    (`vibration_frames.readout`), which the load door serves.  A row of the
+    contract's own example (`science/vibrational-averaging.md` § 5, mode 48
+    of the user's AuBDTAu), to the digits the table prints.  The silent
+    failure: a dialog whose numbers are not the frames the doors write --
+    another rule's node, a spread without the temperature."""
+    said = readout(_mode_48(), {"temperature_k": kelvin})
     assert said["mean_quanta"] == pytest.approx(quanta, abs=0.005)
-    assert said["sigma_over_zero_point"] == pytest.approx(
+    assert said["spread_over_zero_point"] == pytest.approx(
         spread, abs=0.0005 if spread < 1.01 else 0.005)
     assert [said["outermost_move_ang"][n] for n in ("3", "5", "7")] \
         == pytest.approx(list(moves), abs=0.0005)

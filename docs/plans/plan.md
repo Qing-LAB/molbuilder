@@ -12,7 +12,7 @@ at 2.77.23 is [`archive/2026-11-22-plan-consolidation.md`](?doc=archive/2026-11-
 
 ## ▶ Where we are *(2026-11-24)*
 
-**2.82.0.** F0–F11 and F7a are closed (2.56.2–2.77.2). F12, *Proven*,
+**2.83.0.** F0–F11 and F7a are closed (2.56.2–2.77.2). F12, *Proven*,
 walked its three roads in the browser on real runs and ran the full batch
 (6106 fast and 805 e2e tests, none failed, at 2.77.2); its two review rounds
 ([`archive/audits/2026-11-18-f12-review/`](?doc=archive/audits/2026-11-18-f12-review/TRIAGE-round1.md))
@@ -20,7 +20,7 @@ sorted every finding into the releases below. **The finish plan** *(the
 user, 2026-11-19: "a consolidated plan to get things finished, not to drag
 things along")*: five releases, R1–R5, each with its review rounds. R1 and R2
 are done; R3, one home per fact on the server side, grew from one release
-into parts as reviews and the user's decisions added work, sixteen of them
+into parts as reviews and the user's decisions added work, seventeen of them
 shipped:
 
 | version | part | what it did | record |
@@ -44,6 +44,7 @@ shipped:
 | 2.81.0 | R3d2b2b1 | transport reads each frame's weight alone and carries every other row as written (data file @14, record @19); a frame set's words and provenance the motion toolkit's, on every page that shows one, the Results tab's frame-set card new; `reaveraged` for any state | `fix22-review.md` |
 | 2.81.1 | R3d2b2b2a | a structure's row says its unit once — a name that carries it leaves `unit` blank, any other number states one; held where a row is made (a script's doors, the Metadata page's Apply, which asks the server), every record already written read and carried as written; the units table one row per unit in `units.py` | `fix23-review.md` |
 | 2.82.0 | R3d2b2b2b1 | the motion toolkit's Python door: a vibration read from its run's folder; its frame sets written by one writer — a mode's own in any state, snapshots, a person's own — and read back as written; the outermost move for any state | `fix24-review.md` |
+| 2.83.0 | R3d2b2b2b2 | a mode's frame set in any state from the command line and the spectrum tab, the state asked every time and what it means said before the set is written; many quanta warned of, beyond 1 eV in a mode | `fix25-review.md` |
 
 Records: `archive/audits/2026-11-18-f12-review/fix<N>-review.md`. Since
 2.77.23 the host env holds `molbuilder-source.pth` on the development machine
@@ -198,20 +199,29 @@ and an API reviewer** *(the user, 2026-11-23)*.
   one row per unit, the unit a name carries and its page spelling,
   `model/datafiles.md` § 2c), then **R3d2b2b2b** in two: **R3d2b2b2b1, the
   Python door** (built in 2.82.0, `fix24-review.md`; its pieces are its
-  changelog row), then **R3d2b2b2b2, the
-  doors for any state** — `frameset from-mode` and *Write frame set…*, the
-  load door's block, `spectra.mode_frames` retired; **R3d2b2c, the example
-  notebook** and its test:
+  changelog row), then **R3d2b2b2b2, the doors for any state** (built in
+  2.83.0, `fix25-review.md`; its pieces are its changelog row); next
+  **R3d2b2b3, drawing a snapshot, justified** *(the user, 2026-11-24: "a
+  detailed document justify how these distribution is calculated, and how
+  each displacement for each snapshot is generated with the correct
+  justification and scientific vigor")* — documents only, no version move
+  ([`conventions.md`](?doc=process/conventions.md) § 2): a section
+  of `science/vibrational-averaging.md` (§ 2d) deriving, for (1) every mode
+  thermal and (2) one mode a photon excited, the position distribution each
+  mode's state gives (the separable harmonic Hamiltonian, the thermal density
+  operator's position marginal, the state one heralded photon leaves on a
+  cold or a warm mode, many photons at random, a coherent drive), why the
+  joint is their product and why a frozen geometry drawn from it averages a
+  property exactly, and how each number of a snapshot is drawn — the keyed
+  streams, a bell curve's `sigma z`, the number state's inverse transform
+  from one normal number and its tabulated distribution's accuracy, a
+  swing's phase, mirrored pairs, every atom's move — each step its function,
+  its derivation and the test holding it, reviewed by two science readers
+  deriving each claim; then **R3d2b2c, the example notebook** and its test:
   - **`vibration`** (L2, travels; numpy and the constants alone) — R3d2b2a,
     built in 2.80.0: each piece and each visible change is its changelog
     row, which the plan does not restate.
-  - **`vibration_frames`** (L2, the host's): what R3d2b2b2b2 builds —
-    `at_temperature` for any state, folded from `spectra/mode_frames.py`;
-    `frameset from-mode` and *Write frame set…* writing a mode's own set in
-    any state (`--quanta`, `--mean-quanta`, `--swing-quanta`; the dialog's
-    state — the user's decision, `engines/vibration.md` § 6.11 § 9 item 2),
-    through `vibration_of_run` and the one writer, the readout
-    `outermost_move` for that state. Carried, still open: each row's meaning
+  - **`vibration_frames`, carried, still open**: each row's meaning
     for its kind of set (the vocabulary states one meaning a row); one
     wording of a state — a mode's own set's `assumptions` row takes
     `vibration_frames.state_words` (an older set's, `thermal_state_words`,
@@ -224,57 +234,16 @@ and an API reviewer** *(the user, 2026-11-23)*.
     warm-driven or classical set's rows giving the quantum thermal state —
     said where the set states its own state. **No call of `vibration`
     reaches it.**
-  - **The electrode check stays transport's** (`compose.frames_moving_the_leads`,
-    its tolerance `wizard.FROZEN_TOL_ANG`): the toolkit's writer checks only
-    its held atoms. **A visible change**: `frameset from-mode` and *Write
-    frame set…* no longer say which electrode atoms move — a transport
-    calculation citing the set says it; `compose.frames_moving_the_leads`'
-    docstring follows.
-  - **The load door's frame-set block** `{mean_quanta, spread_amu12_ang,
-    spread_over_zero_point, outermost_move_ang}` per state (`sigma_amu12_ang`
-    and `sigma_over_zero_point` renamed — a page change listed with the
-    deletions; `web/web-api.md`, `web/spectra.md` § 4.3).
-  - **Documents the build brings into line**: `web/web-api.md`'s
-    `/api/spectra/load` and `/api/spectra/frameset` rows
-    (`spectra.mode_frames.NODES`); `web/spectra.md` § 4.3 (the state choice,
-    the writer, the electrode clause) and its `spectra.mode_frames` mentions;
-    `engines/vibration.md`'s `spectra.mode_frames` mentions (§ 5.11's phases
-    table, § 6.6); `science/vibrational-averaging.md` § 5's
-    `spectra.mode_frames.outermost_move`; `science/normal-modes.md`'s status
-    row (§ 4c) naming `frameset_from_mode`; every "from R3d2b2b2 … the
-    frame generator until then" mark (`engines/transport.md`,
-    `model/structure.md`, `model/structure-molstruct.md`,
-    `model/structure-annotations.md`, `web/molview.md`, `web/spectra.md`,
-    `engines/vibration.md`, `science/normal-modes.md`,
-    `science/vibrational-optical-response.md`).
-  - **Tests** (the writer's and the reader's rows of
-    `tests/test_vibration_frames.py` and the run folder's of
-    `tests/test_vibration_mechanics_e2e.py` are built, 2.82.0): the notebook's run
-    (`tests/test_vibration_frames_notebook_e2e.py`, on
-    `molbuilder-jupyternb`'s Python, R3d2b2c); `tests/spectra/test_blueprint.py`
-    (`test_a_frame_set_asked_without_its_temperature_or_rule_is_refused` — the
-    write door now takes a state's arguments, so `{quanta: 1}` with no
-    temperature is a valid ask); `tests/spectra/test_derived.py`
-    (`mode_frames.at_temperature`, moved to `vibration_frames`, and the
-    `sigma_over_zero_point` key, renamed);
-    `tests/test_transport_on_a_real_junction_e2e.py`'s `from-mode
-    --temperature` and the electrode clause;
-    `tests/test_spectrum_results_e2e.py` (`mode_frames.at_temperature` and
-    `NODES`, folded; its `sigma_amu12_ang`).
+  - **Tests** (the toolkit's rows of `tests/test_vibration_frames.py`, the
+    doors' of `tests/test_vibration_mechanics_e2e.py` and
+    `tests/test_spectrum_results_e2e.py` are built, 2.82.0 and 2.83.0): the
+    notebook's run (`tests/test_vibration_frames_notebook_e2e.py`, on
+    `molbuilder-jupyternb`'s Python).
   - **The example notebook** `docs/engines/vibration-frames.ipynb` on a PySCF
     methanol run folder the repository carries beside it — made down the
     road by a test helper (`support.real_runs`) — its kernel
     `molbuilder-jupyternb` ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
     § 6.1; `web/jupyter.md`, `ops/installation.md`).
-  - **The page's state choice**: *Write frame set…*'s state — thermal, $n$
-    quanta, driven (warm optionally) — its readout per state, and the load
-    door's `frameset` block per state ([`web/spectra.md`](?doc=web/spectra.md)
-    § 4.3).
-  - **The copies `fix19-review.md` named**: `frame_average`'s swing moments, the page's
-    `onWriteFrameSet` largest zero-point move and `_swingReport`, the load
-    door's own reading of the record's temperature for a frame set, the
-    frame rule's default three nodes beside `mode_frames.NODES`, and
-    `tests/spectra/test_derived.py` renamed for its rows.
 - **R3d2c** — the probe at the frame rule's nodes (§ 6.11 § 4; § 9 items 1,
   5, 6) with the PySCF deck changes below.
 - **R3d2d** — the force constants stored and `with_masses` (§ 9 item 3),

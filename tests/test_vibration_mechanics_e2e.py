@@ -251,3 +251,123 @@ def test_a_run_folder_reads_as_its_vibration_and_writes_its_set(
     swing = v.mode(1).state(swing_quanta=1.0)
     assert outermost_move(run, mode=1, swing_quanta=1.0, nodes=5) == \
         vf_outermost_move(swing, 5)
+
+
+#: EACH STATE THE DOORS ASK (`engines/vibration-frames.md` § 6), as typed on
+#: the command line, the rows § 5.1 says its set states, and those it does
+#: not.
+_DOORS_STATES = {
+    "thermal": (["--temperature", "300"],
+                {"temperature_k": 300.0, "sampling_rule": "gauss-hermite",
+                 "quantum": 1}, {"quanta", "swing_quanta"}),
+    "n quanta": (["--quanta", "2"],
+                 {"quanta": 2, "mean_quanta": 2.0, "sampling_rule": "gauss"},
+                 {"temperature_k", "swing_quanta"}),
+    "mean quanta": (["--mean-quanta", "0.5"],
+                    {"mean_quanta": 0.5, "sampling_rule": "gauss-hermite"},
+                    {"temperature_k", "quanta"}),
+    "the coherent state": (["--swing-quanta", "1"],
+                           {"swing_quanta": 1.0, "mean_quanta": 1.0,
+                            "sampling_rule": "gauss"}, {"temperature_k"}),
+    "a warm driven mode": (["--swing-quanta", "1", "--temperature", "3000"],
+                           {"swing_quanta": 1.0, "temperature_k": 3000.0,
+                            "sampling_rule": "gauss"}, {"quanta"}),
+    # THE DIALOG'S OWN DEFAULTS, ticked warm at a room's temperature: a mean
+    # just above one quantum, said "1 quantum" as printed.
+    "warm at 300 K": (["--swing-quanta", "1", "--temperature", "300"],
+                      {"swing_quanta": 1.0, "temperature_k": 300.0,
+                       "sampling_rule": "gauss"}, {"quanta"}),
+}
+
+
+@pytest.fixture(scope="module")
+def doors_sets(real_h2_vibration, tmp_path_factory):
+    """`molbuilder frameset from-mode` typed on the H2 run's folder in each
+    state the doors ask, and once naming none -- what each answered."""
+    from support.road import molbuilder
+    run = real_h2_vibration
+    folder = str(run.attempt("freq").relative_to(run.tree))
+    said = {}
+    with _real_runs.road_at(run.tree.parent, tmp_path_factory,
+                            engine="pyscf"):
+        for kind, (flags, _, _) in _DOORS_STATES.items():
+            said[kind] = molbuilder(
+                "frameset", "from-mode", folder, "--mode", "1", *flags,
+                "--out", f"P/structure/{kind.replace(' ', '-')}.xyz")
+        # NO STATE AND TWO STATES AT ONCE, ASKED OF A FOLDER THAT IS NO RUN:
+        # the state is refused first, before any run is read.
+        said["no state"] = molbuilder(
+            "frameset", "from-mode", "P/structure", "--mode", "1",
+            "--out", "P/structure/none.xyz")
+        said["two states"] = molbuilder(
+            "frameset", "from-mode", "P/structure", "--mode", "1",
+            "--quanta", "2", "--temperature", "300",
+            "--out", "P/structure/two.xyz")
+    return run, said
+
+
+@pytest.mark.parametrize("kind", list(_DOORS_STATES))
+def test_the_command_line_writes_a_modes_set_in_any_state(doors_sets, kind):
+    """`engines/vibration-frames.md` § 6 (the user's decision,
+    `engines/vibration.md` § 6.11 § 9 item 2): `frameset from-mode` writes
+    the run's mode in the state its flags name -- thermal, mean quanta, n
+    quanta, the coherent state, a warm driven mode (the dialog's defaults
+    among them, a mean said "1 quantum" as printed) -- its set stating that
+    state's rows (§ 5.1) and the command printing the state and each frame
+    from 1.  The silent failure: a set sampling another state than the
+    person typed."""
+    from molbuilder.frameset import read
+    from molbuilder.workingcopy_structure import StructureCodec
+    run, said = doors_sets
+    r = said[kind]
+    assert r.exit_code == 0, r.output
+    _flags, expected, absent = _DOORS_STATES[kind]
+    rows = read(StructureCodec().load(
+        run.tree / "P" / "structure" / f"{kind.replace(' ', '-')}.xyz",
+        frames=True))
+    for name, value in expected.items():
+        assert rows.value(name) == pytest.approx(value), (name, rows.value(name))
+    for name in absent:
+        assert rows.value(name) is None, name
+    state_line = r.output.splitlines()[1].strip()
+    assert state_line and state_line in rows.value("assumptions"), r.output
+    # WHAT IT PRINTS IS THE SET'S OWN: its mean quanta and spread, from its
+    # rows (§ 5.1) -- the noun the printed figure's (`web/spectra.md`
+    # § 4.3): "1 quantum", "2 quanta".
+    spread = rows.value("spread_amu12_ang") / rows.value(
+        "zero_point_amplitude_amu12_ang")
+    mean = f"{rows.value('mean_quanta'):.4g}"
+    assert (f"it holds {mean} {'quantum' if mean == '1' else 'quanta'} "
+            f"on average; its spread is {spread:.4f} x its zero-point "
+            f"amplitude") in r.output, r.output
+    # MANY QUANTA SAID, never refused (the user's choice, 2026-11-24):
+    # beyond 1 eV in the mode, <n> h c nu by CODATA, the note says so.
+    from scipy import constants as codata
+    energy = (rows.value("mean_quanta") * codata.h * codata.c
+              * rows.value("frequency_cm1") * 100.0 / codata.e)
+    assert ("far up its ladder, where the harmonic picture the frames are "
+            "drawn from may no longer hold" in r.output) == (energy > 1.0), (
+        energy, r.output)
+    # EACH FRAME AS EVERY MESSAGE NAMES ONE, from 1 (`model/structure.md`
+    # § 2.2e).
+    n = len(rows.weights)
+    assert [line.split(":")[0].strip() for line in r.output.splitlines()
+            if line.strip().startswith("frame ")] == [
+        f"frame {f} of {n}" for f in range(1, n + 1)], r.output
+
+
+@pytest.mark.parametrize("kind, words", [
+    ("no state", "asked every time"),
+    ("two states", "name no one state"),
+])
+def test_the_command_line_refuses_a_state_before_any_run(doors_sets, kind,
+                                                         words):
+    """`engines/vibration-frames.md` § 6: a state named nowhere, or two at
+    once, is a usage error, exit 2 (`conventions.md` § 3), in the toolkit's
+    words and before any run is read -- never the record's temperature
+    assumed.  The silent failure: a set sampled at a state the person never
+    stated, or a refusal naming the run when the state was the fault."""
+    _run, said = doors_sets
+    refused = said[kind]
+    assert refused.exit_code == 2 and words in refused.output, refused.output
+    assert "no run of ours" not in refused.output, refused.output

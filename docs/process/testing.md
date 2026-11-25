@@ -970,7 +970,11 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   the science's closed forms need, its geometry carrying digits beyond a
   pair's six decimals as a relaxation's does); a real computed vibration's
   road — its run's folder read, a set written and read back — is the
-  end-to-end's (`tests/test_vibration_mechanics_e2e.py`).
+  end-to-end's (`tests/test_vibration_mechanics_e2e.py`). The science's own
+  tables stand on the mode their example names, typed as stated — mode 48
+  of the user's junction, its frequency and the move of the atom that moves
+  most (`tests/spectra/test_what_a_temperature_means.py`, `_mode_48`) —
+  arithmetic on the contract's numbers, no other atom of it read.
 - **API tests check what molbuilder prepares; end-to-end tests make the run**
   *(user, 2026-10-04: "you have to rely on more api and framework test rather
   than fucking e2e test. e2e test is only necessary when i say so";
@@ -1216,7 +1220,8 @@ deliberately not installed there.
   value a person sets on a form, and where its effect is), `replay.py` (a
   real run's output, shown as it grew), `pages.py` (the pages the app
   serves, signed out and in; what the load door serves of a result,
-  `spectra_served`), `live_server.py` (the app on a live server, on the
+  `spectra_served`; the one save-where question answered,
+  `where_and_name_answered`), `live_server.py` (the app on a live server, on the
   test's tree, `serve`; a port for `serve start` whose notebook port is
   free too, `free_serve_port`), `sidebar.py` (a folder or a file reached
   as a person reaches it, the Results tab bound, a field committed),

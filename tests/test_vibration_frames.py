@@ -252,7 +252,8 @@ def test_a_mode_sets_assumptions_are_said_beside_it(tmp_path, written):
     got = said_of(_pair(tmp_path, rows=rows, info=info))
     if written.startswith("before"):
         # THE WORDS A SET WRITTEN NOW STATES -- the contract's identity
-        # (§ 6): the generator writes its row by these same two calls.
+        # (§ 6): the toolkit's writer writes its row by these same two
+        # calls.
         assert got["assumptions"] == {
             "words": "Assumptions",
             "value": assumptions_of_a_mode(thermal_state_words(300.0))}, got
@@ -1286,3 +1287,106 @@ def test_a_snapshot_set_names_the_imaginary_modes_it_leaves_still(tmp_path):
         frames=True)).value("assumptions")
     assert "every mode not included stays at the relaxed geometry" in added
     assert "imaginary" not in added, added
+
+
+# --------------------------------------------------------------------- #
+#  The doors' state and what it means before a set is written (§ 6)     #
+# --------------------------------------------------------------------- #
+
+@pytest.mark.parametrize(
+    "asked, words, mean, spread_ratio, swing_ratio, thermal", [
+        ({"temperature_k": 600.0}, "the thermal state at 600 K,",
+         lambda: _n_th(120.0, 600.0), None, None, False),
+        ({"mean_quanta": 1.0}, "a thermal state of 1 mean quantum,",
+         lambda: 1.0, None, None, False),
+        ({"quanta": 2}, "2 quanta exactly,", lambda: 2.0,
+         lambda: math.sqrt(5.0), None, False),
+        ({"swing_quanta": 4.0}, "the coherent state, 4 swing quanta:",
+         lambda: 4.0, lambda: 3.0, 4.0, True),
+        ({"swing_quanta": 4.0, "temperature_k": 600.0},
+         "the warm driven state, 4 swing quanta at 600 K:",
+         lambda: _n_th(120.0, 600.0) + 4.0, None, 4.0, False),
+    ], ids=["thermal", "one mean quantum", "n quanta", "the coherent state",
+            "a warm driven mode"])
+def test_what_a_state_means_for_a_mode_before_its_set_is_written(
+        asked, words, mean, spread_ratio, swing_ratio, thermal):
+    """`web/spectra.md` § 4.3's table, science § 2b.3: the readout under the
+    dialog for each state -- the state in the set's words (§ 5.1), the mean
+    quanta, the spread against the zero-point one (``sqrt(2 <n> + 1)``),
+    the outermost move for each frame count the doors offer, a driven
+    state's turning point ``2 sqrt(n_s)`` and, the coherent state alone,
+    the thermal quanta at the record's temperature it leaves out (300 K,
+    CODATA's Bose and Einstein).  The silent failure: a dialog whose
+    numbers or words are another state's than the frames written."""
+    from molbuilder.vibration_frames import (OFFERED_NODES, outermost_move,
+                                             readout)
+    m = _model().mode(1)
+    said = readout(m, asked)
+    assert said["state"].startswith(words), said["state"]
+    n = mean()
+    assert said["mean_quanta"] == pytest.approx(n, rel=1e-6)
+    ratio = spread_ratio() if spread_ratio else math.sqrt(2.0 * n + 1.0)
+    assert said["spread_over_zero_point"] == pytest.approx(ratio, rel=1e-6)
+    assert said["spread_amu12_ang"] == pytest.approx(
+        ratio * _q_zp(120.0), rel=1e-6)
+    assert said["outermost_move_ang"] == {
+        str(k): outermost_move(m.state(**asked), k) for k in OFFERED_NODES}
+    assert said.get("swing_over_zero_point") == (
+        None if swing_ratio is None else pytest.approx(
+            2.0 * math.sqrt(swing_ratio), rel=1e-12))
+    assert ("thermal_quanta" in said) == thermal
+    if thermal:
+        assert said["thermal_quanta"] == pytest.approx(_n_th(120.0, 300.0),
+                                                       rel=1e-6)
+        assert said["thermal_spread_over_zero_point"] == pytest.approx(
+            math.sqrt(2.0 * _n_th(120.0, 300.0) + 1.0), rel=1e-6)
+    assert readout(_with_imaginary_mode_1(_model()).mode(1), asked) is None
+
+
+@pytest.mark.parametrize("asked, refused", [
+    ({}, "asked every time, never assumed"),
+    ({"temperature_k": "warm"}, "'warm' is not one"),
+    ({"temperature_k": -5}, "-5 is not one"),
+    ({"quanta": 2.5}, "quanta is a whole number"),
+    ({"quanta": 2, "temperature_k": 300.0},
+     "a temperature and a number of quanta name no one state"),
+    ({"swing_quanta": -1.0}, "a number of swing quanta is 0 or more"),
+    ({"mean_quanta": -0.5}, "a mean number of quanta is 0 or more"),
+], ids=["no state", "a temperature in words", "below zero",
+        "half a quantum", "two states", "a swing below zero",
+        "mean quanta below zero"])
+def test_the_doors_ask_the_state_every_time(asked, refused):
+    """§ 2's table, § 6: `frameset from-mode` and *Write frame set…* ask the
+    state every time -- none named refused, never the record's temperature
+    assumed; a temperature by the rule every door shares; two states at once
+    refused in the doors' words, a value by the table's own rule
+    (`vibration.checked_state`) -- each before any run is read, and the
+    readout asking the same rule.  The silent failure: frames sampled at a
+    state the person never stated."""
+    from molbuilder.vibration_frames import StateRefused, doors_state, readout
+    with pytest.raises(StateRefused, match=refused):
+        doors_state(**asked)
+    with pytest.raises(StateRefused, match=refused):
+        readout(_model().mode(1), asked)
+
+
+@pytest.mark.parametrize("quanta, warned", [(5, False), (6, True)])
+def test_the_doors_warn_of_many_quanta(quanta, warned):
+    """§ 6 (the user's choice, 2026-11-24): the readout says where a state's
+    quanta put more than 1 eV into the mode -- ``<n> h c nu``, far up its
+    ladder, where the harmonic picture may no longer hold -- and never
+    refuses: at 1600 cm-1 (0.198 eV a quantum, CODATA) five quanta are
+    0.99 eV, six 1.19 eV.  The silent failure: frames written far outside
+    the picture they are drawn from, unsaid."""
+    from scipy import constants as codata
+    from molbuilder.vibration_frames import readout
+    m = _model().mode(3)
+    energy = quanta * codata.h * codata.c * 1600.0 * 100.0 / codata.e
+    assert (energy > 1.0) == warned
+    said = readout(m, {"quanta": quanta})
+    assert said["mean_quanta"] == quanta
+    if warned:
+        assert said["beyond_harmonic"].startswith(
+            f"mode 3 holds {quanta} quanta in this state, {energy:.3g} eV")
+    else:
+        assert said["beyond_harmonic"] is None

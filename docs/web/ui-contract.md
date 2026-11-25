@@ -518,7 +518,7 @@ dead rule costs bytes, a deleted live one breaks the UI in exactly the states
 nobody is watching.
 
 **And "unmatched" still is not "delete it".** A shared sheet may declare a
-*vocabulary* on purpose — `dialog.css` lists the seven parts a modal has,
+*vocabulary* on purpose — `dialog.css` lists the parts a modal has,
 precisely because the failure it was written to end was JS emitting class
 names no stylesheet answered. An unused member of a declared vocabulary is a
 promise kept, not residue; if the markup and the vocabulary disagree, **the
@@ -678,14 +678,22 @@ resolves with its answer — **one at a time** (opening a second answers the
 first with its cancel value), and Esc, the native close and a click off the
 surface all cancel; `settleDialog` answers it; the parts (`newDialog`,
 `dialogTitle`, `dialogHint`, `dialogField`, `dialogError`, `dialogActions`)
-build it in the one vocabulary — a field a text or number box, or a choice
-among a few values (`options`, a `<select>`); `askFields` is the form dialog —
+build it in the one vocabulary — a field a text or number box, a choice
+among a few values (`options`, a `<select>`), or a tick beside its label
+(`type: "checkbox"`, read as true or false); `askFields` is the form dialog —
 labelled fields checked as typed, the answer's button enabled only while the
 answer can stand, its refusal on a line that is reserved so nothing moves
 under the pointer; a caller whose hint or note follows a field is told every
-change (`onInput(values, {setHint, setNote})`) and may rewrite either — the
-*Write frame set…* dialog's note, what the temperature typed means for the
-mode (`web/spectra.md` § 4.3). Buttons run cancel first and the answer last, which wears `.primary`
+change (`onInput(values, {setHint, setNote, show})`) and may rewrite either,
+and one whose fields follow a choice shows or hides a field (`show(name,
+on)`; a field `hidden` starts hidden, read all the same) — the *Write frame
+set…* dialog, each state's fields shown for it and its note what the state
+in the fields means for the mode (`web/spectra.md` § 4.3). A dialog that
+grows as the person works in it — a note following its fields, the tree
+picker's line under its tree — is anchored at its top
+(`.mb-dialog-follows`), and a note that follows its fields never shrinks
+while its dialog is open (held at the tallest it has been, `setNote`), so
+nothing moves under the pointer as an answer arrives or is cleared. Buttons run cancel first and the answer last, which wears `.primary`
 or, when it costs something, `.danger` — both in `page-shell.css`, because a
 dialog opens on every page. The sidebar's questions (`lib/projects/dialogs.js`)
 and the tree picker (`lib/tree-picker.js`) are built on it.

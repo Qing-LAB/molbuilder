@@ -77,7 +77,7 @@ def _page_constants():
     run summary's Engine row says a result's engine by."""
     from molbuilder import constants as C
     from molbuilder.engine_table import engine, engines
-    from molbuilder.spectra.mode_frames import NODES
+    from molbuilder.vibration_frames import OFFERED_NODES
     from molbuilder.spectra import activity as A
     return {
         # EACH ENGINE'S NAME, from its one home (the engine table), as the
@@ -89,32 +89,53 @@ def _page_constants():
         # or below it has no band (`engines/vibration.md` § 6.6)
         "ir_present_floor_km_mol":    A.CHANNEL_PRESENT_FLOOR_IR_KM_MOL,
         "raman_present_floor_a4_amu": A.CHANNEL_PRESENT_FLOOR_RAMAN_A4_AMU,
-        # the frame-set rules the generator writes, its default first
-        # (`spectra.mode_frames.NODES`, `web/spectra.md` § 4.3)
-        "frameset_nodes": list(NODES),
+        # the frame counts the doors offer, the default first
+        # (`vibration_frames.OFFERED_NODES`, `web/spectra.md` § 4.3)
+        "frameset_nodes": list(OFFERED_NODES),
     }
 
 
-def _temperature_k(body, key: str = "temperature_k"):
-    """A temperature the tab asks at -- ``temperature_k``, the animation's
-    thermal spreads', or ``frameset_temperature_k``, the frame-set
-    dialog's -- in the JSON body, as a float, ``None`` when the request
-    names none; a value that is not one is refused with the reason (a 400,
-    `web-api.md` § 2), by the rule every door shares
+def _temperature_k(body):
+    """The temperature the tab's animation asks its thermal spreads at --
+    ``temperature_k`` in the JSON body, as a float, ``None`` when the
+    request names none; a value that is not one is refused with the reason
+    (a 400, `web-api.md` § 2), by the rule every door shares
     (`vibration.checked_temperature_k`)."""
-    raw = (body or {}).get(key)
+    raw = (body or {}).get("temperature_k")
     if raw is None or raw == "":
         return None
     from molbuilder.vibration import checked_temperature_k
     return checked_temperature_k(raw)
 
 
+def _framesets(results, path, asked: Optional[Dict[str, Any]]):
+    """EACH MODE'S READOUT FOR THE DIALOG'S STATE (`web/spectra.md` § 4.3)
+    -- ``(state, {mode number: block})``: at ``asked``, else at the thermal
+    state at the record's temperature, the box the dialog starts at; ``None``
+    where neither is stated or the result holds no geometry yet.  Each block
+    is the motion toolkit's (`vibration_frames.readout`) on the result's own
+    modes; a state the table refuses is a ``ValueError`` (a 400).  A
+    result with no geometry yet is asked as such (``atoms_weighted``, what
+    its `vibration` is refused on), never a caught refusal."""
+    from molbuilder.vibration_frames import readout
+    if results.atoms_weighted() is None:
+        return None
+    v = results.vibration(read_path=str(path))
+    state = asked
+    if state is None:
+        if v.record_temperature_k is None:
+            return None
+        state = {"temperature_k": float(v.record_temperature_k)}
+    return state, {m.index_1based: readout(m, state) for m in v.modes}
+
+
 def _view_asked(body, key: str, read_ask) -> Optional[Dict[str, Any]]:
     """What the tab asks of a view of the result (`web/spectra.md` § 3.2,
-    § 3.3) -- ``key`` in the JSON body, read by the one reading every door
-    of that view shares (``read_ask``: `spectra.infrared.read_ask` for
-    ``infrared``, `spectra.raman.read_ask` for ``raman``).  ``None`` when
-    not asked; a malformed ask is refused with the reason (a 400)."""
+    § 3.3, § 4.3) -- ``key`` in the JSON body, read by the one reading every
+    door of that view shares (``read_ask``: `spectra.infrared.read_ask` for
+    ``infrared``, `spectra.raman.read_ask` for ``raman``,
+    `vibration_frames.read_state_ask` for ``frameset_state``).  ``None``
+    when not asked; a malformed ask is refused with the reason (a 400)."""
     raw = (body or {}).get(key)
     if raw is None:
         return None
@@ -124,7 +145,7 @@ def _view_asked(body, key: str, read_ask) -> Optional[Dict[str, Any]]:
 def _loaded(results, run: Optional[Dict[str, Any]] = None,
             temperature_k: Optional[float] = None,
             infrared: Optional[Dict[str, Any]] = None,
-            frameset_temperature_k: Optional[float] = None,
+            framesets=None,
             raman: Optional[Dict[str, Any]] = None, *, path):
     """The one success reply for /api/spectra/load — the typed results as a
     dict, plus what only the server can work out.
@@ -132,12 +153,13 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
     ``temperature_k`` is the animation's temperature: each mode is served
     its ``thermal_spread_amu12_ang`` at it, from the one derivation
     (`vibration.thermal_spread_of`, `web/spectra.md` § 4.1); asked for
-    none, no mode carries it.  ``frameset_temperature_k`` is the frame-set
-    dialog's: each mode is served its ``frameset`` at it -- its mean number
-    of quanta, its spread and the outermost move for each rule
-    (`spectra.mode_frames.at_temperature`, § 4.3) -- the run's own thermochemistry
-    temperature when the dialog has named none; the tab holds no constant
-    and derives nothing.
+    none, no mode carries it.  ``framesets`` is the frame-set dialog's
+    readout (:func:`_framesets`): each mode is served its ``frameset`` --
+    its mean number of quanta, its spread and the outermost move for each
+    frame count, a driven state's swing and the thermal state it leaves
+    out (`vibration_frames.readout`, § 4.3) -- at the state the dialog
+    asked, else at the record's temperature, ``results.frameset_state``
+    the state said back; the tab holds no constant and derives nothing.
 
     ``infrared`` is what the tab asks of the result's infrared -- the
     light's direction and the partition, along z by Hirshfeld charges when
@@ -221,17 +243,14 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
         for mode in payload.get("modes") or []:
             mode["thermal_spread_amu12_ang"] = thermal_spread_of(
                 mode, temperature_k)
-    # THE FRAME SET'S TEMPERATURE (`web/spectra.md` § 4.3): the one the
-    # dialog asked, else the run's own thermochemistry temperature; neither,
-    # no mode's frameset.  Said with the numbers.
-    set_t = frameset_temperature_k
-    if set_t is None:
-        set_t = (payload.get("thermo") or {}).get("temperature_K")
-    if set_t is not None:
-        from molbuilder.spectra.mode_frames import at_temperature
-        payload["frameset_temperature_k"] = float(set_t)
+    # THE FRAME SET'S READOUT (`web/spectra.md` § 4.3): at the state the
+    # dialog asked, else at the record's temperature; neither, no mode's
+    # frameset.  The state said with the numbers.
+    if framesets is not None:
+        state, blocks = framesets
+        payload["frameset_state"] = dict(state)
         for mode in payload.get("modes") or []:
-            mode["frameset"] = at_temperature(mode, float(set_t))
+            mode["frameset"] = blocks.get(mode.get("index_1based"))
     # THE FREE ATOMS' INFRARED, where the result states its charges
     # (`web/spectra.md` § 3.2); and, for a result that carries none, why,
     # in its own facts.
@@ -331,7 +350,8 @@ def api_spectra_load():
     # reading its doors share.
     try:
         temperature_k = _temperature_k(body)
-        frameset_temperature_k = _temperature_k(body, "frameset_temperature_k")
+        from molbuilder.vibration_frames import read_state_ask
+        frameset_state = _view_asked(body, "frameset_state", read_state_ask)
         from molbuilder.spectra import infrared as _ir, raman as _raman
         infrared = _view_asked(body, "infrared", _ir.read_ask)
         raman = _view_asked(body, "raman", _raman.read_ask)
@@ -366,9 +386,13 @@ def api_spectra_load():
             results = parse_spectra_json(path)
     except SpectraJsonError as exc:
         return _err_load(exc)
+    try:
+        framesets = _framesets(results, path, frameset_state)
+    except ValueError as exc:
+        return err(str(exc), 400, kind="field")
     return _loaded(results, run=run, temperature_k=temperature_k,
                    infrared=infrared, raman=raman, path=path,
-                   frameset_temperature_k=frameset_temperature_k)
+                   framesets=framesets)
 
 
 # ===================================================================== #
@@ -376,22 +400,34 @@ def api_spectra_load():
 # ===================================================================== #
 
 
+#: The write door's own keys, beside the state's (`web-api.md`'s row).
+_WRITE_KEYS = ("path", "mode", "nodes", "out")
+
+
 @bp.route("/api/spectra/frameset", methods=["POST"])
 def api_spectra_frameset():
     """A MODE'S FRAME SET, written by the doors' frame set
-    (`spectra.mode_frames.frameset_from_mode`: the run door, the state's own
+    (`vibration_frames.frameset_from_mode`: the run door, the state's own
     rule and the motion toolkit's one writer; `engines/vibration-frames.md`
-    § 4, § 5; `web/spectra.md` § 4.3): ``{path, mode, temperature_k, nodes,
-    out}`` -- the vibration result the page shows, whose folder is its
-    run's, the temperature the frames sample, the rule (the state's default
-    when unsaid), and the pair's ``.xyz``, each path inside the tree (the
-    fence, `web-api.md` § 2.1), the ``.xyz`` where a file may be written
-    (`files._writable`).  Answers ``{ok, path, frames, said}``, or the
-    writer's refusal in its words (400)."""
-    from molbuilder.spectra.mode_frames import FrameSetError, frameset_from_mode
+    § 4, § 5, § 6; `web/spectra.md` § 4.3): ``{path, mode, nodes, out}``
+    and the state's arguments (``temperature_k``, ``quanta``,
+    ``swing_quanta``, ``mean_quanta``, as the dialog asks them) -- the
+    vibration result the page shows, whose folder is its run's, the frame
+    count (the doors' default when unsaid), and the pair's ``.xyz``, each
+    path inside the tree (the fence, `web-api.md` § 2.1), the ``.xyz``
+    where a file may be written (`files._writable`).  Answers ``{ok, path,
+    frames, said}``, or the writer's refusal in its words (400)."""
+    from molbuilder.persist import unknown_keys
+    from molbuilder.vibration_frames import (STATE_ASK_KEYS, FrameSetError,
+                                             frameset_from_mode)
     from molbuilder.projects import projects_root
     from .files import _resolve_within_roots, _writable
     body = request.get_json(silent=True) or {}
+    # A KEY THE DOOR DOES NOT TAKE IS REFUSED, never ignored -- a state
+    # misspelled would write another state than the one asked.
+    said = unknown_keys(body, _WRITE_KEYS + STATE_ASK_KEYS)
+    if said:
+        return err(said, 400)
     # THE RUN IS THE RESULT'S FOLDER, derived here as the one export
     # route's is (`GET /api/export`).
     run = _resolve_within_roots(str(body.get("path") or "")).parent
@@ -410,9 +446,8 @@ def api_spectra_frameset():
     root = projects_root()
     try:
         got = frameset_from_mode(
-            run, mode=mode,
-            temperature_k=body.get("temperature_k"),
-            out=out, **rule)
+            run, mode=mode, out=out, **rule,
+            **{k: body.get(k) for k in STATE_ASK_KEYS})
     except FrameSetError as exc:
         return err(str(exc), 400)
     return jsonify({"ok": True, **got.to_wire(root)})

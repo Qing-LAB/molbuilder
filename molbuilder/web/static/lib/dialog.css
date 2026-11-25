@@ -14,6 +14,8 @@
  *   .mb-dialog-title      what it is asking
  *   .mb-dialog-hint       why, in smaller muted prose
  *   .mb-dialog-field      a labelled input, stacked
+ *   .mb-dialog-check      a tick beside its label (a field of type checkbox)
+ *   .mb-dialog-follows    a dialog that grows as the person works in it, anchored
  *   .mb-dialog-preview    a derived value shown back (a filename, a path)
  *   .mb-dialog-error      the refusal, reserving its line so nothing jumps
  *   .mb-dialog-actions    the buttons, primary last (the platform order)
@@ -54,6 +56,16 @@
     flex-direction: column;
     gap: var(--space-xs);
     margin: 0 0 var(--space-sm);
+}
+/* The [hidden] guard: an author's `display: flex` above beats the UA's
+   `[hidden] { display: none }` whatever their order -- author styles win
+   over the browser's own -- so a field a dialog shows only for some choice
+   (askFields' `show`) needs its own rule. */
+.mb-dialog-field[hidden] { display: none; }
+/* A tick sits beside its label, on one line. */
+.mb-dialog-check {
+    flex-direction: row;
+    align-items: center;
 }
 .mb-dialog-field > span,
 .mb-dialog-label {
@@ -118,9 +130,13 @@
  * what the selection means when the caller can say. */
 .molbuilder-tree-picker-dialog {
     min-width: min(80vw, 34rem);
-    /* ANCHORED AT ITS TOP: the meta line under the tree grows with each
-     * selection, and a centred dialog grows both ways -- the rows moved
-     * under the pointer between the two clicks of a double-click. */
+}
+/* ANCHORED AT ITS TOP: a dialog that grows as the person works in it -- the
+ * tree picker's meta line under the tree with each selection, a form dialog
+ * whose note follows its fields (askFields' `onInput`) -- grows both ways
+ * when centred, moving the rows or the buttons under the pointer between
+ * two clicks. */
+.mb-dialog-follows {
     margin-block: var(--space-xl) auto;
 }
 .tp-tree {

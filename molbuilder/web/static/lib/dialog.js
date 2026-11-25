@@ -104,10 +104,14 @@ export function dialogTitle(text) { return _node("h2", "mb-dialog-title", text);
 export function dialogHint(text) { return _node("p", "mb-dialog-hint", text); }
 
 /** A labelled input, stacked: ``{wrap, input}`` -- a choice among
- *  ``spec.options`` (``[[value, text], ...]``) a ``<select>``. */
+ *  ``spec.options`` (``[[value, text], ...]``) a ``<select>``; a
+ *  ``type: "checkbox"`` a tick beside its label, ticked where ``spec.value``
+ *  is true; ``spec.hidden`` a field not shown until its dialog shows it. */
 export function dialogField(label, spec) {
   spec = spec || {};
-  const wrap = _node("label", "mb-dialog-field");
+  const tick = spec.type === "checkbox";
+  const wrap = _node("label", "mb-dialog-field" + (tick ? " mb-dialog-check" : ""));
+  if (spec.hidden) wrap.hidden = true;
   wrap.appendChild(_node("span", null, label));
   const input = document.createElement(spec.options ? "select" : "input");
   if (spec.options) {
@@ -120,11 +124,13 @@ export function dialogField(label, spec) {
   } else {
     input.type = spec.type || "text";
   }
-  if (spec.value !== undefined && spec.value !== null) {
+  if (tick) {
+    input.checked = Boolean(spec.value);
+  } else if (spec.value !== undefined && spec.value !== null) {
     input.value = String(spec.value);
   }
   if (spec.placeholder) input.placeholder = spec.placeholder;
-  if (!spec.options) {
+  if (!spec.options && !tick) {
     input.setAttribute("autocomplete", "off");
     input.setAttribute("spellcheck", "false");
   }
@@ -132,7 +138,8 @@ export function dialogField(label, spec) {
     input.setAttribute(k, String(v));
   }
   if (spec.name) input.setAttribute("data-role", spec.name);
-  wrap.appendChild(input);
+  if (tick) wrap.insertBefore(input, wrap.firstChild);
+  else wrap.appendChild(input);
   return { wrap, input };
 }
 
@@ -164,12 +171,15 @@ export function dialogActions(buttons) {
 /** Ask for one or more values.
  *
  *  ``opts``: ``{title, hint?, fields: [{name, label, value?, type?,
- *  placeholder?, attrs?, options?}], note?, validate?, onInput?,
+ *  placeholder?, attrs?, options?, hidden?}], note?, validate?, onInput?,
  *  confirmLabel?, danger?, extra?}``.  ``note``, where given, is a line
  *  under the fields -- what the values typed mean.  ``onInput(values,
- *  {setHint, setNote})``, where given, is told the values at every change
- *  -- for a dialog whose hint or note says something that follows a field,
- *  ``setHint(text)`` and ``setNote(text)`` rewriting them.
+ *  {setHint, setNote, show})``, where given, is told the values at every
+ *  change -- for a dialog whose hint or note says something that follows a
+ *  field, ``setHint(text)`` and ``setNote(text)`` rewriting them, and for
+ *  one whose fields follow a choice, ``show(name, on)`` showing or hiding
+ *  field ``name`` (a field ``hidden`` starts hidden; it is read all the
+ *  same, the caller reading what its choice asks).
  *  ``validate(values)`` returns ``null`` when the answer can stand, else
  *  the refusal -- ``""`` refuses without words (an empty name).  The confirm
  *  button is enabled only while it can stand; Enter confirms likewise.
@@ -177,17 +187,26 @@ export function dialogActions(buttons) {
  *  the first focus on the field, never on the button.
  *
  *  Resolves to ``{name: value}`` -- a text field's value as typed, a file
- *  field's chosen File (or null) -- or ``null`` on cancel. */
+ *  field's chosen File (or null), a tick's true or false -- or ``null`` on
+ *  cancel.  A dialog whose note follows its fields (``onInput``) is
+ *  anchored at its top (``.mb-dialog-follows``), growing downward only,
+ *  its note never shrinking while it is open. */
 export function askFields(opts) {
   opts = opts || {};
-  const dialog = newDialog(opts.extra);
+  // A DIALOG WHOSE NOTE FOLLOWS ITS FIELDS GROWS AS THE PERSON TYPES:
+  // anchored at its top (dialog.css), so nothing moves under the pointer.
+  const follows = typeof opts.onInput === "function";
+  const dialog = newDialog([opts.extra, follows ? "mb-dialog-follows" : ""]
+                           .filter(Boolean).join(" ") || undefined);
   dialog.appendChild(dialogTitle(opts.title || ""));
   const hintEl = opts.hint ? dialogHint(opts.hint) : null;
   if (hintEl) dialog.appendChild(hintEl);
   const inputs = [];
+  const wraps = new Map();
   for (const f of opts.fields || []) {
     const { wrap, input } = dialogField(f.label, f);
     inputs.push([f.name, input]);
+    wraps.set(f.name, wrap);
     dialog.appendChild(wrap);
   }
   const noteEl = opts.note !== undefined ? dialogHint(opts.note || "") : null;
@@ -202,7 +221,8 @@ export function askFields(opts) {
     const out = {};
     for (const [name, input] of inputs) {
       out[name] = input.type === "file"
-        ? ((input.files && input.files[0]) || null) : input.value;
+        ? ((input.files && input.files[0]) || null)
+        : input.type === "checkbox" ? input.checked : input.value;
     }
     return out;
   };
@@ -233,13 +253,25 @@ export function askFields(opts) {
     if (typeof opts.onInput === "function") {
       opts.onInput(read(), {
         setHint: (text) => { if (hintEl) hintEl.textContent = String(text); },
-        setNote: (text) => { if (noteEl) noteEl.textContent = String(text); },
+        // A NOTE THAT FOLLOWS THE FIELDS NEVER SHRINKS while its dialog is
+        // open -- held at the tallest it has been, so the buttons under it
+        // never rise under the pointer as an answer arrives or is cleared.
+        setNote: (text) => {
+          if (!noteEl) return;
+          noteEl.style.minHeight =
+            noteEl.getBoundingClientRect().height + "px";
+          noteEl.textContent = String(text);
+        },
+        show: (name, on) => {
+          const wrap = wraps.get(name);
+          if (wrap) wrap.hidden = !on;
+        },
       });
     }
   };
   for (const [, input] of inputs) {
-    const event = (input.type === "file" || input.tagName === "SELECT")
-      ? "change" : "input";
+    const event = (input.type === "file" || input.type === "checkbox"
+                   || input.tagName === "SELECT") ? "change" : "input";
     input.addEventListener(event, () => { check(); told(); });
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && input.type !== "file") {

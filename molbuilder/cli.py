@@ -42,6 +42,7 @@ from .serve_daemon import SHEPHERD_VERB
 from .atom_permutation import MAP_KEY
 from .engine_table import engines as _engines
 from .kind_table import kinds as _kinds
+from .vibration_frames import OFFERED_NODES
 from .runfiles import (CALCDIR_FILE, GITIGNORE_FILE, ROLE_RUNTIME_INFO,
                        SIESTA_XV, TASK_FILE, WARM_FILES_FILE)
 from .structure import Structure, atom_words
@@ -1916,10 +1917,10 @@ def cmd_atom_index(path, to_engine, to_user):
                       "cites")
 def frameset_group():
     """A mode's frame set: one vibration
-    mode written as one multi-frame structure pair, its frames at the
-    Gauss-Hermite nodes and each its weight -- the pair a transport
-    calculation cites, every frame a point and their weighted average its
-    result."""
+    mode written as one multi-frame structure pair, in the state you name,
+    its frames at the nodes of that state's own Gauss rule and each its
+    weight -- the pair a transport calculation cites, every frame a point
+    and their weighted average its result."""
 
 
 def _in_the_tree(ctx, param, value):
@@ -1940,45 +1941,74 @@ def _in_the_tree(ctx, param, value):
 @click.option("--mode", "mode", type=int, required=True,
               help="the mode, counted as the vibration result counts it "
                    "(from 1, ascending frequency).")
-@click.option("--temperature", "temperature", type=float, required=True,
+@click.option("--temperature", "temperature", type=float, default=None,
               metavar="KELVIN",
-              help="the temperature of the motion the frames sample -- the "
-                   "junction's, or a pumped mode's effective one -- in K, 0 "
-                   "or more; it sets the spread.")
-@click.option("--nodes", type=click.Choice(["3", "5", "7"]), default="3",
-              show_default=True,
-              help="the Gauss-Hermite rule: three frames, five or seven.")
+              help="the thermal state's temperature -- the junction's, or a "
+                   "pumped mode's effective one -- in K, 0 or more; with "
+                   "--swing-quanta, the environment's of a warm driven mode.")
+@click.option("--mean-quanta", "mean_quanta", type=float, default=None,
+              metavar="N",
+              help="the thermal state named by its mean number of quanta.")
+@click.option("--quanta", "quanta", type=int, default=None, metavar="N",
+              help="n quanta exactly, a whole number, 0 or more.")
+@click.option("--swing-quanta", "swing_quanta", type=float, default=None,
+              metavar="NS",
+              help="a driven mode: the swing's quanta (the coherent state); "
+                   "with --temperature, a warm driven mode.")
+@click.option("--nodes", type=click.Choice([str(n) for n in OFFERED_NODES]),
+              default=str(OFFERED_NODES[0]), show_default=True,
+              help="the state's own Gauss rule's frames: the default, or "
+                   "more as its check.")
 @click.option("--out", "out", required=True, callback=_in_the_tree,
               help="the pair's .xyz to write, in the projects tree; its "
                    ".molstruct.json beside it.")
-def cmd_frameset_from_mode(run, mode, temperature, nodes, out):
-    """Write vibration RUN's mode as one multi-frame pair: frame 0 the
-    geometry the Hessian was taken at, then the Gauss-Hermite nodes of the
-    Gaussian the mode spreads over at the temperature, each frame its weight.
-    RUN is the vibration run's folder and
-    OUT the pair's .xyz, each read from the projects tree as --bundle is.  A
-    pair already at OUT is refused, never written over.
+def cmd_frameset_from_mode(run, mode, temperature, mean_quanta, quanta,
+                           swing_quanta, nodes, out):
+    """Write vibration RUN's mode as one multi-frame pair: one frame at
+    each node of the state's own Gauss rule, each with its weight, the
+    first the geometry the Hessian was taken at (the rule's middle node).
+    The state is asked every time: --temperature (thermal), --mean-quanta,
+    --quanta, or --swing-quanta (driven; with --temperature, warm).  RUN is
+    the vibration run's folder and OUT the pair's .xyz, each read from the
+    projects tree as --bundle is.  A pair already at OUT is refused, never
+    written over.
 
     Example::
 
         molbuilder frameset from-mode P/spectrum/V/01_freq/run-0 \\
             --mode 7 --temperature 300 --out P/structure/mode7.xyz
     """
-    from .spectra.mode_frames import FrameSetError, frameset_from_mode
+    from .structure import frame_words
+    from .vibration import _quanta_words
+    from .vibration_frames import (FrameSetError, StateRefused,
+                                   frameset_from_mode)
     try:
         got = frameset_from_mode(run, mode=mode, temperature_k=temperature,
-                                 nodes=int(nodes), out=out)
+                                 mean_quanta=mean_quanta, quanta=quanta,
+                                 swing_quanta=swing_quanta, nodes=int(nodes),
+                                 out=out)
+    except StateRefused as exc:
+        # A STATE NAMED AS NONE IS HOW THE COMMAND WAS TYPED: a usage
+        # error, exit 2 (`conventions.md` § 3).
+        raise click.UsageError(str(exc))
     except FrameSetError as exc:
         raise click.ClickException(str(exc))
     click.echo(f"wrote {got.path} -- mode {mode}, {len(got.frames)} frames "
                f"(and its .molstruct.json)")
-    click.echo(f"  at {temperature:g} K the mode holds {got.mean_quanta:.4g} "
-               f"quanta on average; its spread is "
-               f"{got.sigma_over_zero_point:.4f} x its zero-point amplitude")
-    click.echo("  frame  q/sigma   largest atom move (A)  weight")
+    click.echo(f"  {got.state}")
+    # A COUNT SAID AS PRINTED, its noun the figure's (`web/spectra.md`
+    # § 4.3): a mean of 1.0004 holds "1 quantum".
+    click.echo(f"  it holds "
+               f"{_quanta_words(got.mean_quanta, kind='', spec='.4g')} on "
+               f"average; its "
+               f"spread is {got.spread_over_zero_point:.4f} x its zero-point "
+               f"amplitude")
+    # EACH FRAME AS EVERY MESSAGE NAMES ONE (`structure.frame_words`,
+    # `model/structure.md` § 2.2e) -- the page's write lines too.
     for f, row in enumerate(got.frames):
-        click.echo(f"  {f:>5}  {row['q_sigma']:+8.4f}  "
-                   f"{row['max_atom_displacement_ang']:21.6f}  "
+        click.echo(f"  {frame_words(f, len(got.frames))}: q/sigma "
+                   f"{row['q_sigma']:+.4f}, largest atom move "
+                   f"{row['max_atom_displacement_ang']:.6f} A, weight "
                    f"{row['weight']:.6f}")
     for line in got.said:
         click.echo(f"note: {line}")

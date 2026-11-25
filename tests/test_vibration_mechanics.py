@@ -327,6 +327,45 @@ def test_n_quanta_exactly_is_the_oscillators_own_density(n, beyond):
             beyond, abs=5e-4)
 
 
+def test_n_quanta_beyond_its_rules_reach_from_zero_keeps_its_own_rule():
+    """§ 2b.3, § 2b.4: a dozen quanta -- more than any rule's nodes reach
+    from the ground state, so its rule is taken on the states ``|n>``
+    reaches alone -- answers its moments ``<Q^2> = (2n+1) Q_zp^2`` and
+    ``<Q^4> = 3 (2n^2+2n+1) Q_zp^4``, and each rule's frames reproduce them
+    to its degree.  The silent failure: a rule taken on the wrong states,
+    its frames another state's."""
+    n = 12
+    q = q_zp_codata(4400.0)
+    s = h2_mode().state(quanta=n).state
+    # 1e-8: molbuilder's constants against CODATA's, as the density's row.
+    assert s.moment(2) == pytest.approx((2 * n + 1) * q * q, rel=1e-8)
+    assert s.moment(4) == pytest.approx(3 * (2 * n * n + 2 * n + 1) * q ** 4,
+                                        rel=1e-8)
+    for m in (3, 5, 7):
+        f = s.frames(m)
+        x, w = f.q_amu12_ang[:, 0], f.weights
+        for k in range(0, 2 * m):
+            assert float(np.sum(w * x ** k)) == pytest.approx(
+                s.moment(k), rel=1e-9, abs=1e-12 * q ** k), (m, k)
+
+
+@pytest.mark.parametrize("set_apart", [dict(temperature_k=0.0),
+                                       dict(quanta=1)],
+                         ids=["thermal at 0 K", "one quantum"])
+def test_only_a_driven_mode_is_said_driven_from_its_ground_state(set_apart):
+    """`engines/vibration-frames.md` § 3.1: a warm motion says a mode is
+    driven from its ground state only where it is -- the coherent state --
+    never of a mode set apart cold or at n quanta, which no drive moves
+    (`State.is_coherent`).  The silent failure: a baseline said to be a
+    drive."""
+    from support.model_vibration import model_vibration
+    motion = model_vibration().motion(300.0).with_mode(1, **set_apart)
+    assert not any("driven from its ground state" in w for w in motion.said)
+    driven = model_vibration().motion(300.0).with_mode(1, swing_quanta=2.0)
+    assert any("mode 1 is driven from its ground state" in w
+               for w in driven.said)
+
+
 def test_thermal_is_mehlers_sum_of_the_number_states():
     """§ 2b.3: the ``p_n``-weighted sum of the ``P_n`` is the Gaussian of
     ``sigma^2 = (2 nbar + 1) Q_zp^2``, ``p_n = nbar^n / (nbar+1)^(n+1)``."""

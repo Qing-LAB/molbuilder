@@ -1984,8 +1984,7 @@ Nothing new is invented for it. A `Structure` holds its frames
 `StructureCodec.load(path, frames=True)` gives the set, `load(path)` its frame
 0, `frame_at(i)` one frame with the set's one origin; a frame set is made
 through the structure's own doors, by the motion toolkit
-([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md); until
-R3d2b2b2 the frame generator, `spectra.mode_frames`) or a person's script. So every door that reads one structure reads a multi-frame pair as its
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)) or a person's script. So every door that reads one structure reads a multi-frame pair as its
 base, and a frame-aware door sees the set. That is what makes the axis
 addable without rework. Citing a pair is § 3.1's second citation kind
 (`compose.classify_citation`).
@@ -2008,8 +2007,7 @@ display; `paths.frame_token`).
 multi-frame structure pair ([`model/structure.md`](?doc=model/structure.md)
 § 2.2f): the frames, each frame's `weight`, and whatever rows its maker
 wrote — a vibration's sets, the motion toolkit's
-([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 5;
-until R3d2b2b2 the frame generator's, `spectra.mode_frames`); a person's
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 5); a person's
 script, its own. **Transport reads one of them, each frame's
 `weight`** *(the user, 2026-10-18: those rows have "nothing to do with
 fucking get calculation done")* — `⅔, ⅙, ⅙` for a mode's three frames,
@@ -2060,8 +2058,7 @@ structure's own doors (`with_frames`, `set_customized`) and the codec's writer
 (`model/structure.md` § 2.2e): a file another tool writes carries no sidecar,
 and its comment line is never metadata (§ 2.3). So the
 frame set is the **interface between the vibration work and transport**: the
-motion toolkit writes it from a vibration's modes (from R3d2b2b2; the frame
-generator until then), a person's script writes
+motion toolkit writes it from a vibration's modes, a person's script writes
 the same file from anything, and transport reads one shape and knows nothing
 about modes.
 
@@ -4396,8 +4393,7 @@ user, 2026-10-25: "when citing a multi frame calculation, first frame result
 is used ... same checking for validate if this reuse is correct should still
 be in place"; "One rule: reuse completes".)* The first frame of a frame set is its
 reference, the relaxed geometry for every set the motion toolkit writes
-(from R3d2b2b2; today's frame generator's sets have it there too, their odd
-rules' node at 0) ([`model/structure.md`](?doc=model/structure.md) § 2.2f).
+([`model/structure.md`](?doc=model/structure.md) § 2.2f).
 
 **A run copied in is a launched run of this calculation**, its launch record
 the one it was launched with: `status`, the gather, the ladder, the record and

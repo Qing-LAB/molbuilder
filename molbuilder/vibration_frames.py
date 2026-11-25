@@ -7,22 +7,30 @@ MODULE  vibration_frames (L2, the host's; it imports `vibration`, the
         structure and its codec, its sidecar's path (`sidecars.molstruct`),
         `frameset`, the units table (`units`), the masses' table's name
         (`chemistry`), the result's reader (`sidecars.spectra`) and its
-        files' roles (`runfiles`), and for a run's folder the run door
+        files' roles (`runfiles`), the one refusal of an unknown key
+        (`persist`), the constants (`constants`), and for a run's folder the
+        run door
         (`runs`, `projects`, `jobset.rung`, `identity`) and the SIESTA calls'
         names (`siesta.vibration_phases`) -- never transport)
 ROLE    a vibration from either of its forms (:func:`vibration_of`) and a
-        run's folder read as its vibration (:func:`vibration_of_run`, § 1); the one frame-set writer and its reader
-        (:func:`write_frame_set`, :func:`read_frame_set`, § 5) and a mode's
-        state's outermost move (:func:`outermost_move`, § 4); the rows'
+        run's folder read as its vibration (:func:`vibration_of_run`, § 1);
+        the one frame-set writer and its reader (:func:`write_frame_set`,
+        :func:`read_frame_set`, § 5) and a mode's state's outermost move
+        (:func:`outermost_move`, § 4); the doors' set -- the command line's
+        and the page's -- a mode's own in any state asked every time, and
+        what a state means for a mode before its set is written
+        (:func:`frameset_from_mode`, :func:`readout`, § 6); the rows'
         vocabulary (:data:`ROWS`, § 5.1: each name, where it lives, its
         kind, unit, meaning and page words) and what a set assumes
         (:func:`assumptions_of_a_mode`, :func:`state_words`); a cited pair's
         page words and provenance (:func:`said_of`, § 6); the weights for a
         set's rows at a state (:func:`weights_for_set`, § 7)
-USED-BY the doors' frame set (`spectra.mode_frames`, writing through the
-        one writer until R3d2b2b2b2 retires it), the web layer (the
-        transport blueprint's describe door and record answer, the build
-        blueprint's folder answer: ``frame_set_said``), the post-processing
+USED-BY the command line (`molbuilder frameset from-mode`:
+        :func:`frameset_from_mode`), the web layer (the spectrum tab's
+        load door, its readout, and its write door: :func:`readout`,
+        :func:`frameset_from_mode`; the transport blueprint's describe door
+        and record answer, the build blueprint's folder answer:
+        ``frame_set_said``), the post-processing
         layer (`postprocess.vibration`, `write_frame_set`,
         `read_frame_set`, `outermost_move`, `weights_for_set`,
         `reaveraged`)
@@ -45,6 +53,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .frameset import WEIGHT_ROW, finite_number
 from .runfiles import ROLE_SPECTRA, ROLE_SPECTRA_DATA
+from .vibration import DEFAULT_NODES
 
 #: Each atom's mass, the value channel a vibration's set weights its
 #: coordinates by (`model/structure-annotations.md`).
@@ -518,19 +527,20 @@ def state_words(s) -> str:
     t = s.temperature_k
     if st.kind == THERMAL:
         return (thermal_state_words(float(t)) if t is not None else
-                f"a thermal state of {st.bath_quanta:g} mean quanta, a "
+                f"a thermal state of "
+                f"{_quanta_words(st.bath_quanta, kind='mean ')}, a "
                 f"Gaussian of spread sigma = Q_zp sqrt(2n + 1)")
     if st.kind == CLASSICAL:
         return (f"the classical bell curve at {t:g} K, a Gaussian of "
                 f"spread sqrt(k_B T) / omega, no zero-point motion")
     if st.kind == NUMBER:
-        return (f"{st.quanta} quant{'um' if st.quanta == 1 else 'a'} "
-                f"exactly, the oscillator's standing wave |psi_n|^2")
+        return (f"{_quanta_words(st.quanta, kind='')} exactly, the "
+                f"oscillator's standing wave |psi_n|^2")
     if st.kind == SWING:
         return (f"the coherent state, {_quanta_words(st.swing_quanta)}: a "
                 f"bell curve of the zero-point width whose centre swings as "
                 f"Q_0 cos(phi), Q_0 = 2 Q_zp sqrt(n_s)"
-                if st.bath_quanta == 0.0 else
+                if st.is_coherent else
                 f"the warm driven state, {_quanta_words(st.swing_quanta)} at "
                 f"{t:g} K: the thermal bell curve of that temperature "
                 f"carried by the swing")
@@ -1023,6 +1033,261 @@ def outermost_move_of(v, mode, *, nodes: Optional[int] = None,
         raise
     except ValueError as exc:
         raise FrameSetError(str(exc)) from exc
+
+
+# ----------------------------------------------------------------------- #
+#  The doors' set -- the command line's and the page's (§ 6)              #
+# ----------------------------------------------------------------------- #
+
+#: THE FRAME COUNTS THE DOORS OFFER -- `frameset from-mode --nodes`, the
+#: page's *Frames* -- a state's own default first (`vibration.DEFAULT_NODES`,
+#: three), five and seven the check on it
+#: (`science/vibrational-averaging.md` § 5.3).  A script names any.
+OFFERED_NODES = (DEFAULT_NODES, 5, 7)
+
+#: The doors' words for the state they ask (§ 2: asked every time).
+_ASK_THE_STATE = (
+    "the state the frames sample is asked every time, never assumed: a "
+    "temperature (the thermal state), a mean number of quanta, a number of "
+    "quanta, or swing quanta (a driven mode -- with the environment's "
+    "temperature for a warm one)")
+
+#: THE STATE'S ARGUMENTS, as the doors take them (§ 6) -- the page's ask
+#: (`frameset_state`) and the write door's keys, the command line's flags
+#: spelled as options (``--temperature``, ``--quanta``, …).
+STATE_ASK_KEYS = ("temperature_k", "quanta", "swing_quanta", "mean_quanta")
+
+#: Each argument in the doors' words.
+_ARGUMENT_WORDS = {"temperature_k": "a temperature",
+                   "mean_quanta": "a mean number of quanta",
+                   "quanta": "a number of quanta",
+                   "swing_quanta": "swing quanta"}
+
+
+class StateRefused(FrameSetError):
+    """The state the doors were asked names none they write -- named
+    nowhere, two at once, a value that is none, an ask of another shape or
+    with a key the doors do not take (§ 2, § 6) -- refused before any run is
+    read: at the command line a usage error."""
+
+
+def _offered(nodes) -> int:
+    """``nodes`` when it is one of :data:`OFFERED_NODES`, refused by name
+    otherwise (:class:`FrameSetError`)."""
+    if nodes not in OFFERED_NODES:
+        raise FrameSetError(
+            f"the frame set is written at "
+            f"{', '.join(str(n) for n in OFFERED_NODES[:-1])} or "
+            f"{OFFERED_NODES[-1]} nodes, not {nodes}")
+    return int(nodes)
+
+
+def doors_state(*, temperature_k=None, quanta=None, swing_quanta=None,
+                mean_quanta=None) -> Dict[str, Any]:
+    """THE STATE THE DOORS ASK (§ 2's table: `frameset from-mode` and
+    *Write frame set…* ask it every time; § 6) -- the arguments named, as
+    `vibration.Mode.state` takes them, checked before any run is read: a
+    set of the state table's (`vibration.STATES`; the doors name no
+    classical one) -- each value by the table's own rule
+    (`vibration.checked_state`), a temperature in the doors' words.
+    Refused by name (:class:`StateRefused`): none named, a set the doors do
+    not take, a value that is none."""
+    from .vibration import STATES, checked_state, checked_temperature_k
+    named = {k: v for k, v in zip(STATE_ASK_KEYS, (temperature_k, quanta,
+                                                   swing_quanta, mean_quanta))
+             if v is not None}
+    if not named:
+        raise StateRefused(_ASK_THE_STATE)
+    if frozenset(named) not in {frozenset(names) for _, names in STATES}:
+        raise StateRefused(
+            f"{' and '.join(_ARGUMENT_WORDS[k] for k in named)} name no "
+            f"one state -- {_ASK_THE_STATE}")
+    if "temperature_k" in named:
+        try:
+            named["temperature_k"] = checked_temperature_k(
+                named["temperature_k"])
+        except ValueError:
+            raise StateRefused(
+                f"the temperature is the one the frames sample -- the "
+                f"junction's, a pumped mode's effective one, or a driven "
+                f"mode's environment's -- a number of kelvin, 0 or more; "
+                f"{temperature_k!r} is not one") from None
+    try:
+        checked_state(**named)
+    except ValueError as exc:
+        raise StateRefused(str(exc)) from exc
+    return named
+
+
+def read_state_ask(raw: Any) -> Dict[str, Any]:
+    """THE STATE A PAGE ASKS its readout at (`web/spectra.md` § 4.3, the
+    load door's ``frameset_state``) -- ``{temperature_k?, quanta?,
+    swing_quanta?, mean_quanta?}`` (:data:`STATE_ASK_KEYS`), read by the
+    doors' rule (:func:`doors_state`).  Refused by name
+    (:class:`StateRefused`): not that shape, a key it does not take -- with
+    the key it is close to (`persist.unknown_keys`) -- or a state the doors
+    do not take."""
+    from .persist import unknown_keys
+    if not isinstance(raw, dict):
+        raise StateRefused(f"frameset_state is {{{', '.join(STATE_ASK_KEYS)}"
+                           f"}}, the state's arguments; got {raw!r}")
+    said = unknown_keys(raw, STATE_ASK_KEYS)
+    if said:
+        raise StateRefused(f"frameset_state: {said}")
+    return doors_state(**raw)
+
+
+def _state_of(m, state: Dict[str, Any]):
+    """Mode ``m``'s state named by ``state`` (§ 2), the table's refusal
+    said as :class:`FrameSetError`."""
+    try:
+        return m.state(**state)
+    except ValueError as exc:
+        raise FrameSetError(str(exc)) from exc
+
+
+#: WHERE THE DOORS WARN THAT A MODE HOLDS MANY QUANTA, in eV -- the energy
+#: its quanta put into it, ``<n> h c nu``: far up its ladder, where the
+#: harmonic picture a set is drawn from may no longer hold (the user's
+#: choice, 2026-11-24; science § 2a.2, § 7 item 1 -- a torsion can leave it
+#: well below).  Said and, on the page, asked to confirm; never refused.
+HARMONIC_LIMIT_EV = 1.0
+
+
+def _beyond_harmonic(m, s) -> Optional[str]:
+    """Words for mode ``m`` in state ``s`` where its quanta put more than
+    :data:`HARMONIC_LIMIT_EV` into it, else ``None``."""
+    from .constants import CM1_EV
+    from .vibration import _quanta_words
+    if s.mean_quanta is None:
+        return None
+    energy = float(s.mean_quanta) * float(m.frequency_cm1) * CM1_EV
+    if energy <= HARMONIC_LIMIT_EV:
+        return None
+    return (f"mode {m.index_1based} holds "
+            f"{_quanta_words(s.mean_quanta, kind='', spec='.4g')} in this "
+            f"state, {energy:.3g} eV -- more than {HARMONIC_LIMIT_EV:g} eV, "
+            f"far up its ladder, where the harmonic picture the frames are "
+            f"drawn from may no longer hold")
+
+
+def readout(m, state: Dict[str, Any],
+            node_counts=OFFERED_NODES) -> Optional[Dict[str, Any]]:
+    """WHAT A STATE MEANS FOR MODE ``m`` BEFORE ITS SET IS WRITTEN
+    (`web/spectra.md` § 4.3) -- the page's readout under the dialog, the
+    load door's ``frameset`` block: ``{mean_quanta, spread_amu12_ang,
+    spread_over_zero_point, outermost_move_ang: {"3": …, …}, state,
+    beyond_harmonic}`` for the state ``state`` names (:func:`doors_state`),
+    the block's ``state`` it in the set's words (:func:`state_words`),
+    the outermost move for each frame count of ``node_counts``;
+    ``beyond_harmonic`` the words where its quanta put more than
+    :data:`HARMONIC_LIMIT_EV` into the mode, else ``None``; a driven state
+    adding ``swing_over_zero_point``, the swing's turning point
+    ``Q_0 / Q_zp`` and, the coherent state, ``thermal_quanta`` and
+    ``thermal_spread_over_zero_point`` -- the mode's thermal state at the
+    record's temperature, what the coherent state, the cold driven one,
+    leaves out (§ 3.1), where the record states one.  ``None`` for an
+    imaginary mode, which has no state."""
+    if m.has_imag:
+        return None
+    s = _state_of(m, doors_state(**state))
+    q_zp = float(m.zero_point_amplitude_amu12_ang)
+    spread = float(s.spread_amu12_ang)
+    out: Dict[str, Any] = {
+        "mean_quanta": float(s.mean_quanta),
+        "spread_amu12_ang": spread,
+        "spread_over_zero_point": spread / q_zp,
+        "outermost_move_ang": {str(n): outermost_move(s, n)
+                               for n in node_counts},
+        "state": state_words(s),
+        "beyond_harmonic": _beyond_harmonic(m, s)}
+    if _is_driven(s):
+        out["swing_over_zero_point"] = float(
+            s.state.swing_amplitude_amu12_ang) / q_zp
+        if (s.state.is_coherent
+                and m.vibration.record_temperature_k is not None):
+            warm = m.state(temperature_k=m.vibration.record_temperature_k)
+            out["thermal_quanta"] = float(warm.mean_quanta)
+            out["thermal_spread_over_zero_point"] = float(
+                warm.spread_amu12_ang) / q_zp
+    return out
+
+
+@dataclass(frozen=True)
+class ModeFrames:
+    """What :func:`frameset_from_mode` wrote: the pair's ``.xyz``
+    (``path``), the mode's state in the set's words (``state``), its mean
+    number of quanta and its spread against its zero-point amplitude
+    (``spread_over_zero_point``), each frame's coordinate in units of the
+    spread, largest atom move and weight (``frames``), and what was said
+    (``said``): the writer's, and where the quanta are many, the doors'
+    warning (:data:`HARMONIC_LIMIT_EV`)."""
+    path: Path
+    state: str
+    mean_quanta: float
+    spread_over_zero_point: float
+    frames: Tuple[Dict[str, float], ...]
+    said: Tuple[str, ...]
+
+    def to_wire(self, root=None) -> Dict[str, Any]:
+        """As a page is answered: the pair's path from ``root`` (the tree),
+        each frame, and what is said."""
+        from .projects import address
+        path = (address(self.path, root) if root is not None
+                else str(self.path))
+        return {"path": path, "frames": [dict(f) for f in self.frames],
+                "said": list(self.said)}
+
+
+def frameset_from_mode(run_folder, *, mode, out, nodes=OFFERED_NODES[0],
+                       temperature_k=None, quanta=None, swing_quanta=None,
+                       mean_quanta=None) -> ModeFrames:
+    """THE COMMAND LINE'S AND THE PAGE'S FRAME SET (§ 6; the user's decision,
+    `engines/vibration.md` § 6.11 § 9 item 2): vibration run
+    ``run_folder``'s mode ``mode`` -- counted as its result counts it -- in
+    the state the arguments name, asked every time (:func:`doors_state`),
+    its frames the ``nodes``-point rule of that state (one of
+    :data:`OFFERED_NODES`), written as one pair at ``out`` (its ``.xyz``) by
+    the one writer (:func:`write_frame_set`), its run read by the run door
+    (:func:`vibration_of_run`).
+
+    Refused by name (:class:`FrameSetError`), the frame count, the state
+    and the pair's name before the run is read: another frame count, a
+    state not named, two at once or a value that is none
+    (:class:`StateRefused`, :func:`doors_state`), a pair already at
+    ``out``; then what the run door and the writer refuse, a mode the result
+    does not hold or an imaginary one."""
+    nodes = _offered(nodes)
+    state = doors_state(temperature_k=temperature_k, quanta=quanta,
+                        swing_quanta=swing_quanta, mean_quanta=mean_quanta)
+    _checked_target(out)
+    v = vibration_of_run(run_folder)
+    m = _mode_of(v, mode)
+    if m.has_imag:
+        raise FrameSetError(
+            f"mode {mode} is imaginary ({m.frequency_cm1:g} cm-1): it has no "
+            f"amplitude, and the geometry is no minimum along it")
+    s = _state_of(m, state)
+    written = write_frame_set(out, s.frames(nodes))
+    # WHAT IT WROTE, as the set states it -- each frame's coordinate in
+    # units of the spread, largest move and weight, its rows -- and what the
+    # state means, the readout's (one place each).
+    from .frameset import read
+    from .workingcopy_structure import StructureCodec
+    rows = read(StructureCodec().load(written.path, frames=True))
+    frames = tuple({"q_sigma": float(rows.value("node_sigma", f)),
+                    "max_atom_displacement_ang": float(
+                        rows.value("max_atom_displacement_ang", f)),
+                    "weight": float(w)}
+                   for f, w in enumerate(rows.weights))
+    said = readout(m, state, node_counts=(nodes,))
+    return ModeFrames(
+        path=written.path, state=state_words(s),
+        mean_quanta=said["mean_quanta"],
+        spread_over_zero_point=said["spread_over_zero_point"],
+        frames=frames,
+        said=((said["beyond_harmonic"],) if said["beyond_harmonic"] else ())
+        + tuple(written.said))
 
 
 # ----------------------------------------------------------------------- #
@@ -1521,4 +1786,7 @@ __all__ = ["FrameSetError", "TWO_FORMS", "vibration_of", "INFO_KEY", "MASS_CHANN
            "assumptions_of_a_mode", "assumptions_of_set", "said_of",
            "state_words", "thermal_state_words", "vibration_of_run",
            "weights_for_set", "write_frame_set", "Written", "read_frame_set",
-           "FrameSet", "outermost_move", "outermost_move_of"]
+           "FrameSet", "outermost_move", "outermost_move_of",
+           "OFFERED_NODES", "STATE_ASK_KEYS", "StateRefused", "doors_state",
+           "read_state_ask", "readout", "HARMONIC_LIMIT_EV", "ModeFrames",
+           "frameset_from_mode"]

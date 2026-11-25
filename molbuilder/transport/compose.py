@@ -363,9 +363,10 @@ def frames_moving_the_leads(struct: Structure, path: Path) -> Optional[str]:
     measures an unmoved atom -- the distance, against
     `wizard.FROZEN_TOL_ANG`: the sentence naming each frame that moves one
     and its atoms, in the pair's own atom order, ``None`` when every frame
-    keeps them.  Said, never a stop (the user, 2026-11-18): the frame set
-    built from modes says it (`spectra.mode_frames`), and so does a
-    transport calculation citing the set (:func:`junction_said`)."""
+    keeps them.  Said, never a stop (the user, 2026-11-18), by a transport
+    calculation citing the set (:func:`junction_said`) -- the one place:
+    which atoms are the leads is transport's to know, and a frame set's
+    writer checks only its held atoms (`engines/vibration-frames.md` § 5)."""
     from ..structure import frame_words
     from .wizard import FROZEN_TOL_ANG
     regions = struct.regions or {}

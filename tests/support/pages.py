@@ -2,8 +2,9 @@
 reads what was served rather than the templates it was rendered from --
 what a page's request is served of a result (:func:`spectra_served`), a
 server sentence as a page draws it (:func:`drawn`), what a chart's own
-Export hands over (:func:`chart_exported`), and where it stands beside the
-chart's toolbar (:func:`export_clear_of_the_chart`)."""
+Export hands over (:func:`chart_exported`), where it stands beside the
+chart's toolbar (:func:`export_clear_of_the_chart`), and the one save-where
+question answered (:func:`where_and_name_answered`)."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -156,3 +157,33 @@ def spectra_served(web_client, monkeypatch, path, **ask) -> dict:
     assert r.status_code == 200, r.get_json()
     assert r.get_json()["ok"] is True
     return r.get_json()["results"]
+
+
+def where_and_name_answered(page, project, where, stem):
+    """The one save-where question (`projects.chooseSavePath`), answered as
+    a person answers it: WHERE -- the picker's Choose stays disabled until a
+    folder is selected; opening the project and clicking the folder's row
+    is the selection -- then WHAT TO CALL IT.  The projects root is the
+    tree, never an answer: its row cannot be chosen (`projects.md` § 4.1).
+    The picker opens at the root each time (a closed dialog is gone), and
+    is anchored at its top: the project opened, its top has not moved
+    (`ui-contract.md` § 11 -- a centred picker moved its rows under the
+    pointer between the two clicks of a double-click)."""
+    from support.sidebar import WAIT_MS
+    dialog = page.locator("dialog.molbuilder-tree-picker-dialog")
+    root_row = dialog.locator(
+        f'li.tp-node[data-path="{project.parent}"] > .tp-row')
+    root_row.wait_for(state="visible", timeout=WAIT_MS)
+    assert "tp-row--inert" in (root_row.get_attribute("class") or "")
+    top = dialog.bounding_box()["y"]
+    dialog.locator(f'li.tp-node[data-path="{project}"]'
+                   " > .tp-row > .tp-twisty").click()
+    row = dialog.locator(f'li.tp-node[data-path="{where}"] > .tp-row')
+    row.wait_for(state="visible", timeout=WAIT_MS)
+    assert dialog.bounding_box()["y"] == top
+    row.click()
+    page.locator("dialog [data-action='confirm']").first.click()
+    name = page.locator("dialog input[data-role='name']")
+    name.wait_for(state="visible", timeout=WAIT_MS)
+    name.fill(stem)
+    page.locator("dialog [data-action='confirm']").last.click()
