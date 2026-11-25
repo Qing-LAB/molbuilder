@@ -200,8 +200,9 @@ and an API reviewer** *(the user, 2026-11-23)*.
   `model/datafiles.md` § 2c), then **R3d2b2b2b** in two: **R3d2b2b2b1, the
   Python door** (built in 2.82.0, `fix24-review.md`; its pieces are its
   changelog row), then **R3d2b2b2b2, the doors for any state** (built in
-  2.83.0, `fix25-review.md`; its pieces are its changelog row); next
-  **R3d2b2b3, drawing a snapshot, justified** *(the user, 2026-11-24: "a
+  2.83.0, `fix25-review.md`; its pieces are its changelog row); then
+  **R3d2b2b3, drawing a snapshot, justified** (written 2026-11-24, its six
+  figures drawn by `scripts/science_figures.py`) *(the user, 2026-11-24: "a
   detailed document justify how these distribution is calculated, and how
   each displacement for each snapshot is generated with the correct
   justification and scientific vigor")* — documents only, no version move
@@ -217,7 +218,31 @@ and an API reviewer** *(the user, 2026-11-23)*.
   from one normal number and its tabulated distribution's accuracy, a
   swing's phase, mirrored pairs, every atom's move — each step its function,
   its derivation and the test holding it, reviewed by two science readers
-  deriving each claim; then **R3d2b2c, the example notebook** and its test:
+  deriving each claim; next **R3d2b2b4, a mode's state from its steps —
+  discussed with the user before any code** *(the user, 2026-11-25, asked
+  how one photon on a warm mode should be offered: "i am not sure that i
+  understand the theory behind this. i want a fully expanded discussion in
+  the document/plan and an updated api/support scientific document to
+  provide the correct math/calculation. this should not be a single api call
+  just to get the result, but rather a carefully separated scientifically
+  correct steps that each supported by a api and the correct combination give
+  us all the different cases"; "we are not exposing api for special case
+  direct results, but rather this is an effort to give support to a group of
+  problem/category of problem such as distribution calculation etc.")*: the
+  science of a mode's state written out as separate steps — the state, what
+  a photon, a drive or a bath does to it, its position distribution, its
+  distribution function and moments, a draw from one normal number — each
+  step one tool, and every case of § 2b and § 2d (thermal, n quanta, an
+  effective temperature, a swing, one photon on a cold or a warm mode, a
+  quantum two modes share) a combination of them; the discussion first, in
+  `science/vibrational-averaging.md` and `engines/vibration-frames.md`, the
+  user's decision before the build; then **R3d2b2c, the example notebook**
+  and its test, on the toolkit as decided:
+  - **`vibration`, carried from § 2d's review**: `_NumberDistribution`'s
+    note says "one to two" panels between neighbouring zeros — measured,
+    1.14 at the least (n = 70): the zeros at least a panel's width apart
+    (`science/vibrational-averaging.md` § 2d.5); no test draws snapshots
+    with a held atom (§ 2d.7 item 3).
   - **`vibration`** (L2, travels; numpy and the constants alone) — R3d2b2a,
     built in 2.80.0: each piece and each visible change is its changelog
     row, which the plan does not restate.

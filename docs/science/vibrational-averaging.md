@@ -13,7 +13,8 @@ mode moves the current);
 
 *Written 2026-10-09 at the user's request: "add a discussion of this
 averaging as an independent document under science, expand the details";
-widened 2026-11-23 to the whole molecule and every state of a mode.*
+widened 2026-11-23 to the whole molecule and every state of a mode; § 2d,
+each snapshot's draw derived, added 2026-11-24.*
 
 ---
 
@@ -973,6 +974,661 @@ own streams of the seed, so every other mode's draws are the same in both
 sets, and their share of the spread cancels in the difference: exactly for a
 response that adds the modes' effects, in part where they multiply (§ 5.5).
 
+## 2d. Drawing a snapshot, justified — every mode thermal, and one mode a photon excited
+
+*(The user, 2026-11-24: "the module/api we designed to generate the correct
+distribution of displacement of (1) thermal equilibrium mode mix (2) a single
+mode activated by photon. we need a detailed document justify how these
+distribution is calculated, and how each displacement for each snapshot is
+generated with the correct justification and scientific vigor.")* § 2b and
+§ 2c say what each state is and how a snapshot is made; this section derives
+why each step gives the right distribution, names the function that takes
+it, and the test that holds it to the science. The API is
+[`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 2, § 3;
+the module `vibration`; the figures are drawn by `scripts/science_figures.py`
+from the closed forms below — but Figure 2d-4, molbuilder's own draws, and
+Figure 2d-6, numpy's normal numbers.
+
+> **In short.** A property computed at a frozen geometry averages over the
+> molecule's *position* distribution alone — the diagonal of its density
+> operator in position. In the harmonic picture the Hamiltonian is a sum of
+> one oscillator per mode, so (1) in thermal equilibrium that distribution is
+> a product of one Gaussian per mode, of variance
+> $Q_{\mathrm{zp}}^2\coth(\hbar\omega/2k_BT)$; and (2) one photon absorbed or
+> one Stokes photon scattered by a mode — the only mode within the photon's
+> resolution — changes that mode's factor alone: on a cold mode to the
+> one-quantum density $\lvert\psi_1\rvert^2$, for times below the mode's
+> energy lifetime (under steady light the mode is thermal at an effective
+> temperature, or a swing, § 2d.4). A snapshot draws each mode's coordinate
+> from its own factor with its own random stream — the draws independent
+> exactly as the product says, a drive group one factor (§ 2c.2) — and moves
+> every atom by all of them at once. Within the harmonic, static-frame
+> picture (§ 2d.8) each step below is exact, save one photon on a warm mode,
+> whose state the toolkit stands in for (§ 2d.4); the remaining
+> approximation is the finite number of snapshots, whose error is computed
+> (§ 5.5).
+
+```mermaid
+flowchart LR
+    S["each mode's state<br/>thermal at T · one quantum ·<br/>effective T · a swing"] --> P["its position density<br/>P_k(Q) — § 2d.3, § 2d.4"]
+    K["the seed"] --> R["mode k's own stream<br/>[seed, k, 0]: normal z<br/>[seed, k, 1]: phase u"]
+    P --> D["one draw<br/>Q_k from z (and u)<br/>§ 2d.3, § 2d.5"]
+    R --> D
+    D --> M["every atom moved by all modes<br/>R_A = R⁰_A + Σ_k Q_k L_k,A"]
+    M --> F["snapshot f, weight 1/N<br/>(its mirror −Q with pairs)"]
+    F --> X["the property X_f at that geometry"]
+    X --> A["the average: the plain mean<br/>its error: the spread / √N"]
+```
+
+### 2d.1 What a frame averages: the position distribution alone
+
+A frame is a frozen geometry, and the property computed there — a level, a
+transmission — is a function $X(\mathbf R)$ of the nuclear positions (static
+frames, § 7 item 2). Its quantum average over a nuclear state $\hat\rho$ is
+
+$$
+\langle X\rangle
+\;=\; \operatorname{Tr}\!\big[\hat\rho\,X(\hat{\mathbf R})\big]
+\;=\; \int d\mathbf R\;\langle\mathbf R\rvert\hat\rho\lvert\mathbf R\rangle\;X(\mathbf R)
+\;=\; \int d\mathbf R\;P(\mathbf R)\,X(\mathbf R),
+$$
+
+because $X(\hat{\mathbf R})$ is diagonal in the position basis,
+$X(\hat{\mathbf R})\lvert\mathbf R\rangle = X(\mathbf R)\lvert\mathbf R\rangle$.
+**Only the diagonal $P(\mathbf R) = \langle\mathbf R\rvert\hat\rho\lvert\mathbf R\rangle$
+enters** — not the momenta, not the coherences between positions — so
+geometries drawn from $P$ average $X$ exactly in the limit of many draws,
+whatever the state, the nuclei's zero-point motion included (it is in $P$).
+
+**In the mode coordinates.** The free atoms move along the modes,
+
+$$
+\mathbf R_A \;=\; \mathbf R_A^0 + \sum_{k} Q_k\,\mathbf L_{k,A},
+\qquad
+\sum_A m_A\,\mathbf L_{k,A}\cdot\mathbf L_{l,A} = \delta_{kl}
+$$
+
+(§ 1, § 2b.2), held atoms with $\mathbf L_{k,A} = \mathbf 0$, the rigid motions
+no modes and not drawn. The map $\mathbf Q \mapsto \mathbf R$ is linear with a
+constant Jacobian $J$, so
+
+$$
+\int d\mathbf R\;P(\mathbf R)\,X(\mathbf R) \;=\; \int d^N Q\;P(\mathbf Q)\,X\big(\mathbf R(\mathbf Q)\big),
+\qquad P(\mathbf Q) = \lvert J\rvert\,P\big(\mathbf R(\mathbf Q)\big):
+$$
+
+a draw of the coordinates $Q_k$ is a draw of a geometry, and equal weights in
+$\mathbf Q$ are equal weights in $\mathbf R$. An imaginary mode — a geometry
+that is no minimum along it — has no harmonic state; it is left out, at
+$Q = 0$, said (`Vibration.motion`).
+
+### 2d.2 The harmonic Hamiltonian is one oscillator per mode
+
+In mass-weighted normal coordinates
+
+$$
+\hat H \;=\; \sum_k \hat H_k,
+\qquad
+\hat H_k \;=\; \tfrac12\hat P_k^2 + \tfrac12\omega_k^2\hat Q_k^2,
+\qquad [\hat H_k, \hat H_l] = 0,
+$$
+
+with no term joining two modes ([`normal-modes.md`](?doc=science/normal-modes.md)
+§ 3): the Hessian is diagonal in these coordinates and the kinetic energy is
+$\tfrac12\sum_k\dot Q_k^2$, the transformation being orthogonal with the
+masses. Each $\hat H_k$ is an oscillator of its own:
+
+$$
+\hat Q_k = Q_{\mathrm{zp},k}\,\big(\hat b_k + \hat b_k^\dagger\big),
+\qquad Q_{\mathrm{zp},k}^2 = \frac{\hbar}{2\omega_k},
+\qquad \hat H_k\lvert n\rangle_k = \hbar\omega_k\big(n+\tfrac12\big)\lvert n\rangle_k,
+$$
+
+$$
+\hat b^\dagger\lvert n\rangle = \sqrt{n+1}\,\lvert n+1\rangle,
+\qquad
+\hat b\lvert n\rangle = \sqrt n\,\lvert n-1\rangle,
+$$
+
+and its number states' wavefunctions and position densities, in
+$\xi = Q/(\sqrt2\,Q_{\mathrm{zp}})$,
+
+$$
+\psi_n(Q) = \frac{H_n(\xi)\,e^{-\xi^2/2}}{\sqrt{2^n\,n!}\;(2\pi Q_{\mathrm{zp}}^2)^{1/4}},
+\qquad
+\lvert\psi_n(Q)\rvert^2 = \frac{H_n(\xi)^2\,e^{-\xi^2}}{2^n\,n!\,\sqrt{2\pi}\,Q_{\mathrm{zp}}}
+$$
+
+(§ 2b.3), $H_n$ the Hermite polynomial. Figure 2d-1 draws the first two,
+$n = 0$ and $1$, beside the other states this section uses.
+
+![Where one mode sits in each state](img/vibrational-averaging/states-of-one-mode.svg)
+
+*Figure 2d-1. One mode's position density $P(Q)$ in each state, $Q$ in
+units of $Q_{\mathrm{zp}}$: the ground state (thermal at 0 K) and a thermal
+state of one mean quantum are Gaussians; one quantum exactly,
+$\lvert\psi_1\rvert^2$, vanishes at $Q = 0$; one photon on a warm mode (the
+photon-added thermal state, § 2d.4) dips at $Q = 0$, to about half its
+peak at $\bar n = 1$; the coherent state
+spreads its weight toward the swing's turning points.*
+
+### 2d.3 (1) Every mode thermal: a product of Gaussians
+
+**The state factorizes.** In equilibrium at temperature $T$,
+$\hat\rho = e^{-\beta\hat H}/Z$, $\beta = 1/k_BT$. Because the $\hat H_k$
+commute, $e^{-\beta\hat H} = \prod_k e^{-\beta\hat H_k}$, and
+
+$$
+\hat\rho \;=\; \bigotimes_k \hat\rho_k,
+\qquad
+\hat\rho_k = \frac{e^{-\beta\hat H_k}}{Z_k} = \sum_{n=0}^\infty p_n\,\lvert n\rangle_k\langle n\rvert,
+\qquad
+p_n = (1-t)\,t^n = \frac{\bar n^{\,n}}{(\bar n+1)^{n+1}},
+$$
+
+$$
+t = e^{-\beta\hbar\omega_k},
+\qquad
+\bar n = \sum_n n\,p_n = \frac{t}{1-t} = \frac{1}{e^{\hbar\omega_k/k_BT}-1} .
+$$
+
+The diagonal of a product of operators on different coordinates is the
+product of their diagonals:
+
+$$
+P(Q_1,\dots,Q_N) \;=\; \prod_k P_k(Q_k),
+\qquad
+P_k(Q) = \langle Q\rvert\hat\rho_k\lvert Q\rangle = \sum_n p_n\,\lvert\psi_n(Q)\rvert^2 .
+$$
+
+**The modes' coordinates are independent random variables** (§ 2c.1).
+
+**Each factor is a Gaussian (Mehler's formula).** Mehler's formula for the
+Hermite polynomials ([DLMF] 18.18.28 at $x = y = \xi$, both sides
+multiplied by $e^{-\xi^2}$),
+
+$$
+\sum_{n=0}^{\infty}\frac{t^n}{2^n\,n!}\,H_n(\xi)^2\,e^{-\xi^2}
+\;=\; \frac{1}{\sqrt{1-t^2}}\,\exp\!\Big(-\xi^2\,\frac{1-t}{1+t}\Big),
+$$
+
+sums the factor:
+
+$$
+P(Q) \;=\; \frac{1-t}{\sqrt{2\pi}\,Q_{\mathrm{zp}}}\,\frac{1}{\sqrt{1-t^2}}
+\exp\!\Big(-\xi^2\frac{1-t}{1+t}\Big)
+\;=\; \frac{1}{\sqrt{2\pi}\,\sigma}\,\exp\!\Big(-\frac{Q^2}{2\sigma^2}\Big),
+$$
+
+$$
+\boxed{\;\sigma^2 \;=\; Q_{\mathrm{zp}}^2\,\frac{1+t}{1-t}
+\;=\; Q_{\mathrm{zp}}^2\coth\frac{\hbar\omega}{2k_BT}
+\;=\; Q_{\mathrm{zp}}^2\,(2\bar n+1)\;}
+$$
+
+([Feynman1972] § 2.5). At 0 K, $t = 0$ and $\sigma = Q_{\mathrm{zp}}$, the
+ground state; hot, $\coth x \to 1/x$ and $\sigma^2 \to k_BT/\omega^2$, the
+classical spread. Figure 2d-2 shows the sum for $\bar n = 1$.
+
+![A thermal mode is the weighted sum of its number states](img/vibrational-averaging/thermal-is-a-sum-of-number-states.svg)
+
+*Figure 2d-2. A thermal mode with $\bar n = 1$: each number state's density
+weighted by $p_n = 2^{-(n+1)}$, stacked, adds up to the Gaussian of
+$\sigma^2 = 3\,Q_{\mathrm{zp}}^2$ — Mehler's formula, term by term.*
+
+*Held by* `test_thermal_is_mehlers_sum_of_the_number_states` (the
+$p_n$-weighted sum of the $\lvert\psi_n\rvert^2$ against the Gaussian),
+`test_a_temperatures_quanta_are_bose_and_einsteins`,
+`test_hot_the_thermal_spread_is_the_classical_one`.
+
+**Drawing it.** A Gaussian of spread $\sigma$ is drawn exactly as
+
+$$
+Q = \sigma\,z, \qquad z \sim \mathcal N(0,1)
+\quad\Longrightarrow\quad
+\Pr(Q \le q) = \Phi(q/\sigma)
+$$
+
+(`State._at`). Each mode's normal numbers come from its own random stream
+(§ 2d.6), so the draws of different modes are independent: the product above,
+drawn factor by factor. *Held by* `test_each_states_draws_follow_its_own_distribution`
+(a Kolmogorov test of 4000 draws against the state's `cdf`) and
+`test_snapshots_of_a_thermal_motion_have_the_sciences_covariance` (40 000
+snapshots: each mode's variance $\sigma_k^2$, every pair uncorrelated, each
+within five standard errors).
+
+**What every atom does.** With independent coordinates,
+$\langle Q_k\rangle = 0$ and $\langle Q_kQ_l\rangle = \delta_{kl}\,\sigma_k^2$, so
+each atom's displacement $\mathbf u_A = \sum_k Q_k\mathbf L_{k,A}$ has mean zero
+and covariance
+
+$$
+\big\langle\mathbf u_A\,\mathbf u_B^{\mathsf T}\big\rangle
+\;=\; \sum_{k,l}\langle Q_kQ_l\rangle\,\mathbf L_{k,A}\mathbf L_{l,B}^{\mathsf T}
+\;=\; \sum_k \sigma_k^2\,\mathbf L_{k,A}\mathbf L_{k,B}^{\mathsf T},
+$$
+
+the same covariance the full harmonic thermal state gives the atoms; and,
+the $Q_k$ jointly Gaussian, $\mathbf u$ is jointly Gaussian too — every atom's
+place a 3-dimensional Gaussian cloud around $\mathbf R_A^0$, its axes and
+widths those of $\sum_k\sigma_k^2\,\mathbf L_{k,A}\mathbf L_{k,A}^{\mathsf T}$
+— along the modes' rows where those are orthogonal on that atom (Figure 2d-6,
+left). *Held by* the covariance test above, on one atom's own block.
+
+### 2d.4 (2) One mode a photon excited: which state it is in
+
+**A photon changes one mode, one rung.** Light couples to the nuclei through
+the dipole (infrared) or the polarizability (Raman), each expanded in the
+displacement:
+
+$$
+\hat H_{\mathrm{int}}(t) = -\hat{\boldsymbol\mu}\cdot\mathbf E(t),
+\qquad
+\boldsymbol\mu(\mathbf Q) = \boldsymbol\mu_0 + \sum_k\frac{\partial\boldsymbol\mu}{\partial Q_k}\,Q_k + O(Q^2)
+$$
+
+([`vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md)
+§ 2, § 3; the Raman coupling likewise, through
+$\partial\alpha/\partial Q_k$). The term that moves mode $j$ is linear in
+$\hat Q_j = Q_{\mathrm{zp},j}(\hat b_j + \hat b_j^\dagger)$ and the identity on
+every other mode, so its only matrix elements change $n_j$ by one:
+
+$$
+\langle n+1\rvert\hat Q_j\lvert n\rangle = Q_{\mathrm{zp}}\sqrt{n+1},
+\qquad
+\langle n-1\rvert\hat Q_j\lvert n\rangle = Q_{\mathrm{zp}}\sqrt n .
+$$
+
+One absorbed infrared photon at the mode's frequency, or one Stokes-scattered
+photon, takes the $\hat b_j^\dagger$ part — $n_j \to n_j+1$ — and leaves every
+other mode as it was (§ 2a.1). After one such event, heralded (the Stokes
+photon detected, the absorbed photon or the inelastic tunnelling electron
+counted),
+
+$$
+\hat\rho' \;=\; \frac{\hat b_j^\dagger\,\hat\rho_j\,\hat b_j}{\operatorname{Tr}\big[\hat b_j^\dagger\hat\rho_j\hat b_j\big]}
+\;\otimes\;\bigotimes_{k\neq j}\hat\rho_k,
+\qquad
+P'(\mathbf Q) \;=\; P'_j(Q_j)\prod_{k\neq j}P_k(Q_k):
+$$
+
+**still a product** — the excited mode's factor changes and the others stay
+thermal — **where mode $j$ is the only mode within the photon's energy
+resolution and the lines' widths**. Modes within it — two lines that
+overlap, or a degenerate pair — share the quantum: the event raises their
+combination $c_a\hat b_a^\dagger + c_b\hat b_b^\dagger$, each
+$c_k \propto \mathbf E\cdot(\partial\boldsymbol\mu/\partial Q_k)\,Q_{\mathrm{zp},k}$
+(through $\partial\alpha/\partial Q_k$ for Raman), $\lvert c_a\rvert^2 + \lvert c_b\rvert^2 = 1$
+— a degenerate pair's combination set by the field's polarisation — and
+leaves their coordinates correlated: on cold modes
+$\langle Q_aQ_b\rangle = 2\,\mathrm{Re}\big(c_ac_b^*e^{-i(\omega_a-\omega_b)t}\big)\,Q_{\mathrm{zp},a}Q_{\mathrm{zp},b}$,
+beating at $\omega_a-\omega_b$ and lost as the two dephase — which can be well
+before the energy lifetime — leaving a mixture of either mode excited,
+uncorrelated and still not a product. Either way a state of the pair, which
+no state of one mode gives. A snapshot draws mode $j$ from $P'_j$ and every other mode as in
+§ 2d.3. Which $P'_j$ depends on the experiment:
+
+```mermaid
+flowchart TD
+    L["light on mode j"] --> H{"one heralded event,<br/>or a steady source?"}
+    H -->|"one photon absorbed or scattered,<br/>within the lifetime τ"| W{"the mode's temperature:<br/>ħω against k_BT"}
+    W -->|"cold, n̄ ≪ 1"| N1["one quantum exactly<br/>P'_j = |ψ₁|²<br/>with_mode(j, quanta=1)"]
+    W -->|"warm"| PA["photon-added thermal<br/>p'_n = n n̄^(n−1)/(n̄+1)^(n+1)<br/>not offered: mean quanta 2n̄+1<br/>has its spread, not its shape"]
+    H -->|"many events at random moments:<br/>a steady laser's Raman, a current"| TE["thermal at an effective temperature<br/>Gaussian, σ² = Q_zp²(2n+1)<br/>n = n_th + Rτ (weak pumping of a cold mode, § 2a.1)<br/>with_mode(j, mean_quanta=n)"]
+    H -->|"a coherent push:<br/>a narrow-band laser at ω"| CS["the coherent state<br/>Q = Q₀ cos φ + Q_zp z<br/>with_mode(j, swing_quanta=n_s)"]
+```
+
+**On a cold mode** ($\hbar\omega_j \gg k_BT$, so $\hat\rho_j = \lvert0\rangle\langle0\rvert$):
+$\hat b_j^\dagger\lvert0\rangle = \lvert1\rangle$, and
+
+$$
+P'_j(Q) \;=\; \lvert\psi_1(Q)\rvert^2 \;=\; \frac{Q^2}{\sqrt{2\pi}\,Q_{\mathrm{zp}}^3}\;e^{-Q^2/2Q_{\mathrm{zp}}^2},
+\qquad
+\langle Q^2\rangle = 3\,Q_{\mathrm{zp}}^2,
+\qquad
+\langle Q^4\rangle = 15\,Q_{\mathrm{zp}}^4 —
+$$
+
+the **one-quantum state**, two lobes with a zero at $Q = 0$
+(`with_mode(j, quanta=1)` in a thermal motion). **It holds for times below
+the mode's energy lifetime $\tau$**: the mode then relaxes toward its thermal
+state, so the set describes the moment after the event, not a steady average.
+
+**On a warm mode** ($\bar n_j$ not small), the same operator gives the
+*photon-added thermal state*. Its populations, from
+$\hat b^\dagger\lvert n-1\rangle = \sqrt n\,\lvert n\rangle$,
+
+$$
+p'_n \;=\; \frac{n\,p_{n-1}}{\sum_m m\,p_{m-1}}
+\;=\; \frac{n\,\bar n^{\,n-1}}{(\bar n+1)^{n+1}},
+\qquad
+\langle n\rangle' = 2\bar n+1,
+\qquad
+p'_1 = \frac{1}{(\bar n+1)^2}
+$$
+
+(the normalisation $\sum_{n\ge1}n\,t^{n-1} = (1-t)^{-2}$, $t = \bar n/(\bar n+1)$
+of § 2d.3; § 2b.3). Its density $\sum_n p'_n\lvert\psi_n\rvert^2$ (Figure 2d-1,
+dash-dot) has a closed form. The thermal kernel is Mehler's,
+$\langle\xi\rvert\hat\rho_{\mathrm{th}}\lvert\xi'\rangle \propto e^{-A(\xi^2+\xi'^2)/2 + B\xi\xi'}$
+with $A = (1+t^2)/(1-t^2)$ and $B = 2t/(1-t^2)$ ([DLMF] 18.18.28 at $x = \xi$,
+$y = \xi'$, times $e^{-(\xi^2+\xi'^2)/2}$); $\hat b^\dagger = (\xi - \partial_\xi)/\sqrt2$
+acting from both sides, then $\xi' = \xi$, gives $\big[B + (1+A-B)^2\xi^2\big]$
+times the thermal Gaussian — in $x = Q/Q_{\mathrm{zp}}$, normalised:
+
+$$
+P'_j(Q) \;=\; \Big[\frac{\bar n}{2\bar n+1} + \frac{(\bar n+1)\,x^2}{(2\bar n+1)^2}\Big]
+\frac{e^{-x^2/2(2\bar n+1)}}{\sqrt{2\pi(2\bar n+1)}\;Q_{\mathrm{zp}}}
+$$
+
+— a mix of the thermal Gaussian of $\sigma^2 = (2\bar n+1)\,Q_{\mathrm{zp}}^2$,
+weight $\bar n/(2\bar n+1)$, and the one-quantum shape stretched to that
+width, $(Q^2/\sigma^2)$ times the same Gaussian, weight $(\bar n+1)/(2\bar n+1)$
+(it agrees with the sum over number states to rounding at $\bar n$ = 0, 0.1, 1
+and 3.69). Every moment follows from the mix: at $\bar n = 0$ the one-quantum
+density, and a dip at $Q = 0$ to about half its peak at $\bar n = 1$. Quantum optics names a light mode's
+$\hat b^\dagger\hat\rho_{\mathrm{th}}\hat b$ so [Zavatta2007]; here the quantum
+added is the vibration's. **The toolkit offers no such state**; the thermal
+state of the same mean $2\bar n+1$ has its spread — $\langle Q^2\rangle = Q_{\mathrm{zp}}^2(2\langle n\rangle+1)$ in every
+state (§ 2a) — and, both even, the right cubic moment, but not the right
+shape: its $\langle Q^4\rangle = 3(4\bar n+3)^2Q_{\mathrm{zp}}^4$ against the
+state's $3(12\bar n^2+16\bar n+5)\,Q_{\mathrm{zp}}^4$, a third to four fifths
+too large (hot to cold). It is right for a response up to cubic in $Q_j$, not
+beyond.
+
+**Many photons, at random moments** — a steady laser's spontaneous Raman, a
+current: each event moves the mode one rung, the surroundings relax it, and
+the steady populations fall by one factor per rung, a thermal state at an
+effective temperature (§ 2a.1): the Gaussian of § 2d.3 with
+$\sigma^2 = Q_{\mathrm{zp}}^2(2n+1)$, $n = n_{\mathrm{th}} + R\tau$ for weak
+pumping of a cold mode, or for equal Stokes and anti-Stokes rate constants
+(§ 2a.1 gives the general form). **A coherent push** — a narrow-band infrared laser at the mode's
+frequency — is a classical force, not photon by photon: the coherent state of
+§ 2a.2. **The harmonic ladder**: a drive at one frequency climbs every rung
+only because the harmonic gaps are equal; a real mode's shrink as it climbs
+(§ 2a.2), and many quanta are where the harmonic picture fails first (§ 7,
+item 1) — the doors say so beyond 1 eV in a mode, far up its ladder: a
+mark, not a bound, which a torsion can leave well below.
+
+### 2d.5 Drawing the one-quantum state — and any $n$
+
+**The inverse transform.** Let $F_n(q) = \int_{-\infty}^q\lvert\psi_n(Q)\rvert^2\,dQ$,
+the distribution function of $Q$.
+If $z\sim\mathcal N(0,1)$, then $u = \Phi(z)$ is uniform on $(0,1)$, and
+
+$$
+Q = F_n^{-1}\big(\Phi(z)\big)
+\quad\Longrightarrow\quad
+\Pr(Q\le q) = \Pr\big(\Phi(z)\le F_n(q)\big) = F_n(q):
+$$
+
+$Q$ has exactly the one-quantum distribution (for $n = 1$) — one normal
+number per draw, as for every state, so a number state draws from the same
+stream as a thermal mode would, and a set and its baseline share every other
+mode's numbers (§ 2c.4). For one quantum, $F_1$ is closed:
+
+$$
+F_1(Q) \;=\; \int_{-\infty}^{x} s^2\,\phi(s)\,ds \;=\; \Phi(x) - x\,\phi(x),
+\qquad x = \frac{Q}{Q_{\mathrm{zp}}},
+\qquad \phi(s) = \frac{e^{-s^2/2}}{\sqrt{2\pi}}
+$$
+
+(integrating by parts, $\int s\cdot s\phi\,ds = -s\phi + \int\phi\,ds$).
+
+![The inverse transform for one quantum](img/vibrational-averaging/one-quantum-inverse-transform.svg)
+
+*Figure 2d-3. One draw of the one-quantum state: a normal number $z$ gives a
+uniform $u = \Phi(z)$ (left), and $Q = F_1^{-1}(u)$ (right) — three of the
+worked example's four normal numbers (§ 2d.7). $F_1$ is flat at $Q = 0$, where
+$\lvert\psi_1\rvert^2$ vanishes: $z = -0.05$ lands at $Q = -0.55\,Q_{\mathrm{zp}}$,
+not near zero.*
+
+**The code's variable.** The code works in $\xi = Q/(\sqrt2\,Q_{\mathrm{zp}})$,
+with the forms normalised in it:
+
+$$
+\tilde\psi_n(\xi) = h_n(\xi)\,e^{-\xi^2/2} = \big(\sqrt2\,Q_{\mathrm{zp}}\big)^{1/2}\,\psi_n(Q),
+\qquad
+\tilde F_n(\xi) = \int_{-\infty}^{\xi}\tilde\psi_n^2\,d\xi' = F_n\big(\sqrt2\,Q_{\mathrm{zp}}\,\xi\big),
+$$
+
+$h_n$ the normalised Hermite polynomials below; a draw is $\xi$, and
+$Q = \sqrt2\,Q_{\mathrm{zp}}\,\xi$.
+
+**Mirror-exact.** $\tilde\psi_n^2$ is even, so
+
+$$
+\tilde F_n(-\xi) = 1 - \tilde F_n(\xi)
+\quad\Longrightarrow\quad
+\tilde F_n^{-1}\big(\Phi(-z)\big) = -\tilde F_n^{-1}\big(\Phi(z)\big).
+$$
+
+The code takes the lower tail always and restores the sign (`State._at`):
+
+$$
+\xi_- = \tilde F_n^{-1}\!\Big(\tfrac12\operatorname{erfc}\big(\lvert z\rvert/\sqrt2\big)\Big)\le 0,
+\qquad
+\xi = -\operatorname{sign}(z)\,\xi_-,
+\qquad
+Q = \sqrt2\,Q_{\mathrm{zp}}\,\xi :
+$$
+
+$-z$ gives exactly $-Q$, a property of the draw; and the tail probability
+$\tfrac12\operatorname{erfc}(\lvert z\rvert/\sqrt2) = \Phi(-\lvert z\rvert)$
+keeps its relative digits where $1-\Phi(z)$ would lose them. A mirrored pair
+is exact by construction: the sampler negates every drawn coordinate
+(`Motion.sample`, § 5.5, Figure 2d-5).
+
+**The distribution function, tabulated** (`_NumberDistribution`). $\tilde F_n$ is
+integrated once per $n$ over
+
+$$
+\xi \in [-\xi_{\max},\,\xi_{\max}],
+\qquad
+\xi_{\max} = \sqrt{2n+1} + 9,
+$$
+
+nine units past the classical turning point $\sqrt{2n+1}$, where the density
+has fallen below what double precision holds, in $2(n+20)$ panels — the
+neighbouring zeros of $\tilde\psi_n^2$, $n$ of them within $\pm\sqrt{2n+1}$,
+at least a panel's width apart (1.14 panels at the least, at $n = 70$, over
+every $n$ from 2 to 1000) —
+each by a 40-point Gauss–Legendre rule, exact for the panel's smooth
+integrand to rounding. $\tilde\psi_n$ comes from the stable three-term
+recurrence of the normalised Hermite polynomials $h_n$ (the Hermite
+functions $h_n e^{-\xi^2/2}$),
+
+$$
+h_0 = \pi^{-1/4},
+\qquad
+h_{k+1} = \sqrt{\tfrac{2}{k+1}}\;\xi\,h_k - \sqrt{\tfrac{k}{k+1}}\;h_{k-1},
+\qquad
+\tilde\psi_n(\xi) = h_n\,e^{-\xi^2/2},
+$$
+
+rescaled whenever a value passes $10^{100}$ and the Gaussian applied once at
+the end, so no $n$ overflows or loses the weight near the turning points
+(`_eigenfunction`). The quantile is found from the left, where the running
+integral keeps its digits: the table's panel, then Newton's method,
+
+$$
+\xi \;\leftarrow\; \xi - \frac{\tilde F_n(\xi) - p}{\tilde\psi_n(\xi)^2},
+$$
+
+kept inside the panel by bisection, stopped within four units in the last
+place (`lower_quantile`).
+
+![molbuilder's draws against the density](img/vibrational-averaging/draws-follow-the-density.svg)
+
+*Figure 2d-4. 40 000 of molbuilder's own draws (`vibration.State.draw`) of a
+thermal state of one mean quantum and of one quantum exactly, against the
+densities they must follow — the Gaussian and $\lvert\psi_1\rvert^2$.*
+
+*Held by* `test_n_quanta_exactly_is_the_oscillators_own_density` (each
+$\lvert\psi_n\rvert^2$ integrates to 1; $\langle Q^2\rangle = (2n+1)Q_{\mathrm{zp}}^2$
+and $\langle Q^4\rangle = 3(2n^2+2n+1)Q_{\mathrm{zp}}^4$; $n$ zeros; the weight
+beyond the turning points, 15.7 %, 11.2 %, 9.5 % for $n$ = 0, 1, 2) and
+`test_each_states_draws_follow_its_own_distribution` (a Kolmogorov test of
+4000 draws of three quanta, and $F_n(Q) = \Phi(z)$ for every draw to $10^{-9}$,
+$z$ the mode's own stream's).
+
+### 2d.6 The random streams: independent, reproducible, extendable
+
+```mermaid
+flowchart LR
+    S["seed"] --> A["mode 1<br/>[seed, 1, 0]: z₁ z₂ z₃ …<br/>[seed, 1, 1]: u₁ u₂ …"]
+    S --> B["mode 2<br/>[seed, 2, 0]: z₁ z₂ z₃ …"]
+    S --> C["mode 7<br/>[seed, 7, 0] …"]
+    S --> G["a drive group made of modes 3, 5<br/>[seed, 0, 3, 5]: one phase per snapshot"]
+```
+
+Each mode $k$ draws its normal numbers from `numpy.random.default_rng([seed,
+k, 0])` — numpy's PCG64 generator seeded through `SeedSequence`, which hashes
+the whole key into the generator's state so that different keys give streams
+with no detectable correlation — and a driven mode its phases,
+$\varphi = 2\pi u$, from `[seed, k, 1]` (`_stream`, `_phases_of`). **Keyed by
+the mode's number**, not its place: a set of some modes, or one with a mode
+set apart, draws every other mode exactly as before, which is what lets a
+driven set and its thermal baseline differ by the driven mode's draws alone
+(§ 2c.4). **Drawn in one block from the first**, so snapshots
+$s \dots s+N-1$ are the same however many were asked: a set continues from
+its last snapshot and pools with its continuation (`start=`,
+`vibration.pooled`). A drive group's one phase per snapshot comes from
+`[seed, 0, *modes]`, the modes it was made with. **Reproducible on the same
+numpy**: one seed gives the same numbers there, and a set records numpy's
+version in its `rng` row, beside the streams' keys in `info.sampling`
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 5).
+*Held by* `test_a_draw_continues_its_seed_from_the_modes_own_stream`,
+`test_a_seed_holds_a_set_and_its_continuation`,
+`test_a_driven_modes_normal_numbers_are_its_baselines_own`.
+
+### 2d.7 One snapshot, assembled — and what the set's average is
+
+For snapshot $f$ (`Motion.sample`):
+
+1. **Each mode's coordinate**, from its own state and stream:
+
+$$
+Q_{f,k} \;=\;
+\begin{cases}
+\sigma_k\,z_{f,k} & \text{thermal (or classical),}\\[2pt]
+\sqrt2\,Q_{\mathrm{zp},k}\,\big(-\operatorname{sign} z_{f,k}\big)\,\tilde F_n^{-1}\!\big(\Phi(-\lvert z_{f,k}\rvert)\big) & n\ \text{quanta,}\\[2pt]
+Q_{0,k}\cos\!\big(\varphi_f - \ell_k\big) + s_k\,z_{f,k} & \text{a swing,}
+\end{cases}
+$$
+
+   $\tilde F_n$ the distribution function in $\xi$ (§ 2d.5); for a swing,
+   $\varphi_f = 2\pi u_f$ from its stream, one phase per drive group (§ 2d.6),
+   $\ell_k$ the mode's lag in its group (§ 2c.2), 0 for a mode driven alone,
+   $Q_{0,k} = 2\,Q_{\mathrm{zp},k}\sqrt{n_{s,k}}$ the swing's turning point,
+   and $s_k$ the spread it carries — $Q_{\mathrm{zp},k}$ for the coherent
+   state, $\sigma_{T,k}$ for a warm driven mode (§ 2a.2).
+
+2. **With mirrored pairs** (the person's choice), each drawn snapshot is
+   followed by its mirror, every $Q_{f,k}$ negated: every state's distribution
+   is even in $Q$ — a swing's because its phase is uniform,
+   $\cos(\varphi+\pi) = -\cos\varphi$ — so the mirror is a draw from the same
+   distribution (Figure 2d-5).
+3. **Every atom moved by all modes at once**,
+   $\mathbf R_{f,A} = \mathbf R_A^0 + \sum_k Q_{f,k}\,\mathbf L_{k,A}$, in the
+   result's atom order, held atoms still — the rule `Vibration.displaced`
+   (`test_a_vibrations_geometry_and_its_frequencies_scaled`) and held atoms
+   in a mode's own frames
+   (`test_a_held_atom_stays_still_and_adds_nothing_to_its_elements_share`);
+   no test yet draws snapshots with a held atom.
+4. **Frame 0 the relaxed geometry at weight 0, each snapshot at $1/N$.** The
+   probabilities are in where the snapshots were drawn, so the average is the
+   plain mean, an unbiased estimate of § 2d.1's integral, its error the spread
+   of the results:
+
+$$
+\bar X_N = \frac1N\sum_{f=1}^N X_f,
+\qquad
+\mathbb E\big[\bar X_N\big] = \langle X\rangle,
+\qquad
+\operatorname{Var}\big[\bar X_N\big] = \frac{\operatorname{Var}X}{N}
+\;\approx\; \frac{s_X^2}{N} .
+$$
+
+   With pairs, the $N/2$ pair means $\tfrac12(X_f + X_f^{-})$ are the
+   independent draws, and
+
+$$
+\operatorname{Var}\Big[\tfrac12\big(X + X^{-}\big)\Big]
+= \tfrac12\big(\operatorname{Var}X + \operatorname{Cov}(X, X^{-})\big),
+$$
+
+   which is zero for the response's odd part — $X^{-} = -X$ there — so the
+   error is the spread of the pair means over $\sqrt{N/2}$ (§ 5.5,
+   `Snapshots.standard_error`; `test_mirrored_pairs_cancel_the_odd_part_exactly`).
+5. **Written with what made it**: each frame's coordinate along each mode,
+   each mode's state, the streams' keys (`info.sampling`,
+   [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 5), so
+   a set read back draws the same frames again on the same numpy.
+
+![A mirrored pair](img/vibrational-averaging/mirrored-pair.svg)
+
+*Figure 2d-5. Two mirrored pairs of one quantum: each $z$ and $-z$ give $Q$
+and exactly $-Q$, draws from the same even density.*
+
+**Worked: a bend one photon left with one quantum, beside a thermal
+stretch.** The bend at 1600 cm⁻¹, cold at 300 K, just after one absorbed
+photon — within its energy lifetime (§ 2d.4):
+
+$$
+Q_{\mathrm{zp},1} = \sqrt{\frac{16.8576}{1600}} = 0.1026\ \mathrm{amu^{1/2}\,Å},
+\qquad
+F_1(Q) = \Phi(x) - x\,\phi(x),\quad x = Q/Q_{\mathrm{zp},1}.
+$$
+
+The stretch at 3700 cm⁻¹, thermal at 300 K: $\bar n = 2\times10^{-8}$, so
+$\sigma_2 = Q_{\mathrm{zp},2} = 0.0675$. The same normal numbers as § 2c.3's
+table, and an atom whose rows are $\mathbf L_1 = (0, 0, 0.30)$ and
+$\mathbf L_2 = (0.50, 0, 0)$ amu$^{-1/2}$:
+
+| frame | $z_1$ | $\Phi(z_1)$ | $Q_1 = F_1^{-1}(\Phi(z_1))$ | $z_2$ | $Q_2 = \sigma_2 z_2$ | the atom's move $Q_1\mathbf L_1 + Q_2\mathbf L_2$ (Å) |
+|---|---|---|---|---|---|---|
+| 1 | 0.31 | 0.6217 | 0.1117 | −0.75 | −0.0506 | (−0.0253, 0, 0.0335) |
+| 2 | −1.20 | 0.1151 | −0.2130 | 0.40 | 0.0270 | (0.0135, 0, −0.0639) |
+| 3 | 0.85 | 0.8023 | 0.1771 | 1.10 | 0.0742 | (0.0371, 0, 0.0531) |
+| 4 | −0.05 | 0.4801 | −0.0562 | −0.20 | −0.0135 | (−0.0067, 0, −0.0169) |
+
+Frame 4 shows the one-quantum shape: a normal number near zero gives
+$\lvert Q_1\rvert = 0.55\,Q_{\mathrm{zp}}$, not a coordinate near zero —
+$\lvert\psi_1\rvert^2$ vanishes at $Q = 0$, so $F_1$ is flat there and its
+draws avoid the middle, where a Gaussian's would cluster. Over many
+snapshots the atom's place shows it (Figure 2d-6).
+
+![One atom over many snapshots](img/vibrational-averaging/one-atom-over-snapshots.svg)
+
+*Figure 2d-6. The worked example's atom over 6000 snapshots. Left, every mode
+thermal at 300 K: a Gaussian cloud, its widths the two modes' (§ 2d.3).
+Right, the bend after one photon: the cloud splits along the bend's row into
+the two lobes of $\lvert\psi_1\rvert^2$, the stretch's width unchanged — the
+photon changes one mode's factor alone (§ 2d.4).*
+
+### 2d.8 What it holds, and what it assumes
+
+| claim | why it holds | where | held by |
+|---|---|---|---|
+| a frame's property averages over the position distribution alone | $X(\hat{\mathbf R})$ is diagonal in position | § 2d.1 | — (the static-frame assumption, § 7 item 2) |
+| the modes are independent, a drive group one factor (§ 2c.2) | the harmonic $\hat H$ separates; the thermal state, and one photon's change of one mode alone within its resolution, keep the product | § 2d.2–§ 2d.4 | the covariance test |
+| a thermal mode's coordinate is Gaussian, $\sigma^2 = Q_{\mathrm{zp}}^2\coth(\hbar\omega/2k_BT)$ | Mehler's formula | § 2d.3 | the Mehler, Bose–Einstein and hot-limit tests |
+| one photon on a cold mode leaves $\lvert\psi_1\rvert^2$, the others thermal | the coupling is linear in $\hat Q_j$ and the identity on the other modes | § 2d.4 | the number state's density test |
+| a draw has the state's distribution | $\sigma z$ for a Gaussian; the inverse transform for $n$ quanta; a uniform phase for a swing | § 2d.3, § 2d.5, § 2d.7 | the Kolmogorov test, each state |
+| a mirrored pair is two draws of the same distribution | every state's density is even, and the sampler negates every drawn coordinate | § 2d.5, § 2d.7 | the mirrored-pairs test (a thermal motion) |
+| the snapshots are independent, and reproducible on the same numpy | keyed, block-drawn streams | § 2d.6 | the stream tests |
+| the average is unbiased, its error the spread over $\sqrt N$ | Monte Carlo with draws from $P$ | § 2d.7 | the error tests of § 5.5 |
+
+It assumes harmonic modes — the ladder's equal gaps among them (§ 2a.2,
+§ 7 item 1) — which every set says in its `assumptions` row; and static
+frames (§ 7 item 2), which the calculation over the frames says. For a mode
+a photon excited (§ 2d.4) the conditions are the person's to judge, and no
+set states them: the one-quantum state only while the mode has not relaxed;
+the photon resonant with that mode alone within its resolution and the
+lines' widths; no photon-added thermal state for a warm mode, its stand-in
+right up to the cubic term.
+
 ---
 
 ## 3. What a measurement averages
@@ -1753,7 +2409,8 @@ book against its author's page, 2026-11-23); each is in `references.bib`.
 - [DLMF] *NIST Digital Library of Mathematical Functions*,
   https://dlmf.nist.gov/, eq. 10.32.1 — the integral form of the modified
   Bessel function $I_0$, the swing's exact average of an exponential
-  (§ 2a.3).
+  (§ 2a.3); eq. 18.18.28, Mehler's formula, the thermal state's sum of its
+  number states (§ 2d.3).
 - [Glauber1963] R. J. Glauber, *Phys. Rev.* **131**, 2766–2788 (1963),
   doi:10.1103/PhysRev.131.2766 — coherent states, the name and the states,
   in the radiation field (§ 2a.2).
@@ -1773,6 +2430,13 @@ book against its author's page, 2026-11-23); each is in `references.bib`.
 - [Ward2010] D. R. Ward, F. Hüser, F. Pauly, J. C. Cuevas, D. Natelson,
   *Nature Nanotechnol.* **5**, 732–736 (2010), doi:10.1038/nnano.2010.176 —
   optical rectification and field enhancement in a nanogap (§ 7).
+- [Zavatta2007] A. Zavatta, V. Parigi, M. Bellini, *Phys. Rev. A* **75**,
+  052106 (2007), doi:10.1103/PhysRevA.75.052106 — the single-photon-added
+  thermal state of light, whose name § 2d.4 borrows for a vibration's
+  quantum; checked against Crossref 2026-11-24.
+- [Morse1929] P. M. Morse, *Phys. Rev.* **34**, 57–64 (1929),
+  doi:10.1103/PhysRev.34.57 — the anharmonic ladder, its gaps shrinking a
+  rung at a time (§ 2a.2); checked against Crossref 2026-11-24.
 - [GolubWelsch1969] G. H. Golub, J. H. Welsch, *Math. Comp.* **23**,
   221–230 (1969), doi:10.1090/S0025-5718-69-99647-1 — a distribution's Gauss
   rule from its recurrence, as an eigenvalue problem (§ 2a.3, § 2b.4).
