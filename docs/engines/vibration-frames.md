@@ -25,7 +25,8 @@ modes".)*
 
 **To build.** What this chapter marks *(to build)* is the plan's R3d2b2c
 ([`plans/plan.md`](?doc=plans/plan.md) § 2) — the probe's use of the nodes
-(§ 6) is R3d2c's; what each release built is its row in
+(§ 6) is R3d2c's; § 9, decided 2026-11-25, is the plan's R3d2b2b4, before
+it; what each release built is its row in
 [`process/changelog.md`](?doc=process/changelog.md).
 
 ---
@@ -908,3 +909,392 @@ notebook's run (§ 6.1):
 | a mode's own frames | each rule exact to its stated degree; the bell curve's three at $0, \pm\sqrt3\sigma$; the order; each rule symmetric bit for bit — an odd rule's middle node exactly 0 and its middle frame bit for bit $\mathbf R^0$, $q_- = -q_+$ for every pair, on the thermal, $n$-quanta and driven rules; an even rule's set with the relaxed geometry as frame 0; `outermost_move` for each state |
 | the indexing | every analysis on one value per frame, frame 0 first, the same in memory and read back; `standard_error`, `parts` and `pooled` leaving frame 0 out |
 | the frame set | written and read back through the structure's door: frames, weights, every row with its meaning, a prepended frame 0's rows at 0; a person's frames whose first is the relaxed geometry written without a second copy |
+
+---
+
+## 9. The toolkit as steps *(decided 2026-11-25; not yet built)*
+
+*(The user, 2026-11-25: "i'd like the api to be more close to generic
+question/math/quantum related calculation, but the solution to the question
+we are interested in presented in a template/example jupyter notebook such
+that user can easily tune/re-design it for other general problems".)* Today
+a mode's state is one of five fixed kinds — thermal, $n$ quanta, driven
+(cold or warm), classical, and the classical swing (§ 2) — each with its own
+density, distribution, averages, frames and draw written for it, chosen by
+keyword switches (`temperature_k=`, `quanta=`, `swing_quanta=`,
+`mean_quanta=`, `classical=`). A case outside the five — one photon on a warm
+mode ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
+§ 2d.4) — has no state, and adding it would mean a sixth kind. This section
+makes the toolkit **generic tools** — the quantum mechanics of one
+oscillator, the statistics of one coordinate, random sampling — and makes
+**every case a chain of steps** written in the example notebook (§ 6.1),
+which a person copies and changes. The theory, with figures and worked
+numbers, is
+[`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
+§ 2e. **Nothing here is built yet — the plan's R3d2b2b4; on 2026-11-25
+the user accepted the recommended answers to § 9.4's four questions.** Once built, this section's
+rules move into § 1–§ 8 in their places, and the section goes.
+
+```mermaid
+flowchart TB
+    subgraph G["generic — numpy, math and the constants; nothing molecular"]
+        O["1 · oscillator<br/>one oscillator of a frequency:<br/>its levels, ħω, Q_zp, Bose–Einstein"]
+        S["2 · oscillator_state<br/>chains of steps, and states:<br/>start · events · average over time"]
+        D["3 · distribution<br/>one coordinate's distribution:<br/>density · F · averages · frames · draws"]
+        R["4 · sampling<br/>keyed random streams;<br/>a mean and its error"]
+        O --> S --> D
+    end
+    V["5 · vibration<br/>the molecule's modes; a chain attached to a mode;<br/>the motion and its snapshots"]
+    F["6 · vibration_frames<br/>frame sets: write, read, rows, words;<br/>the page's and the command line's choices"]
+    P["molbuilder.postprocess<br/>the one import of a person's script"]
+    G --> V --> F
+    R --> V
+    F --> P
+    V --> P
+```
+
+Modules 1–5 **travel** with a job in the vibration bundles (§ 1) — numpy,
+`math` and the constants alone — and module 6 is the host's. **Each module
+imports only the ones above it** in the drawing: 1–4 know nothing of
+molecules or frame sets, `vibration` builds on them, `vibration_frames` on
+it. A person reaches every tool through `molbuilder.postprocess`
+([`model/parse.md`](?doc=model/parse.md) § 3), which hands on `Oscillator`,
+the state module as `states`, the distribution module as `dist`, and the
+vibration's reading and writing functions.
+
+### 9.1 The modules
+
+**1 · `oscillator` — one harmonic oscillator of a frequency.**
+`Oscillator(frequency_cm1)`, in its own unit $x = Q/Q_{\mathrm{zp}}$:
+
+- its quantum $\hbar\omega$ and $Q_{\mathrm{zp}}$ (amu½·Å);
+  `thermal_quanta(temperature_k)` (Bose–Einstein) and its inverse,
+  `temperature_of_quanta(mean_quanta)`;
+  `classical_spread(temperature_k)`, the classical bell curve's width in
+  $x$;
+- the levels' wavefunctions $\psi_n$, their densities and distribution
+  functions; $\hat b$, $\hat b^\dagger$ and $\hat x$ on a window of levels,
+  and $\langle n\rvert\hat x^k\lvert n\rangle$.
+
+From today's `vibration`: `zero_point_amplitude_amu12_ang`, `mean_quanta`,
+`temperature_of_quanta`, `classical_spread_amu12_ang`, `_eigenfunction`,
+`_NumberDistribution`, `_position_operator`, `_number_state_rule`. Today's
+code writes them in $\xi = Q/(\sqrt2\,Q_{\mathrm{zp}})$; moved to $x$, each
+formula gains or loses that $\sqrt2$. `vibration` hands `mean_quanta` and
+`zero_point_amplitude_amu12_ang` on under their names, for the record's
+writers that import them there (`spectra/derived.py`,
+`spectra/normal_modes.py`).
+
+**2 · `oscillator_state` — chains of steps, and states.** A **chain** is a
+start and the steps after it, written without a frequency; a **state** is a
+chain placed on an oscillator, `chain.on(oscillator)`, and has numbers. A
+chain whose steps need no temperature — `states.heat(mean_quanta=1.0).add_quantum()`,
+`states.number(3)` — has its numbers at once.
+
+- **Starts**: `ground()`; `number(n)`; `heat(temperature_k=T)` or
+  `heat(mean_quanta=n)` or `heat()` — **a temperature left open**, taken where
+  the chain is attached to a mode (module 5); and, for comparison, the
+  classical ones, `classical_heat(temperature_k=T)` or `classical_heat()`
+  (open) — the classical bell curve, no zero-point motion — and
+  `classical_rest()`, the coordinate at rest at 0, a point: the classical
+  baseline. A classical start takes a push and the time average; adding or
+  removing a quantum on it is refused by name — a classical state counts no
+  quanta.
+- **Steps**, each a method returning a new chain: `.add_quantum()`,
+  `.remove_quantum()`, `.push(swing_quanta, phase=0.0)`,
+  `.time_averaged()`. A push's phase is read in the frame turning with the
+  mode (science § 2e.2): 0 leaves the state at $+Q_0$, at rest; $\pi/2$ is
+  a sudden blow, at $Q = 0$ moving; of two identical kicks $\Delta t$ apart
+  the second has phase $\phi_0 + \omega\Delta t$. A push on a classical
+  start is the classical swing.
+- **Asked of a state**: `populations` (its list, where it has no push, or
+  is averaged over time after its last), `density_matrix` (a push kept at
+  one phase), `mean_quanta`,
+  `is_list`, `is_classical`, `words` — each step saying itself (*thermal at
+  300 K (0.62 mean quanta); one quantum added*) — and `steps`.
+- **When two states are one**: where their *reduced* chains are, on the same
+  oscillator. Reducing a chain: two pushes with no event between them become
+  one ($\hat D(\beta)\hat D(\alpha) = e^{i\,\mathrm{Im}(\beta\alpha^*)}\hat D(\alpha+\beta)$);
+  a time average of a list is dropped; `ground()`, `heat(temperature_k=0)`
+  and `heat(mean_quanta=0)` are one start; `ground()` with $n$ quanta added
+  is `number(n)`. So `number(1)` and `ground().add_quantum()` are one state,
+  and sets made from them pool.
+
+**3 · `distribution` — one coordinate's distribution**, in units of
+$Q_{\mathrm{zp}}$ until it is attached to a mode.
+
+- **Made by** `of_state(state)` — which takes one of the routes drawn
+  below, from the reduced chain — or a person's own: `gaussian(sigma)`; `sinusoid(amplitude, spread)`, a
+  swing of that amplitude at a uniform phase carrying a bell curve (the
+  swing's U-shaped density of § 2a.2 where the spread is 0).
+- **Answers** `pdf(x)`; `cdf(x)`; `moment(k)`; `quantile(p)`, the $x$ with
+  $F(x) = p$; `is_symmetric`; `gauss_rule(m)`, $m$ positions and weights as
+  found; `draw(z)`, the $x$ with $F(x) = \Phi(z)$ (science § 2d.5), and, for
+  the families drawn by a phase (a swing, a sinusoid),
+  `draw_at_phase(z, phi)`; `weights_at(points)` — the weights, the degree they
+  reproduce, the share of the distribution beyond the points, the weights
+  below zero: numbers, no words.
+
+From today's `vibration`: `State`'s `pdf`, `cdf`, `moment`, `_rule`, `_at`,
+`weights_at` and `_degree_reproduced`; `_gauss_rule_of`, `_jacobi_rule`,
+`_gauss_hermite`, `_swing_phases`.
+
+```mermaid
+flowchart LR
+    C["a state's reduced chain"] --> H{"which?"}
+    H -->|"heat"| B["the bell curve<br/>(closed form)"]
+    H -->|"ground or heat → push,<br/>averaged over time"| W["the swing<br/>(closed form, drawn by its phase)"]
+    H -->|"heat → one quantum added"| Q["bell curve × quadratic<br/>(closed form)"]
+    H -->|"classical heat"| K1["the classical bell curve<br/>(closed form)"]
+    H -->|"classical rest or classical heat<br/>→ push, averaged"| K2["the classical swing<br/>(closed form)"]
+    H -->|"any other chain with no push,<br/>or averaged after its last"| L["the list's route<br/>(science § 2e.3)"]
+    H -->|"a push kept at one phase"| M["the density matrix's route<br/>(symmetric or not, read from P(Q))"]
+```
+
+**4 · `sampling` — random streams and the statistics of arrays.** The seed's
+keyed streams, `normal_stream(key, size, start)` and
+`uniform_stream(key, size, start)` (`numpy.random.default_rng([seed, …])`,
+§ 3.3 — the keys unchanged), the seed's check; a mean and its error,
+independent or in pairs; a paired set's even and odd parts; whether two
+drawn ranges overlap. From today's `_stream`, `_phases_of`,
+`_checked_seed` and the arithmetic of `Snapshots.standard_error` and
+`parts`.
+
+**5 · `vibration` — the molecule**, narrowed: `Vibration`, `Mode` — its
+oscillator `m.oscillator`, its rows, `displaced`, `coordinate` — and:
+
+- **`m.bind(chain_or_distribution)`** → a `ModeDistribution`, the chain or
+  distribution **attached to mode `m`**. Attaching gives it the mode's
+  frequency (a temperature becomes a list), its $Q_{\mathrm{zp}}$ (every
+  argument and answer from then on in amu½·Å), an open temperature — the
+  record's, the motion's or the set's, by § 2's rule, said in
+  `temperature_from` — and the mode's own random streams. A distribution
+  made for another mode's scale is refused by name. It answers `pdf(q)`,
+  `cdf(q)`, `moment(k)` (amu^{k/2}·Å^k), `spread_amu12_ang`,
+  `atom_rms_ang`, `mean_quanta`, `quantile(p)`, `words`,
+  `draw(size, *, seed, start=0)`, `frames(nodes)` — where its $P(Q)$ is
+  symmetric, read from $P(Q)$: today's rule in the set's order, frame 0 at
+  0; where not: the rule as found, frame 0 prepended at weight 0 (§ 5) —
+  `outermost_move(nodes)`, and `weights_at(q, written=None)` with § 7's
+  words.
+- **The motion**: `v.motion(chain)` — the chain attached to every real mode,
+  or a function of a mode giving its chain or distribution; `modes=` as
+  today. **The motion's temperature** is its chain's heat's — quantum or
+  classical — where it has one; where it has none (a function, mean quanta,
+  the ground state), an open heat set apart later takes the record's, said.
+  `with_mode(k, chain_or_distribution)`; `with_drive({k: chain_k, …},
+  lags_rad={k: lag, …})` — **a member is a start and a push, not averaged**:
+  `ground().push(n_s)` (the cold drive, today's default), `heat(…).push(n_s)`
+  (warm), or `classical_rest()` / `classical_heat(…)` then `.push(n_s)`
+  (classical) — drawn by the group's one phase, each member's lag the
+  group's: a member's push given a phase of its own is refused by name, the
+  two conflicting; any other chain refused by name, its draw at a given
+  phase not built; `sample(n, *, seed, antithetic, start=0)` — mirrored
+  pairs refused by name where a mode's $P(Q)$ is not symmetric, the mirror
+  being no draw of it.
+- `Snapshots`, `pooled` (two motions one where every mode's reduced chain
+  and attachment are), the frame-0 rule, the analyses over module 4, and
+  `Motion.said`, whose sentences give the way on in the new calls.
+
+**6 · `vibration_frames` — frame sets**, on attached distributions (§ 9.3):
+the writer, the reader, the vocabulary, the words a page says, and the
+spectrum page's *Write frame set…* dialog and `molbuilder frameset
+from-mode`.
+
+**When to end a chain with `.time_averaged()`**: whenever it holds a push and
+the measurement is not timed to one moment of the swing — every steady
+conductance. A chain without a push is a list already, and the average
+changes nothing. A drive group's members are the exception: they are given
+before the average, because the group averages them over its one shared
+phase (science § 2e.5).
+
+### 9.2 The cases, as chains
+
+```python
+from molbuilder.postprocess import vibration, states, dist
+
+v = vibration(run_folder)
+m = v.mode(7)
+
+warm = states.heat(temperature_k=300.0)                 # the mode at 300 K
+photon = m.bind(warm.add_quantum())                     # one photon on the warm mode
+photon.frames(5)                                        # its own 5-frame rule
+photon.moment(4)                                        # <Q^4>, amu^2·Å^4
+photon.pdf(0.05), photon.draw(64, seed=1)               # the density at Q = 0.05 amu½·Å; 64 draws
+
+drive = m.bind(warm.push(4).time_averaged())            # a steady drive, warm
+motion = v.motion(states.heat(temperature_k=300.0)).with_mode(7, warm.add_quantum())
+snaps = motion.sample(64, seed=20261125, antithetic=True)
+```
+
+The chains below are `states.` calls, written without it:
+
+| case | chain | a number to check (cold mode where not said) |
+|---|---|---|
+| thermal at $T$ | `heat(temperature_k=T)` | 200 cm⁻¹ at 300 K: mean 0.62 |
+| thermal at the record's temperature | `heat()`, attached — `temperature_from` *the record's* | |
+| an effective temperature, mean $n$ | `heat(mean_quanta=n)` | |
+| $n$ quanta exactly | `number(n)` | |
+| one photon on a cold mode | `ground().add_quantum()` — the same state as `number(1)` | mean 1 |
+| one photon on a warm mode | `heat(temperature_k=T).add_quantum()` | $\bar n = 1$: mean 3 |
+| two photons on a warm mode | `heat(temperature_k=T).add_quantum().add_quantum()` | $\bar n = 1$: mean 5 |
+| a detected anti-Stokes event | `heat(temperature_k=T).remove_quantum()` | $\bar n = 1$: mean 2 |
+| a steady drive, cold — the coherent state | `ground().push(n_s).time_averaged()` | mean $n_s$ |
+| a steady drive, warm | `heat(temperature_k=T).push(n_s).time_averaged()` | $\bar n = 1$, $n_s = 2$: $p_0 = p_1 = 0.184$ |
+| a pulse, then a photon | `ground().push(1).add_quantum().time_averaged()` | mean 2.5 |
+| a photon, then a pulse | `ground().add_quantum().push(1).time_averaged()` | mean 2.0, $p_1 = 0$ |
+| a pulse, a photon, then a second pulse of the same laser $\Delta t$ later | `ground().push(1, phase=pi/2).add_quantum().push(1, phase=pi/2 + w*dt).time_averaged()` — kept as a density matrix until its last push (science § 2e.2) | its mean depends on $\omega\Delta t$ |
+| the molecule at the swing's turning point | `heat(temperature_k=T).push(n_s, phase=0.0)` — kept at one phase, not symmetric | $\langle Q\rangle = 2Q_{\mathrm{zp}}\sqrt{n_s}$ |
+| the classical bell curve | `classical_heat(temperature_k=T)` or `classical_heat()` (the record's) | |
+| the classical swing, bare or warm | `classical_rest().push(n_s).time_averaged()`; `classical_heat(temperature_k=T).push(n_s).time_averaged()` | |
+| every mode thermal, one set apart | `v.motion(heat(temperature_k=T)).with_mode(7, chain)` | |
+| a classical motion | `v.motion(classical_heat(temperature_k=T))` | |
+| a drive group, cold | `motion.with_drive({9: ground().push(2.0), 11: ground().push(1.0)}, lags_rad={9: 1.57, 11: 0.12})` | |
+| a drive group, warm | the same with `heat().push(…)` — the motion's temperature | |
+| a driven mode's cold baseline | `motion.with_mode(7, ground())` | |
+
+Each step can be swapped: a colder mode is another `temperature_k`, a third
+photon one more `.add_quantum()`.
+
+**From today's calls to the steps:**
+
+| today (§ 2, § 3.1, § 7) | after |
+|---|---|
+| `m.state(temperature_k=T)` | `m.bind(states.heat(temperature_k=T))` |
+| `m.state(mean_quanta=n)` | `m.bind(states.heat(mean_quanta=n))` |
+| `m.state(quanta=n)` | `m.bind(states.number(n))` |
+| `m.state(swing_quanta=ns)` | `m.bind(states.ground().push(ns).time_averaged())` |
+| `m.state(swing_quanta=ns, temperature_k=T)` | `m.bind(states.heat(temperature_k=T).push(ns).time_averaged())` |
+| `m.state(temperature_k=T, classical=True)` | `m.bind(states.classical_heat(temperature_k=T))` |
+| `m.state(swing_quanta=ns, classical=True)` | `m.bind(states.classical_rest().push(ns).time_averaged())` |
+| `m.state(swing_quanta=ns, temperature_k=T, classical=True)` | `m.bind(states.classical_heat(temperature_k=T).push(ns).time_averaged())` |
+| `v.motion(temperature_k=T)` | `v.motion(states.heat(temperature_k=T))` |
+| `motion.with_mode(k, quanta=1)` | `motion.with_mode(k, states.number(1))` |
+| `motion.with_drive({9: 2.0}, lags_rad=…, temperature_k=T)` | `motion.with_drive({9: states.heat(temperature_k=T).push(2.0)}, lags_rad=…)` |
+| `postprocess.reaveraged(path, temperature_k=77)` | `postprocess.reaveraged(path, states.heat(temperature_k=77))` |
+| `postprocess.reaveraged(path, classical=True)` | `postprocess.reaveraged(path, states.classical_heat())` — the set's temperature |
+
+### 9.3 What it changes
+
+- **Retired** (§ 9.4, question 4): `State`, its five kinds, `STATES`,
+  `checked_state`, `state()`, `Mode.state`, `ModeState`, and the keyword
+  forms of `with_mode`, `with_drive`, `v.motion`,
+  `postprocess.outermost_move`, `postprocess.weights_for_set` and
+  `postprocess.reaveraged` — the last three take a chain:
+  `outermost_move(path, *, mode, chain, nodes=None)`,
+  `weights_for_set(rows, chain)` and `reaveraged(path, chain)`, a heat left
+  open taking the set's own `temperature_k` row, said (*the set's*), as
+  today.
+- **What a set records.** A mode's own set records its chain's steps —
+  `info.state`, the steps in order, each `{step, values}` — and a snapshot
+  set each mode's, in `info.sampling`'s `states`. The rows follow from them:
+  `temperature_k` the temperature of the chain's start — a heat's, a
+  classical heat's, a steady drive's environment's — the steps after it in
+  `info.state` and the words, § 5.1's row rewritten so (today it reads *the
+  temperature of the motion the frames sample*, untrue of a set whose
+  temperature was followed by a photon); `quanta` from `number`;
+  `swing_quanta` from the reduced chain's one push — a chain with an event
+  between two pushes writes none, each push in `info.state`; `mean_quanta`
+  derived; `quantum` 1 for a quantum chain, 0 for a classical
+  one, and none for a person's own distribution, said as theirs;
+  `sampling_rule` `gauss-hermite` for a bell curve, `gauss` for another
+  state's own rule; `assumptions` in the steps' words; a snapshot set's
+  `set_apart_modes` each set-apart mode's words. *Example*, one photon on a
+  200 cm⁻¹ mode at 300 K, `heat(temperature_k=300).add_quantum()`:
+  `info.state` =
+  `[{"step": "heat", "values": {"temperature_k": 300.0}}, {"step": "add_quantum", "values": {}}]`;
+  the rows `temperature_k` 300, `mean_quanta` 2.24, `quantum` 1,
+  `sampling_rule` `gauss`, no `quanta` row, and `assumptions` beginning
+  *thermal at 300 K (0.62 mean quanta); one quantum added*. A thermal set
+  at 300 K also writes `temperature_k` 300; the two are told apart by
+  `info.state`, `sampling_rule` and the words a page shows. **A set written
+  before the move is read as written**: its kind's rows and
+  `info.sampling`'s `State` fields are read as the chain they name — a
+  thermal row a heat, a quanta row `number`, swing quanta a steady drive, a
+  classical row the classical start — the same set as before.
+- **`vibration_frames`, rebuilt on the steps**: the page's and the command
+  line's state (`doors_state`, `read_state_ask`, `STATE_ASK_KEYS`) building
+  their chains from the person's choices; `readout`; `frameset_from_mode`;
+  `outermost_move`, `outermost_move_of` and `vibration.outermost_move_ang`,
+  on an attached distribution; `state_words` and `thermal_state_words`
+  becoming the steps' words, and with them `said_of`'s words for a set
+  written before 2.81.0; the writer's rows and records (above); `_sampling_of`
+  and `_motion_of`; the reader rebuilding a mode set's state (`_mode_set_of`,
+  `THE_SETS`); `weights_for_set`. **Unchanged**: the streams' keys, the
+  vocabulary's names, and transport's reading of a set (§ 0).
+- **Other callers**: `scripts/science_figures.py` (Figure 2d-4 draws through
+  `state()`); `spectra/derived.py` and `spectra/normal_modes.py` (module 1's
+  two names, handed on by `vibration`); `Motion.said`'s way-on sentences.
+- **The architecture**: `docs/architecture.md`'s rows for the four new L2
+  modules, the `vibration` and `vibration_frames` rows rewritten (their
+  retired names out), `vibration`'s `TRAVELS_WITH` naming the four, each
+  importing the others both inside the package and beside a job
+  (`runwrap.bundle_members`); `model/parse.md` § 3's rows for what
+  `postprocess` hands on.
+- **The documents**: this chapter's § 1–§ 8 (§ 9's rules moved into them)
+  and the notebook's list (§ 6.1), which gains the new cases — one photon
+  on a warm mode, a detected anti-Stokes event, a pulse, the order of two
+  events; the science chapter's § 2a.3, § 2c.4, § 2d.3–§ 2d.8 and Figure
+  2d-4, where *the toolkit offers no such state* becomes false;
+  [`web/spectra.md`](?doc=web/spectra.md) § 4.3 (the dialog's note, in the
+  steps' words); [`engines/vibration.md`](?doc=engines/vibration.md)
+  § 6.11 § 6 and the sections naming `m.state`;
+  [`engines/vibration-postprocessing.md`](?doc=engines/vibration-postprocessing.md)
+  § 1 (its `outermost_move` row) and § 2a–§ 2b; the file map of
+  [`engines/vibration.md`](?doc=engines/vibration.md) § 8.1;
+  [`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md)
+  § 3.2; the plan's R3d2b2c bullets.
+- **The tests**: retired first — every call of the retired forms in
+  `tests/test_vibration_mechanics.py`, `tests/test_vibration_frames.py`,
+  `tests/test_vibration_mechanics_e2e.py`,
+  `tests/spectra/test_what_a_temperature_means.py`,
+  `tests/test_spectrum_results_e2e.py` and
+  `tests/test_transport_on_a_real_junction_e2e.py` — then each step, each
+  chain and each route held to the science's closed forms (science § 2b.5,
+  § 2e.1's lists and their $P(Q)$, § 2e.2's events and their order, § 2e.3's
+  worked chain), never to molbuilder's own output; the closed form and the
+  list each other's check. `compare_head.py` against today's toolkit is the
+  move's evidence, once, not a test: today's five kinds and their chains the
+  same distributions — their frames to the digits the list's cut leaves
+  (science § 2e.4) — and the same draws for the kinds whose drawing rule
+  stays (a bell curve, a swing, a number state).
+
+### 9.4 The user's decisions *(2026-11-25: "go with your recommendations on all four")*
+
+1. **How a state is held.**
+   - (a) **The list alone** (science § 2e.1): one route for every state. Its
+     cost grows with the levels — 154 for a 50 cm⁻¹ mode at 300 K, 7 682 for
+     a 10 cm⁻¹ mode at 3000 K (science § 2e.4) — and a driven mode is drawn
+     through its distribution function, so a drive group's shared phase
+     (§ 3.1) needs a route of its own beside it.
+   - (b) **The list, and the closed forms where a family has one** — the bell
+     curve (heat), the swing (a steady drive, cold or warm, drawn by its
+     phase as today, so a drive group shares it), the bell curve times a
+     quadratic (one photon on a warm mode), the classical forms — recognised
+     from the reduced chain, the list for everything else; the same
+     distribution by both, each the other's test.
+   - **Decided: (b).** It keeps today's exact, fast thermal and driven states
+     and the drive groups' shared phase as they are, and adds the list for
+     the states that have no closed form.
+2. **A quantum two modes share** (science § 2d.4, § 2e.5) — two modes of
+   nearby frequencies, or a degenerate pair under circularly polarised light:
+   a density matrix over two modes' levels, the same steps on it — now, or
+   when a case needs it. **Decided: when a case needs it**; the notebook
+   states the theory. A degenerate pair under linearly polarised light needs
+   no joint density matrix, only the pair's mode turned to the field's axes
+   — built, too, when a case needs it.
+3. **The spectrum page's *Write frame set…* dialog and `molbuilder frameset
+   from-mode`** (§ 6): keep their named choices — thermal (by a
+   temperature, or the command line's mean quanta), $n$ quanta, driven (cold
+   or warm) — built from chains underneath, or offer thermal alone and send
+   every other state to the notebook. **Decided: keep them**, no new one
+   until a person asks; their sets, their `assumptions` row and the page's
+   note say the state in the steps' words.
+4. **A person's script**: retire the keyword forms (`m.state(temperature_k=…)`,
+   `with_mode(k, quanta=1)`, and the `postprocess` functions taking them) for
+   the chains, or keep them beside the chains. No person's script calls them
+   yet — the notebook is not written (§ 6.1); molbuilder's own callers are
+   the page's and the command line's state and the re-weighting, which build
+   chains. **Decided: retire them**, as the user's rule says (*"we are not
+   exposing api for special case direct results"*), the named choices of
+   question 3 living in the page and the command line alone.

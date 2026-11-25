@@ -269,6 +269,150 @@ def fig_mirror():
     save(fig, "mirrored-pair.svg")
 
 
+# ---------------------------------------------------------------------- #
+#  § 2e: a state as a list, the steps on it, the frames from it           #
+# ---------------------------------------------------------------------- #
+def _lists(nbar: float = 1.0, ns: float = 2.0, n0: int = 3, nmax: int = 13):
+    """Four states as lists over the counts 0 .. nmax-1, each with its
+    P(x) (science § 2e.1's table): thermal, one quantum on a warm mode, a
+    steady drive on a cold mode (Poisson), n0 quanta exactly."""
+    n = np.arange(nmax)
+    th = np.array([thermal_p(k, nbar) for k in n])
+    added = np.array([k * nbar ** (k - 1) / (nbar + 1.0) ** (k + 1)
+                      if k else 0.0 for k in n])
+    drive = stats.poisson.pmf(n, ns)
+    number = (n == n0).astype(float)
+    x = np.linspace(-7, 7, 801)
+    return n, x, [
+        (fr"thermal, $\bar n = {nbar:g}$", th,
+         gauss(x, math.sqrt(2 * nbar + 1))),
+        (fr"one photon on it ($\bar n = {nbar:g}$)", added,
+         photon_added(x, nbar)),
+        (fr"a steady drive, cold, $n_s = {ns:g}$", drive, coherent(x, ns)),
+        (fr"{n0} quanta exactly", number, psi2(n0, x)),
+    ]
+
+
+def fig_lists():
+    n, x, rows = _lists()
+    fig, axs = plt.subplots(len(rows), 2, figsize=(7.6, 7.4),
+                            gridspec_kw={"width_ratios": [1, 1.5],
+                                         "hspace": 0.55, "wspace": 0.25})
+    for i, ((title, p, dens), mean) in enumerate(zip(rows, (1, 3, 2, 3))):
+        a, b = axs[i]
+        a.bar(n, p, color=C[i], width=0.7)
+        a.set_ylim(0, 1.05 if p.max() > 0.6 else 0.6)
+        a.set_xticks(range(0, len(n), 2))
+        a.set_title(title, loc="left")
+        a.text(0.97, 0.85, f"mean {mean:g} quant{'um' if mean == 1 else 'a'}",
+               transform=a.transAxes, ha="right", fontsize=8.5, color=INK)
+        b.plot(x, dens, color=C[i], lw=2)
+        b.fill_between(x, 0, dens, color=C[i], alpha=0.15)
+        b.set_xlim(-7, 7)
+        b.set_ylim(0, None)
+        if i == len(rows) - 1:
+            a.set_xlabel("n, the number of quanta")
+            b.set_xlabel(r"$Q\,/\,Q_{\rm zp}$")
+        a.set_ylabel(r"$p_n$")
+        b.set_ylabel(r"$P(Q)\times Q_{\rm zp}$")
+    fig.suptitle(r"A state is a list $p_n$ (left); where the atoms are follows "
+                 r"from it, $P(Q) = \sum_n p_n|\psi_n(Q)|^2$ (right)",
+                 y=0.995, fontsize=10.5)
+    save(fig, "a-state-is-a-list.svg")
+
+
+def fig_steps_on_a_list(nbar: float = 1.0, nmax: int = 11):
+    """What adding and removing a quantum does to a warm mode's list."""
+    n = np.arange(nmax)
+    th = np.array([thermal_p(k, nbar) for k in n])
+    add = np.array([k * th[k - 1] if k else 0.0 for k in n]) / (nbar + 1.0)
+    rem = np.array([(k + 1) * thermal_p(k + 1, nbar) for k in n]) / nbar
+    fig, ax = plt.subplots(figsize=(7.2, 3.2))
+    width = 0.27
+    for j, (p, label, col) in enumerate((
+            (th, fr"thermal, mean $\bar n = {nbar:g}$", C[0]),
+            (add, r"one quantum added: mean $2\bar n + 1 = 3$", C[1]),
+            (rem, r"one quantum removed: mean $2\bar n = 2$", C[2]))):
+        ax.bar(n + (j - 1) * width, p, width=width, color=col, label=label)
+    ax.set_xticks(n)
+    ax.set_xlabel("n, the number of quanta")
+    ax.set_ylabel(r"$p_n$")
+    ax.set_title("A detected event changes the list: the more quanta a mode "
+                 "holds, the likelier the event")
+    ax.legend(frameon=False)
+    save(fig, "a-step-changes-the-list.svg")
+
+
+def fig_worked_frames(nbar: float = 1.0):
+    """§ 2e.3's worked chain: one quantum on a warm mode against the
+    thermal state of the same mean, each with its three frames."""
+    x = np.linspace(-8, 8, 801)
+    exact = photon_added(x, nbar)
+    s2 = 4 * nbar + 3                       # <x^2> of both, 7 at nbar = 1
+    stand_in = gauss(x, math.sqrt(s2))
+    m4 = 3 * (12 * nbar ** 2 + 16 * nbar + 5)
+    a = math.sqrt(m4 / s2)
+    w = s2 / (2 * a * a)
+    b = math.sqrt(3 * s2)
+    fig, ax = plt.subplots(figsize=(7.2, 3.4))
+    ax.plot(x, exact, color=C[1], lw=2,
+            label=r"one photon on the warm mode, $\langle Q^4\rangle = 99$")
+    ax.plot(x, stand_in, color=C[0], lw=1.6, ls="--",
+            label=r"thermal of the same mean 3, $\langle Q^4\rangle = 147$")
+    for q, wt in ((0.0, 1 - 2 * w), (a, w), (-a, w)):
+        ax.vlines(q, 0, 0.5 * wt, color=C[1], lw=3)
+    for q, wt in ((0.0, 2 / 3), (b, 1 / 6), (-b, 1 / 6)):
+        ax.vlines(q + 0.12, 0, 0.5 * wt, color=C[0], lw=3, alpha=0.6)
+    ax.text(-a - 0.15, 0.5 * w + 0.01, f"±{a:.3f}, weight {w:.4f}",
+            color=C[1], ha="right", fontsize=8)
+    ax.text(b + 0.3, 0.5 / 6 + 0.01, f"±{b:.3f}, weight 1/6", color=C[0],
+            ha="left", fontsize=8)
+    ax.text(0.15, 0.5 * (1 - 2 * w) + 0.01, f"0, weight {1 - 2 * w:.3f}",
+            color=C[1], fontsize=8)
+    ax.set_xlabel(r"$Q\,/\,Q_{\rm zp}$")
+    ax.set_ylabel(r"$P(Q)\times Q_{\rm zp}$; frames' weights × 1/2")
+    ax.set_title("The same width, another shape: three frames each "
+                 r"($\bar n = 1$, one quantum added)")
+    ax.legend(frameon=False, loc="upper left", fontsize=8)
+    ax.set_xlim(-8, 8)
+    ax.set_ylim(0, 0.36)
+    save(fig, "the-worked-chain-frames.svg")
+
+
+def fig_order_of_events(ns: float = 1.0, nmax: int = 9):
+    """Two events in either order on a cold mode (science § 2e.2): a pulse
+    of n_s swing quanta and one quantum added -- their lists, from the
+    displacement's matrix elements |<n|D|m>|^2 (generalised Laguerre)."""
+    n = np.arange(nmax)
+
+    def d2(nn, m):                    # |<nn|D(alpha)|m>|^2, |alpha|^2 = ns
+        lo, hi = min(nn, m), max(nn, m)
+        lag = special.eval_genlaguerre(lo, hi - lo, ns)
+        return (math.factorial(lo) / math.factorial(hi) * ns ** (hi - lo)
+                * math.exp(-ns) * lag * lag)
+    pulse = np.array([d2(k, 0) for k in n])             # ground -> pulse
+    pulse_then_photon = np.array([k * pulse[k - 1] if k else 0.0
+                                  for k in n]) / (ns + 1.0)
+    photon_then_pulse = np.array([d2(k, 1) for k in n])  # |1> -> pulse
+    fig, axs = plt.subplots(1, 2, figsize=(7.6, 2.9), sharey=True,
+                            gridspec_kw={"wspace": 0.12})
+    for ax, p_n, title, col, mean in (
+            (axs[0], pulse_then_photon, "pulse → photon", C[1], 2.5),
+            (axs[1], photon_then_pulse, "photon → pulse", C[2], 2.0)):
+        ax.bar(n, p_n, color=col, width=0.7)
+        ax.set_title(f"{title}: mean {mean:g}", loc="left")
+        ax.set_xticks(n)
+        ax.set_xlabel("n, the number of quanta")
+    axs[0].set_ylabel(r"$p_n$")
+    axs[1].annotate(r"$p_1 = 0$ exactly", xy=(1, 0.0), xytext=(2.6, 0.33),
+                    arrowprops={"arrowstyle": "->", "color": INK},
+                    fontsize=8.5, color=INK)
+    fig.suptitle(fr"Order matters: the same two events on a cold mode "
+                 fr"($n_s = {ns:g}$), averaged over time", y=1.02,
+                 fontsize=10.5)
+    save(fig, "order-of-events.svg")
+
+
 if __name__ == "__main__":
     fig_states()
     fig_mehler()
@@ -276,4 +420,8 @@ if __name__ == "__main__":
     fig_draws()
     fig_snapshot_cloud()
     fig_mirror()
+    fig_lists()
+    fig_steps_on_a_list()
+    fig_worked_frames()
+    fig_order_of_events()
     print("wrote", sorted(p.name for p in OUT.glob("*.svg")))

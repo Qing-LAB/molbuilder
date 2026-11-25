@@ -234,9 +234,15 @@ and an API reviewer** *(the user, 2026-11-23)*.
   distribution function and moments, a draw from one normal number — each
   step one tool, and every case of § 2b and § 2d (thermal, n quanta, an
   effective temperature, a swing, one photon on a cold or a warm mode, a
-  quantum two modes share) a combination of them; the discussion first, in
-  `science/vibrational-averaging.md` and `engines/vibration-frames.md`, the
-  user's decision before the build; then **R3d2b2c, the example notebook**
+  quantum two modes share) a combination of them; the discussion first —
+  written 2026-11-25: the theory, `science/vibrational-averaging.md` § 2e;
+  the modules, the recipes and the four questions,
+  `engines/vibration-frames.md` § 9 — decided 2026-11-25, the four
+  questions as recommended *("go with your recommendations on all four")*;
+  the build, one release: the modules of § 9.1, every move and caller of
+  § 9.3 (the tests retired first, then held to the science), § 9's rules
+  moved into § 1–§ 8 and the person's documents;
+  then **R3d2b2c, the example notebook**
   and its test, on the toolkit as decided:
   - **`vibration`, carried from § 2d's review**: `_NumberDistribution`'s
     note says "one to two" panels between neighbouring zeros — measured,
