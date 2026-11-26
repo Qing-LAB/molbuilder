@@ -254,14 +254,14 @@ const WORKSPACE_TAG = "results:transport";
         wrap.appendChild(row);
 
         /* THE FRAME SET THE CALCULATION CITES (`web/results.md` § 2.5):
-         * the one frame-set card, from the record answer's `frame_set` and
-         * the words and provenance beside it (`frame_set_said`); a card
-         * only for several frames. */
+         * the one frame-set card, from the record answer's `frame_set`,
+         * its rows as the set stores them; a card only for several
+         * frames. */
         if (state.nFrames > 1 && state.frameSet) {
             const sets = _card("Frame set", "transport-frameset-card");
             const fs = _el("div", "frameset-card");
             sets.appendChild(fs);
-            renderFrameSet(fs, state.frameSet, state.frameSetSaid);
+            renderFrameSet(fs, state.frameSet);
             wrap.appendChild(sets);
         }
 
@@ -1529,10 +1529,9 @@ const WORKSPACE_TAG = "results:transport";
                                         + a.error);
                     }
                     rec = a.body.record;
-                    /* THE CITED FRAME SET AND ITS WORDS, beside the record
+                    /* THE CITED FRAME SET, beside the record
                      * (`/api/transport/record`). */
                     state.frameSet = a.body.frame_set || null;
-                    state.frameSetSaid = a.body.frame_set_said || null;
                 } catch (e) {
                     if (state.disposed) return;
                     if (ctx && ctx.showError) ctx.showError(String(e));

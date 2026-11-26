@@ -36,6 +36,7 @@ from unittest.mock import ANY
 import numpy as np
 import pytest
 
+from molbuilder.postprocess import states as chains
 from molbuilder.runfiles import (ROLE_SPECTRA, ROLE_SPECTRA_DATA, compose,
                                  stem_before)
 from molbuilder.runs import on_label_at
@@ -327,8 +328,9 @@ class _EveryState:
         a `null` -- at every state of a run, and adds, never into the file,
         each mode's element shares where the file states a geometry, and the
         frame set's readout -- the motion toolkit's, on the file's own modes
-        -- at the temperature its thermochemistry states, the state said
-        back; no temperature stated, or no geometry yet, none.  THE SILENT FAILURE: the viewer
+        -- the mode bound to the thermal chain at the temperature its
+        thermochemistry states, the state said back as the dialog holds it;
+        no temperature stated, or no geometry yet, none.  THE SILENT FAILURE: the viewer
         drawing what the file does not state, or a computed field leaking into
         the format, which the writer would then write as if the schema declared
         it."""
@@ -357,7 +359,8 @@ class _EveryState:
                 assert "frameset" not in mode
             else:
                 assert mode["frameset"] == readout(
-                    v.mode(mode["index_1based"]), {"temperature_k": kelvin})
+                    v.mode(mode["index_1based"]),
+                    chains.thermal(temperature_k=kelvin))
 
 
 @pytest.fixture(scope="module", params=list(_PYSCF))
@@ -941,15 +944,19 @@ def test_the_thermal_spread_is_served_at_the_temperature_asked(
     assert all("thermal_spread_amu12_ang" not in m for m in served["modes"])
 
 
-@pytest.mark.parametrize("asked", [{"temperature_k": 1000.0}, {"quanta": 2},
-                                   {"mean_quanta": 0.5}],
-                         ids=["thermal", "n quanta", "mean quanta"])
+@pytest.mark.parametrize("asked, chain", [
+    ({"temperature_k": 1000.0}, chains.thermal(temperature_k=1000.0)),
+    ({"quanta": 2}, chains.level(2)),
+    ({"mean_quanta": 0.5}, chains.thermal(mean_quanta=0.5))],
+    ids=["thermal", "n quanta", "mean quanta"])
 def test_what_a_frame_sets_state_means_is_served_as_the_script_says_it(
-        real_water_probed, web_client, monkeypatch, asked):
+        real_water_probed, web_client, monkeypatch, asked, chain):
     """`web/spectra.md` § 4.3: at the frame-set dialog's state the load door
     serves each mode's readout for each frame count, says the state back,
-    and a notebook's door (`molbuilder.postprocess.outermost_move`) answers
-    the same outermost move.  The closed forms of each state are
+    and a notebook's door (`molbuilder.postprocess.outermost_move`), given
+    the chain a script writes for the dialog's choice
+    (`engines/vibration-frames.md` § 6), answers the same outermost
+    move.  The closed forms of each state are
     `tests/test_vibration_frames.py`'s, the contract's own table
     `spectra/test_what_a_temperature_means.py`'s.  The silent failure: a dialog whose numbers
     are not the frames the doors write, or a script told another."""
@@ -966,7 +973,8 @@ def test_what_a_frame_sets_state_means_is_served_as_the_script_says_it(
             * mode["zero_point_amplitude_amu12_ang"], rel=1e-12)
         for nodes in OFFERED_NODES:
             assert said["outermost_move_ang"][str(nodes)] == outermost_move(
-                path, mode=mode["index_1based"], nodes=nodes, **asked)
+                path, mode=mode["index_1based"], chain_or_distribution=chain,
+                nodes=nodes)
 
 
 def test_write_frame_set_asks_the_state_and_writes_it(
@@ -1005,10 +1013,12 @@ def test_write_frame_set_asks_the_state_and_writes_it(
         field = lambda name: dialog.locator(
             f".mb-dialog-field:has([data-role='{name}'])")
         note = dialog.locator("[data-role='note']")
-        # THERMAL FIRST, its box at the record's temperature, said.
+        # THERMAL FIRST, its box at the record's temperature, said in the
+        # mode's state's words (`engines/vibration-frames.md` § 2), the
+        # note's first word capitalised.
         expect(field("temperature")).to_be_visible()
         expect(field("quanta")).to_be_hidden()
-        expect(note).to_contain_text("The thermal state at ", timeout=60000)
+        expect(note).to_contain_text("Thermal at ", timeout=60000)
         # n QUANTA: its number, no temperature; the note follows it; a
         # number that is none said in the field's words.
         dialog.locator("[data-role='state']").select_option("quanta")

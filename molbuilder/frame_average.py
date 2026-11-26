@@ -27,8 +27,9 @@ some parameters (such as averaging when needed) for the calculation, it
 should not be deeply integrated with transport framework itself").  The one
 parameter the combination takes is each frame's ``weight``
 (`frameset.read`); every other row is its maker's, carried as written and
-never read here -- what a row means and how a page says it is its maker's
-(a vibration's: `vibration_frames`).  Nothing here refuses a row.
+never read here, and a page is answered each by its stored name, value and
+unit, none interpreted (the user, 2026-11-26: "transport does transport
+calculation and that's it").  Nothing here refuses a row.
 """
 from __future__ import annotations
 
@@ -265,32 +266,36 @@ def summary_lines(avg: Dict, frame_set: Optional[Dict] = None) -> List[str]:
 #  What a page is answered of the frames                                   #
 # ----------------------------------------------------------------------- #
 
-def answer(structure) -> Dict[str, object]:
+def answer(structure, said: Sequence[str] = ()) -> Dict[str, object]:
     """What a citation's frames are, as every page that shows them reads it
     (`engines/transport.md` § 3.8.1: the describe door, Task setup's echo,
-    the Results tab): ``{n_frames, definition}`` -- the structure's frame
-    count and its rows as written, ``None`` for a structure that states
-    none.  The definition is ``{structure: [{name, value, unit, note}],
-    columns: [{name, unit, note}], frames: [[a value per column, None where
-    a frame states none] per frame], weights, weight_sum, warnings}`` -- the
-    columns in the order the frames first state them, each its unit and
-    meaning as the first frame stating one writes it."""
+    the Results tab): ``{n_frames, definition, said}`` -- the structure's
+    frame count, its rows **as the set stores them**, ``None`` for a
+    structure that states none, and ``said``, transport's words of the
+    citation (a calculation's pair no longer as its record pinned it,
+    `compose.pair_changed_said`).  The definition is ``{structure: [{name,
+    value, unit}], columns: [{name, unit}], frames: [[a value per column,
+    None where a frame states none] per frame], weights, weight_sum,
+    warnings}`` -- the columns in the order the frames first state them,
+    each its unit as the first frame stating one writes it.  No row is
+    interpreted: what a row means is the set's own (its ``note``, carried
+    in the record, not drawn)."""
     from .frameset import read
+    said = [str(s) for s in said]
     if structure is None:
-        return {"n_frames": 1, "definition": None}
+        return {"n_frames": 1, "definition": None, "said": said}
     rows = read(structure)
     if rows is None:
-        return {"n_frames": structure.n_frames, "definition": None}
+        return {"n_frames": structure.n_frames, "definition": None,
+                "said": said}
     columns: Dict[str, Dict[str, Any]] = {}
     for frame in rows.frames:
         for r in frame:
-            columns.setdefault(r["name"], {
-                "name": r["name"], "unit": r.get("unit"),
-                "note": rows.meaning(r["name"], of_frames=True)})
-    return {"n_frames": structure.n_frames, "definition": {
+            columns.setdefault(r["name"], {"name": r["name"],
+                                           "unit": r.get("unit")})
+    return {"n_frames": structure.n_frames, "said": said, "definition": {
         "structure": [{"name": r["name"], "value": r.get("value"),
-                       "unit": r.get("unit"),
-                       "note": str(r.get("note") or "") or None}
+                       "unit": r.get("unit")}
                       for r in rows.structure],
         "columns": list(columns.values()),
         "frames": [[rows.value(n, f) for n in columns]

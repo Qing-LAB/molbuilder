@@ -453,9 +453,10 @@ the Lanczos recurrence of the oscillator's position operator from the state
 $\lvert n\rangle$ (§ 2b.4); for a list over the levels, the Lanczos
 recurrence on every level's own rule, pooled (§ 2e.3) — in exact arithmetic
 Gautschi's discretized Stieltjes procedure [Gautschi1982]
-(`vibration.State.frames` for $n$ quanta, which builds three and five frames
-the same way, equal to the hand recipe; `distribution.LevelList.gauss_rule`
-for a list).
+(`distribution.Level.gauss_rule` for $n$ quanta, which builds three and five
+frames the same way, equal to the hand recipe; `distribution.LevelList.gauss_rule`
+for a list; a mode's own frames, `vibration.ModeDistribution.frames`, take
+them).
 
 **Worked** — one quantum exactly, in units of $Q_{\mathrm{zp}}$:
 $\langle Q^2\rangle = 3$, $\langle Q^4\rangle = 15$, so $x^2 = 5$,
@@ -1075,7 +1076,7 @@ Q = \sigma\,z, \qquad z \sim \mathcal N(0,1)
 \Pr(Q \le q) = \Phi(q/\sigma)
 $$
 
-(`State._at`). Each mode's normal numbers come from its own random stream
+(`distribution.Gaussian.draw`). Each mode's normal numbers come from its own random stream
 (§ 2d.6), so the draws of different modes are independent: the product above,
 drawn factor by factor. *Held by* `test_each_states_draws_follow_its_own_distribution`
 (a Kolmogorov test of 4000 draws against the state's `cdf`) and
@@ -1158,9 +1159,9 @@ no state of one mode gives. A snapshot draws mode $j$ from $P'_j$ and every othe
 flowchart TD
     L["light on mode j"] --> H{"one heralded event,<br/>or a steady source?"}
     H -->|"one photon absorbed or scattered,<br/>within the lifetime τ"| W{"the mode's temperature:<br/>ħω against k_BT"}
-    W -->|"cold, n̄ ≪ 1"| N1["one quantum exactly<br/>P'_j = |ψ₁|²<br/>with_mode(j, quanta=1)"]
+    W -->|"cold, n̄ ≪ 1"| N1["one quantum exactly<br/>P'_j = |ψ₁|²<br/>with_mode(j, states.level(1))"]
     W -->|"warm"| PA["photon-added thermal<br/>p'_n = n n̄^(n−1)/(n̄+1)^(n+1)<br/>states.thermal(…).add_quantum() (§ 2e);<br/>the doors' mean quanta 2n̄+1: its spread, not its shape"]
-    H -->|"many events at random moments:<br/>a steady laser's Raman, a current"| TE["thermal at an effective temperature<br/>Gaussian, σ² = Q_zp²(2n+1)<br/>n = n_th + Rτ (weak pumping of a cold mode, § 2a.1)<br/>with_mode(j, mean_quanta=n)"]
+    H -->|"many events at random moments:<br/>a steady laser's Raman, a current"| TE["thermal at an effective temperature<br/>Gaussian, σ² = Q_zp²(2n+1)<br/>n = n_th + Rτ (weak pumping of a cold mode, § 2a.1)<br/>with_mode(j, states.thermal(mean_quanta=n))"]
 ```
 
 **On a cold mode** ($\hbar\omega_j \gg k_BT$, so $\hat\rho_j = \lvert0\rangle\langle0\rvert$):
@@ -1175,7 +1176,7 @@ P'_j(Q) \;=\; \lvert\psi_1(Q)\rvert^2 \;=\; \frac{Q^2}{\sqrt{2\pi}\,Q_{\mathrm{z
 $$
 
 the **one-quantum state**, two lobes with a zero at $Q = 0$
-(`with_mode(j, quanta=1)` in a thermal motion). **It holds for times below
+(`with_mode(j, states.level(1))` in a thermal motion). **It holds for times below
 the mode's energy lifetime $\tau$**: the mode then relaxes toward its thermal
 state, so the set describes the moment after the event, not a steady average.
 
@@ -1213,12 +1214,11 @@ width, $(Q^2/\sigma^2)$ times the same Gaussian, weight $(\bar n+1)/(2\bar n+1)$
 and 3.69). Every moment follows from the mix: at $\bar n = 0$ the one-quantum
 density, and a dip at $Q = 0$ to about half its peak at $\bar n = 1$. Quantum optics names a light mode's
 $\hat b^\dagger\hat\rho_{\mathrm{th}}\hat b$ so [Zavatta2007]; here the quantum
-added is the vibration's. **`vibration.state` holds no such state** — the
-generic tools make it, `states.thermal(…).add_quantum()` (§ 2e), and
-`vibration`'s states move onto those tools at the switch-over
-([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 9.3);
-the page's and the command line's choices stay thermal and $n$ quanta until
-a person asks for another (§ 9.4 there, item 3). The thermal
+added is the vibration's. **A mode bound to it holds it**:
+`m.bind(states.thermal(temperature_k=T).add_quantum())` (§ 2e;
+[`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 2), its distribution the closed form
+above; the page's and the command line's choices stay thermal and $n$ quanta
+until a person asks for another ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 6). The thermal
 state of the same mean $2\bar n+1$ has its spread — $\langle Q^2\rangle = Q_{\mathrm{zp}}^2(2\langle n\rangle+1)$ in every
 state (§ 2a) — and, both even, the right cubic moment, but not the right
 shape: its $\langle Q^4\rangle = 3(4\bar n+3)^2Q_{\mathrm{zp}}^4$ against the
@@ -1293,7 +1293,7 @@ $$
 \tilde F_n^{-1}\big(\Phi(-z)\big) = -\tilde F_n^{-1}\big(\Phi(z)\big).
 $$
 
-The code takes the lower tail always and restores the sign (`State._at`):
+The code takes the lower tail always and restores the sign (`Distribution.draw`):
 
 $$
 \xi_- = \tilde F_n^{-1}\!\Big(\tfrac12\operatorname{erfc}\big(\lvert z\rvert/\sqrt2\big)\Big)\le 0,
@@ -1359,7 +1359,7 @@ numbers § 2e.6's).
 
 ![molbuilder's draws against the density](img/vibrational-averaging/draws-follow-the-density.svg)
 
-*Figure 2d-4. 40 000 of molbuilder's own draws (`vibration.State.draw`) of a
+*Figure 2d-4. 40 000 of molbuilder's own draws (a state's distribution's `draw`, `dist.of_state`) of a
 thermal state of one mean quantum and of one quantum exactly, against the
 densities they must follow — the Gaussian and $\lvert\psi_1\rvert^2$.*
 
@@ -1521,7 +1521,7 @@ the photon resonant with that mode alone within its resolution and the
 lines' widths; for a warm mode, the photon-added thermal state from the
 generic tools (§ 2e), the doors' stand-in right up to the cubic term.
 
-## 2e. A mode's state, built in steps — the theory the toolkit's tools follow *(decided 2026-11-25; the generic tools in place in 2.84.0, the switch-over to come)*
+## 2e. A mode's state, built in steps — the theory the toolkit's tools follow *(decided 2026-11-25; built in 2.84.0 and 2.85.0)*
 
 *(The user, 2026-11-25: "this should not be a single api call just to get
 the result, but rather a carefully separated scientifically correct steps
@@ -1531,17 +1531,16 @@ but rather this is an effort to give support to a group of
 problem/category of problem such as distribution calculation etc.")* § 2a,
 § 2b and § 2d treat each state of a mode as a case of its own. This section
 describes every state **one way**, and makes each from **a few physical
-steps**, so that every case — those molbuilder handles today and those it
-does not yet, such as one photon on a warm mode (§ 2d.4) — is a short chain
-of the same steps. The tools that carry the steps are
-[`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 9; the
-cases are written as chains in the example notebook (§ 6.1 there), which a
-person copies and changes. On 2026-11-25 the user accepted the recommended
-answers to that chapter's § 9.4. The generic tools — one oscillator, its
-state built in steps, one coordinate's distribution, random streams — are in
-place since 2.84.0, a person's script reaching them through `postprocess`
-(`Oscillator`, `states`, `dist`, `oscillator`, `sampling`); the vibration
-and frame-set code move onto them in the plan's R3d2b2b4b. The numbers the
+steps**, so that every case — the thermal state and $n$ quanta, and those
+no single keyword named, such as one photon on a warm mode (§ 2d.4) — is a
+short chain of the same steps. The tools that carry the steps are
+[`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 9 — one
+oscillator, its state built in steps, one coordinate's distribution, random
+streams, a person's script reaching them through `postprocess` (`Oscillator`,
+`states`, `dist`, `oscillator`, `sampling`) — and a chain bound to a mode
+gives its frames and snapshots (that chapter's § 2); the cases are written as
+chains there and in the example notebook (§ 6.1 there), which a person
+copies and changes. The numbers the
 tools fix — where a list is cut, when two numbers are one — are § 2e.6's.
 
 > **In short.** As far as a set of frames can see, one mode's state is a
@@ -1854,9 +1853,8 @@ One lookup table of $F$ for a whole list costs about $N^2$ —
 each point sweeps every level — where a table per level, as § 2d.5 keeps for
 one number state, would cost about $N^3$; the closed forms do not grow at
 all. A hot soft mode is where they differ — why the toolkit keeps the closed
-forms beside the list
-([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 9.4,
-the user's choice).
+forms beside the list (the user's choice of 2026-11-25, decision 1(b),
+[`archive/2026-11-26-vibration-frames-steps-design.md`](?doc=archive/2026-11-26-vibration-frames-steps-design.md)).
 
 ### 2e.5 Where one list per mode is not enough
 
@@ -2148,8 +2146,8 @@ $$
 $x_{\mathrm{out}}$ the rule's outermost node (§ 5.1: $\sqrt{3/2}$ for three
 frames, 2.0202 for five, 2.6520 for seven); $\max_A\lvert\mathbf L_A\rvert$ is
 `vibration.largest_move`, the one a Raman phase's $\pm\delta Q$ rests on too
-(the motion toolkit's `outermost_move` asks it, for any state:
-`vibration.outermost_move_ang`). Each frame states its own largest
+(a mode's state's `outermost_move` asks it, for any state:
+`vibration.ModeDistribution.outermost_move`). Each frame states its own largest
 single-atom move beside it — the check a person reads against a bond length.
 
 **An example — mode 48 of the user's AuBDTAu vibration on Sol**
@@ -2317,9 +2315,9 @@ written for (§ 2b.4) — a thermal set's, a bell curve's (§ 5.1). Once the fra
 averaged over **another motion** with other weights, and no frame is
 computed again.
 
-**The motion** is any state of the toolkit's table — a thermal state at
-another temperature, $n$ quanta, a mean number of quanta, the classical
-bell curve ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 7).
+**The motion** is any chain or distribution — a thermal state at another
+temperature, $n$ quanta, a mean number of quanta, one photon on the warm
+mode, the classical bell curve ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 2, § 7).
 
 **The weights.** With $m$ frames, the weights $w_f$ are the ones with which
 the frames reproduce the motion's own averages of
@@ -2343,7 +2341,7 @@ motion, the odd average $\langle q^m\rangle$ vanishing on both. Frames placed fo
 motion itself do better — degree $2m-1$ — so at the set's own state the
 set's own weights are the answer, and these reproduce them; the toolkit
 states the degree it checks the weights reproduce
-(`Weights.exact_to_degree`).
+(`PointWeights.exact_to_degree`).
 
 **How well — the contact bond of § 4.3**, $T = T_0\,e^{-aq}$ with
 $a\sigma_T = 1$, frames written for a bell curve of spread $\sigma_T$ and
@@ -2376,7 +2374,7 @@ values:
 1. **Frames that reach the motion.** The part of the motion beyond the
    outermost frames is averaged by values the frames never computed. **The
    share of the motion beyond them is said beside the number** — read from
-   the motion's own distribution (`State.cdf`), the column in brackets
+   the motion's own distribution (its `cdf`), the column in brackets
    above — never refused: frames written at a higher temperature, or more
    of them, reach further (§ 5.1a). A thermal set's three frames reach
    $1.73\,\sigma$, five $2.86\,\sigma$, seven $3.75\,\sigma$ of the spread

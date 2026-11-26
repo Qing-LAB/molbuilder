@@ -7,8 +7,9 @@ for a point of a given chance, the statistics of snapshots, the refusals and
 the words.  Every expectation is a formula of the science or a
 reference outside the toolkit (the standard library's normal quantile,
 numpy's generator); where two of the toolkit's routes are held to each other
--- a closed family and the list (`engines/vibration-frames.md` § 9.4,
-decision 1(b)) -- the test says so."""
+-- a closed family and the list (`engines/vibration-frames.md` § 9.1's
+`of_state`, "each the other's check"; the user's decision 1(b) of 2026-11-25,
+`archive/2026-11-26-vibration-frames-steps-design.md`) -- the test says so."""
 from __future__ import annotations
 
 import math
@@ -282,7 +283,8 @@ def test_the_worked_chains_three_frames_are_the_sciences(route):
 ], ids=["a thermal state", "one photon on a warm mode", "2 quanta exactly"])
 def test_an_exact_family_and_the_lists_route_are_one_distribution(chain,
                                                                     family):
-    """`engines/vibration-frames.md` § 9.4 decision 1(b); science § 2e.3:
+    """`engines/vibration-frames.md` § 9.1's `of_state` (the user's decision
+    1(b) of 2026-11-25); science § 2e.3:
     where a family has a closed form, its density, distribution function,
     averages and frames are the list's -- each route the other's check.
     The silent failure: a closed form that drifted from the state it names."""
@@ -710,3 +712,246 @@ def test_a_states_words_are_its_steps(chain, words):
     bell curve; a quantum taken.  The silent failure: a set whose words name another
     state than its frames sample."""
     assert chain.on(Oscillator(200.0)).words == words
+
+
+# --------------------------------------------------------------------- #
+#  A distribution in another unit, and the records a set keeps of a     #
+#  chain or a distribution (`engines/vibration-frames.md` § 2, § 5,     #
+#  § 9.1)                                                               #
+# --------------------------------------------------------------------- #
+
+#: THE SCALE A MODE PUTS ITS STATE IN: about a 200 cm-1 mode's zero-point
+#: amplitude, amu^1/2.Å -- ``Q = Q_zp x`` (`engines/vibration-frames.md`
+#: § 2).
+_SCALE = 0.29
+
+
+@pytest.mark.parametrize("family", list(_FAMILIES))
+def test_a_distribution_in_another_unit_is_its_change_of_variable(family):
+    """`engines/vibration-frames.md` § 2, § 9.1 (``d.scaled(s)``): the
+    distribution of ``y = s x`` -- its density ``P_x(y / s) / s``, its
+    distribution function ``F_x(y / s)``, its averages ``s^k <x^k>``; its
+    quantile where its ``F`` reaches the chance; its own Gauss rule exact to
+    ``2m - 1`` against those averages; a draw where its ``F`` reaches
+    ``Phi(z)``, ``-z`` giving exactly ``-y``; and the weights of points
+    placed elsewhere the base's for the same points in ``x`` -- a weight
+    has no unit.  THE SILENT FAILURES: a mode's density off by its
+    ``Q_zp`` (a density that no longer integrates to 1), or its frames left
+    in ``x``, every geometry moved by ``1 / Q_zp`` too little."""
+    base = _FAMILIES[family]()
+    d = base.scaled(_SCALE)
+    y = np.linspace(-6.0, 6.0, 25) * _SCALE
+    assert d.pdf(y) == pytest.approx(base.pdf(y / _SCALE) / _SCALE,
+                                     rel=1e-12, abs=1e-300)
+    assert d.cdf(y) == pytest.approx(base.cdf(y / _SCALE), abs=1e-15)
+    for k in range(9):
+        assert d.moment(k) == pytest.approx(_SCALE ** k * base.moment(k),
+                                            rel=1e-12, abs=1e-300), k
+    for p in (0.05, 0.3, 0.5, 0.95):
+        assert float(d.cdf(d.quantile(p))) == pytest.approx(p, abs=1e-14)
+    x, w = d.gauss_rule(4)
+    for k in range(8):
+        terms = w * x ** k                  # odd k: terms cancelling to 0
+        assert float(terms.sum()) == pytest.approx(
+            d.moment(k), rel=1e-11, abs=1e-14 * float(np.abs(terms).sum()))
+    z = sampling.normal_stream((5, 1, 0), 200)
+    assert np.max(np.abs(d.cdf(d.draw(z)) - _phi(z))) < 1e-12
+    assert np.array_equal(d.draw(-z), -d.draw(z))
+    points = np.array([-1.5, -0.4, 0.0, 0.7, 2.0]) * _SCALE
+    assert d.weights_at(points).weights == pytest.approx(
+        base.weights_at(points / _SCALE).weights, abs=1e-12)
+
+
+def test_a_bell_curve_in_another_unit_is_the_bell_curve_of_that_spread():
+    """`engines/vibration-frames.md` § 9.1: a bell curve of spread ``sigma``
+    in ``x`` is, in ``y = s x``, the bell curve of spread ``s sigma`` --
+    its density, its three frames at ``0, +-sqrt(3) s sigma``, a draw ``s
+    sigma z`` -- and a distribution scaled twice is one scaled by the two
+    scales' product, its record nesting once.  THE SILENT FAILURE: a mode's
+    state scaled by ``Q_zp`` twice, its frames ``Q_zp`` times too far."""
+    sigma = 1.3
+    d = dist.Gaussian(sigma).scaled(_SCALE)
+    y = np.linspace(-3.0, 3.0, 13)
+    width = _SCALE * sigma
+    assert d.pdf(y) == pytest.approx(
+        np.exp(-0.5 * (y / width) ** 2) / (math.sqrt(2.0 * math.pi) * width),
+        rel=1e-13)
+    x, w = d.gauss_rule(3)
+    assert np.sort(x) == pytest.approx(
+        [-math.sqrt(3.0) * width, 0.0, math.sqrt(3.0) * width], abs=1e-15)
+    assert d.draw(np.array([1.0, -2.0])) == pytest.approx(
+        [width, -2.0 * width], rel=1e-15)
+    twice = dist.Gaussian(sigma).scaled(2.0).scaled(_SCALE)
+    assert twice.pdf(y) == pytest.approx(
+        dist.Gaussian(2.0 * width).pdf(y), rel=1e-13)
+    assert twice.to_record() == {"family": "Scaled", "scale": 2.0 * _SCALE,
+                                 "base": {"family": "Gaussian",
+                                          "sigma": sigma}}
+
+
+@pytest.mark.parametrize("scale", [0.0, -0.29, math.inf, True],
+                         ids=["no scale", "a scale below zero", "an "
+                              "endless scale", "a truth value"])
+def test_a_scale_that_is_none_is_refused_by_name(scale):
+    """`engines/vibration-frames.md` § 9.1: a scale is a positive number --
+    0, one below it, an endless one or a truth value refused by name.  THE
+    SILENT FAILURE: a mode of no zero-point amplitude put in a unit where
+    every frame sits at rest, or mirrored."""
+    with pytest.raises(ValueError, match="a scale is a positive number"):
+        dist.Level(2).scaled(scale)
+
+
+#: ONE OF EACH FAMILY A SET RECORDS (`engines/vibration-frames.md` § 5's
+#: ``info.state``, § 9.1): the four families, a list given unnormalised,
+#: and one in another unit.
+_RECORDED_FAMILIES = {
+    **_FAMILIES,
+    "a list given unnormalised": lambda: dist.LevelList([2.0, 1.0, 1.0]),
+    "3 quanta in another unit": lambda: dist.Level(3).scaled(_SCALE),
+}
+
+
+@pytest.mark.parametrize("family", list(_RECORDED_FAMILIES))
+def test_a_distributions_record_makes_it_again(family):
+    """`engines/vibration-frames.md` § 5, § 9.1: a distribution's record --
+    its family and its numbers, as a set's sidecar keeps it (JSON) -- makes
+    it again (``dist.from_record``): the same family, the same density,
+    averages and own frames, the same record.  THE SILENT FAILURE: a set's
+    state read back as another distribution than the frames were placed
+    for -- a list's chances shifted, a photon's mean swapped for its
+    spread."""
+    import json
+    d = _RECORDED_FAMILIES[family]()
+    again = dist.from_record(json.loads(json.dumps(d.to_record())))
+    assert type(again) is type(d)
+    assert again.to_record() == d.to_record()
+    x = np.linspace(-5.0, 5.0, 21)
+    assert np.array_equal(again.pdf(x), d.pdf(x))
+    assert [again.moment(k) for k in (2, 4, 6)] == [d.moment(k)
+                                                    for k in (2, 4, 6)]
+    assert np.array_equal(again.gauss_rule(3)[0], d.gauss_rule(3)[0])
+
+
+class _OwnBell(dist.Distribution):
+    """A person's own distribution, by a class of their own."""
+
+    def moment(self, k):
+        return dist.Gaussian(1.0).moment(k)
+
+
+@pytest.mark.parametrize("record, refused", [
+    ({"family": "Poisson", "mean": 3.0}, "names its family"),
+    ("Gaussian", "names its family"),
+    ({"family": "Gaussian"}, "a Gaussian record states its sigma"),
+    ({"family": "Scaled", "base": {"family": "Level", "n": 2}},
+     "a Scaled record states its scale"),
+    ({"family": "Gaussian", "sigma": -1.0}, "spread is 0 or more"),
+    ({"family": "Level", "n": 2.5}, "a level is a whole number"),
+    ({"family": "LevelList", "populations": [0.0, 0.0]},
+     "every chance given is 0"),
+], ids=["a family it does not know", "no mapping", "a number missing",
+        "a scale missing", "a spread below zero", "half a level",
+        "a list of no chance"])
+def test_a_record_that_makes_no_distribution_is_refused_by_name(record,
+                                                                refused):
+    """`engines/vibration-frames.md` § 9.1: a record makes its family by
+    the family's own checks -- what names no family it knows, a family's
+    record missing a number, and a number its family refuses, each refused
+    by name.  THE SILENT FAILURE: a set's state read back as a default where
+    its record names none."""
+    with pytest.raises(ValueError, match=refused):
+        dist.from_record(record)
+
+
+def test_a_persons_own_class_records_nothing_to_make_again():
+    """`engines/vibration-frames.md` § 5, § 9.1: a distribution of a
+    person's own class can be drawn from and placed, but states no record
+    to be made again from -- refused by name, naming its class and the
+    families a set records.  THE SILENT FAILURE: a set written that reads
+    back with no state, or with another."""
+    with pytest.raises(ValueError, match="a _OwnBell states no record to be "
+                                         "made again from"):
+        _OwnBell().to_record()
+
+
+#: CHAINS AS A SET RECORDS THEM (`engines/vibration-frames.md` § 5): each
+#: start, open or named, and events after it, as given -- never reduced.
+_CHAINS = {
+    "the ground state": states.ground(),
+    "3 quanta": states.level(3),
+    "a level, a quantum added, as given": states.level(1).add_quantum(),
+    "thermal at a temperature": states.thermal(temperature_k=300.0),
+    "thermal of a mean": states.thermal(mean_quanta=0.5),
+    "thermal, open": states.thermal(),
+    "classical at a temperature": states.classical_thermal(temperature_k=77.0),
+    "classical, open": states.classical_thermal(),
+    "a photon, then a quantum taken": states.thermal(temperature_k=300.0)
+    .add_quantum().remove_quantum(),
+}
+
+
+@pytest.mark.parametrize("name", list(_CHAINS))
+def test_a_chains_record_makes_it_again_as_given(name):
+    """`engines/vibration-frames.md` § 5 (``info.state``'s chain, "the chain
+    as given, its steps in order"): a chain's record -- its steps, each
+    ``{"step", "values"}``, as a set's sidecar keeps it (JSON) -- makes
+    the chain again (``Chain.from_record``), the same chain as given, a
+    start left open still open.  THE SILENT FAILURES: an open start read
+    back naming a temperature, or a level and its event read back as
+    another level, its record no longer the chain the person wrote."""
+    import json
+    chain = _CHAINS[name]
+    record = json.loads(json.dumps(chain.to_record()))
+    assert [step["step"] for step in record] == [s.name for s in chain.steps]
+    again = states.Chain.from_record(record)
+    assert again == chain
+    assert again.temperature_open == chain.temperature_open
+
+
+@pytest.mark.parametrize("record, refused", [
+    ([], "a chain's record is its steps in order"),
+    ("thermal", "a chain's record is its steps in order"),
+    ([{"step": "add_quantum", "values": {}}],
+     "a chain starts with ground, level, thermal or classical_thermal"),
+    ([{"step": "ground", "values": {}}, {"step": "thermal", "values": {}}],
+     "after its start a chain holds add_quantum and remove_quantum"),
+    ([{"step": "thermal", "values": {"temperature_k": -5.0}}],
+     "a number of kelvin"),
+    ([{"step": "level", "values": {"quanta": 1.5}}],
+     "a level is a whole number"),
+    ([{"step": "classical_thermal", "values": {}},
+      {"step": "add_quantum", "values": {}}], "counts no quanta"),
+    ([{"step": "ground", "values": {}},
+      {"step": "remove_quantum", "values": {}}], "holds none"),
+], ids=["no steps", "no list", "an event first", "a second start",
+        "a temperature below zero", "half a level", "a quantum on a "
+        "classical start", "a quantum from the ground state"])
+def test_a_record_that_makes_no_chain_is_refused_by_name(record, refused):
+    """`engines/vibration-frames.md` § 9.1: a chain's record is made again
+    by the starts and events themselves -- what is no list of steps, a
+    first step that is no start, a later one that is no event, and what a
+    start or an event refuses, each refused by name.  THE SILENT FAILURE: a
+    set's state read back as a chain no person could have written."""
+    with pytest.raises(ValueError, match=refused):
+        states.Chain.from_record(record)
+
+
+@pytest.mark.parametrize("chain, says, open_", [
+    (states.thermal(), ("thermal", "open"), True),
+    (states.classical_thermal(), ("classical", "open"), True),
+    (states.thermal().add_quantum(), ("thermal", "open", "one quantum added"),
+     True),
+    (states.thermal(temperature_k=300.0).add_quantum(),
+     ("thermal at 300 K", "one quantum added"), False),
+], ids=["thermal, open", "classical, open", "a photon on an open start",
+        "a photon on a named one"])
+def test_a_chains_words_say_an_open_start_is_open(chain, says, open_):
+    """`engines/vibration-frames.md` § 2, § 9.1: a chain in words, before
+    it is placed -- each step saying itself, an open start saying its
+    temperature is open, never a number, a start naming its temperature
+    saying it (*thermal at 300 K; one quantum added*).  THE SILENT FAILURE:
+    a chain whose temperature is taken where it is placed said as if it
+    named one."""
+    words = chain.words
+    assert all(w in words for w in says), words
+    assert (" K" not in words) == open_, words

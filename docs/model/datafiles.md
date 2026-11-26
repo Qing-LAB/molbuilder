@@ -164,8 +164,8 @@ lattice constant `a` — is a name, never a unit. A data file's variable
 states the unit its name carries (`ncdata.check_said` asks it); a
 structure's row whose name carries a unit leaves its own `unit` blank, and
 any other number states its unit there in any spelling, shown as written
-([`structure.md`](?doc=model/structure.md) § 2.2d). The vibration frame
-sets' words take a row's page unit from the last column.
+([`structure.md`](?doc=model/structure.md) § 2.2d) — a unit typed in its
+page look (`Å`) read as its spelling (`units.unit_spelled`).
 
 | spelling | means | in a name | on a page |
 |---|---|---|---|

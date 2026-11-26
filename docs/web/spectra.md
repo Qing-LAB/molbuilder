@@ -776,12 +776,13 @@ asked every time — a temperature stated nowhere is never assumed:
 Each state's fields are shown for it alone (the form dialog's `show`,
 `lib/dialog.js`). **The note is the load door's**, asked at the state the
 fields hold (`frameset_state`, § 6): the toolkit's readout for this mode
-(`vibration_frames.readout`) — the state in the set's words, first (its
-`state`, the frame set's `assumptions` row's,
+(`vibration_frames.readout`) — the state in its chain's words, first (its
+`state`, the mode bound to the chain the fields name, the frame set's
+`assumptions` row's,
 [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 5.1), its
 mean number of quanta (*1 quantum*, *2 quanta*), its spread against the
 zero-point one, and how far the outermost frames move the atom that moves
-most for the rule chosen (`vibration_frames.outermost_move`;
+most for the rule chosen (the mode's state's `outermost_move`;
 `science/vibrational-averaging.md` § 5), beside this mode's largest zero-point
 atom move (the record's `largest_zero_point_move_ang`). **Many quanta are
 said and asked to confirm** *(the user, 2026-11-24)*: where the state's quanta

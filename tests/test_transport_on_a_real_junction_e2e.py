@@ -162,31 +162,18 @@ _C2_CM_K = 1.438776877
 #: in its order: what the Transport tab's card shows for the set the
 #: fixture wrote (`engines/transport.md` § 3.8.1); the doors' rule and
 #: masses as `engines/vibration-frames.md` § 4 and § 5 state them.
-_SET_ROWS = (("vibration_run", "given", None, "Vibration run", None),
-             ("vibration_result_sha256", "given", None, "Result sha256", None),
-             ("mass_source", "given", None, "Masses", None),
-             ("assumptions", "given", None, "Assumptions", None),
-             ("sampling_rule", "given", None, "Sampling rule", None),
-             ("sampling_nodes", "given", "1", "Nodes", None),
-             ("quantum", "given", "1", "Quantum", None),
-             ("mode_index_1based", "given", "1", "Mode", None),
-             ("frequency_cm1", "given", None, "Frequency", "cm⁻¹"),
-             ("zero_point_amplitude_amu12_ang", "given", None,
-              "Zero-point amplitude", "amu½·Å"),
-             ("temperature_k", "given", None, "Temperature", "K"),
-             ("mean_quanta", "derived", "1", "Mean quanta n", None),
-             ("spread_amu12_ang", "derived", None, "Spread σ", "amu½·Å"),
-             ("max_displacement_ang", "measured", None, "Outermost move",
-              "Å"))
+_SET_ROWS = (("vibration_run", None), ("vibration_result_sha256", None),
+             ("mass_source", None), ("assumptions", None),
+             ("sampling_rule", None), ("sampling_nodes", "1"),
+             ("quantum", "1"), ("mode_index_1based", "1"),
+             ("frequency_cm1", None),
+             ("zero_point_amplitude_amu12_ang", None),
+             ("temperature_k", None), ("mean_quanta", "1"),
+             ("spread_amu12_ang", None), ("max_displacement_ang", None))
 _SAMPLING = {"sampling_rule": "gauss-hermite", "sampling_nodes": 3,
              "mass_source": "standard atomic weights"}
-_FRAME_ROWS = (("displacement_ang", "measured", None, "Displacement", "Å"),
-               ("max_atom_displacement_ang", "measured", None,
-                "Largest atom move", "Å"),
-               ("q_amu12_ang", "derived", None,
-                "Position along the mode, q", "amu½·Å"),
-               ("node_sigma", "derived", "1", "q in units of σ", None),
-               ("weight", "given", "1", "Weight", None))
+_FRAME_ROWS = (("displacement_ang", None), ("max_atom_displacement_ang", None),
+               ("q_amu12_ang", None), ("node_sigma", "1"), ("weight", "1"))
 
 #: The PDOS of a selection asked where the Results tab asks it
 #: (`/api/transport/pdos`, `web/results.md` § 2.5), a row each: every atom of
@@ -1247,13 +1234,13 @@ def test_the_shared_panel_says_which_kind_of_citation_its_values_came_from(
     holding the citation's answers, and the line above it says where they
     came from -- the run cited, or the record the cited pair carries -- the
     citation's kind as the server sends it and the page reads it.  A cited
-    set is drawn by the one frame-set card (§ 3.8.1): what it is, its rows
-    in the vibration sets' words, where it came from said once.
+    set is drawn by the one frame-set card (§ 3.8.1): its rows as the set
+    stores them, none interpreted.
 
     THE SILENT FAILURE: the kind spelled one way by the server and another
     by the page, so the panel says the citation answered nothing while it
-    holds every value it answered; a card the page draws from words the
-    server no longer sends."""
+    holds every value it answered; a transport page saying what made the
+    frames."""
     from playwright.sync_api import expect
     from conftest import point_the_one_door_at
     from support.live_server import serve
@@ -1271,19 +1258,39 @@ def test_the_shared_panel_says_which_kind_of_citation_its_values_came_from(
 
 def _the_card_says_the_set(card, junction):
     """The frame-set card as a person reads it for the set the fixture wrote
-    (`engines/transport.md` § 3.8.1): what it is and its rows in the
-    vibration sets' words, its prose row on a line of its own, and where it
-    came from on one line -- the run named once, the hash shortened, whole
-    on hover."""
+    (`engines/transport.md` § 3.8.1; the user, 2026-11-26: "the frame's own
+    information is its own, transport does not interpret that at all"): its
+    count, each row by the name, value and unit the set stores -- its
+    vibration run a value like any other -- and nothing transport says of
+    the set: no row in other words, no note drawn, no word of what the set
+    is or where it came from.  THE SILENT FAILURE: a transport page telling
+    a person how the frames were made."""
     from playwright.sync_api import expect
-    expect(card).to_contain_text(f"{_N_FRAMES} frames of one mode — ",
-                                 timeout=15000)
+    from molbuilder.vibration_frames import ROWS
+    expect(card).to_contain_text(f"{_N_FRAMES} frames", timeout=15000)
     text = card.inner_text()
-    assert "Mode " in text and "Temperature 300 K" in text, text
-    assert "Assumptions: Harmonic modes" in text, text
-    assert text.count(junction.vibration) == 1, text
-    assert f"From the vibration run {junction.vibration}" in text, text
-    assert "vibration_run" not in text, text
+    cells = [c.strip() for c in card.locator(".frameset-rows td")
+             .all_inner_texts()]
+    stored = dict(zip(cells[0::3], cells[1::3]))
+    assert stored["vibration_run"] == junction.vibration, stored
+    assert stored["temperature_k"] == "300", stored
+    assert stored["sampling_rule"] == "gauss-hermite", stored
+    assert [n for n, _ in _SET_ROWS] == cells[0::3], cells
+    # ...EACH FRAME'S ROWS UNDER THEIR STORED NAMES, a unit beside one only
+    # where the set states one other than the dimensionless 1.
+    heads = [h.strip() for h in card.locator(".frameset-table th")
+             .all_inner_texts()]
+    assert heads == ["Frame"] + [n if u in (None, "1") else f"{n} ({u})"
+                                 for n, u in _FRAME_ROWS], heads
+    # ...NOTHING OF TRANSPORT'S OWN about the set: no line saying what it
+    # is or where it came from, and no row's meaning -- the notes its maker
+    # wrote stay in its file.
+    for said in ("frames of one mode", "From the vibration run",
+                 "Sampling rule", "Assumptions:"):
+        assert said not in text, (said, text)
+    for r in ROWS:
+        assert r.means not in text and r.means not in card.inner_html(), \
+            r.name
 
 
 def test_describe_is_one_act_and_refuses_a_described_folder(junction):
@@ -3222,13 +3229,14 @@ def test_the_frames_are_reaveraged_at_another_state(junction):
     set's rows (`postprocess.frame_rows`) at transport's averaging door.  At
     the set's own state -- its temperature taken from its own row, said --
     the weights are the set's own and the average the record's, the data
-    file's own; at a temperature twice the set's -- a wider bell curve --
+    file's own; at a thermal chain twice the set's temperature -- a wider
+    bell curve --
     the weights reproduce its spread and three frames are said blind to its
     shape, the share of it beyond the outermost frames said; a calculation of
     one structure refused, having no rows to weight.  The silent failures:
     a re-averaging that reads another variable or axis than the record
     averaged, or one that answers past the frames unsaid."""
-    from molbuilder.postprocess import frame_rows, reaveraged
+    from molbuilder.postprocess import frame_rows, reaveraged, states
     from molbuilder.task import of as task_of
     from molbuilder.transport.datafile import data_file_path, read_data_file
     run = junction.from_pair
@@ -3236,7 +3244,7 @@ def test_the_frames_are_reaveraged_at_another_state(junction):
     S = {k: v["data"] for k, v in
          read_data_file(path)["groups"]["summary"]["variables"].items()}
     rows = frame_rows(path)
-    own = reaveraged(path)
+    own = reaveraged(path, states.thermal())
     assert list(own["weights"].weights) == pytest.approx(list(_WEIGHTS),
                                                          rel=1e-9)
     assert own["bias_v"] == list(_BIAS)
@@ -3244,16 +3252,19 @@ def test_the_frames_are_reaveraged_at_another_state(junction):
                        rtol=1e-9, atol=0, equal_nan=True)
     assert np.allclose(own["conductance_g0"], S["average_conductance_g0"],
                        rtol=1e-9, atol=0, equal_nan=True)
-    # THE SET'S OWN RULE, exact to degree 2m - 1: the state taken from the
-    # set's row named, and nothing else -- every point is done, so the
-    # average adds nothing either.
+    # THE SET'S OWN RULE, exact to degree 2m - 1: the open start's
+    # temperature taken from the set's row, named with the state it was
+    # taken for (§ 7's words), and nothing else -- every point is done, so
+    # the average adds nothing either.
     assert own["weights"].exact_to_degree == 2 * _N_FRAMES - 1
-    assert own["said"] == [f"the thermal state at the set's temperature, "
-                           f"{_TEMPERATURE_K:g} K (its temperature_k row)"], \
+    assert len(own["said"]) == 1, own["said"]
+    assert own["said"][0].startswith(
+        f"the set's temperature, {_TEMPERATURE_K:g} K (its temperature_k "
+        f"row)") and f"thermal at {_TEMPERATURE_K:g} K (" in own["said"][0], \
         own["said"]
     q_zp = float(rows.value("zero_point_amplitude_amu12_ang"))
     nu = float(rows.value("frequency_cm1"))
-    hot = reaveraged(path, temperature_k=2.0 * _TEMPERATURE_K)
+    hot = reaveraged(path, states.thermal(temperature_k=2.0 * _TEMPERATURE_K))
     q = np.asarray([rows.value("q_amu12_ang", f) for f in range(_N_FRAMES)])
     w = np.asarray(hot["weights"].weights)
     # BOSE AND EINSTEIN'S SPREAD at twice the temperature, by CODATA
@@ -3269,7 +3280,7 @@ def test_the_frames_are_reaveraged_at_another_state(junction):
     with pytest.raises(ValueError,
                        match="one structure, or frames that state none"):
         reaveraged(data_file_path(junction.bundle, "T"),
-                   temperature_k=_TEMPERATURE_K)
+                   states.thermal(temperature_k=_TEMPERATURE_K))
     # TRANSPORT'S OWN DOOR takes any numbers, one per frame, frame 0 first,
     # and refuses another count by name.
     from molbuilder.frame_average import AverageError, averaged_at
@@ -3738,7 +3749,9 @@ def test_the_command_line_says_what_the_temperature_means(junction):
                                  frames=True)
     rows = {r["name"]: r["value"] for r in pair.customized_rows(None)}
     said = junction.frameset_cli
-    assert f"the thermal state at {_TEMPERATURE_K:g} K" in said, said
+    # THE STATE IN THE SET'S WORDS (§ 2: the chain's steps, its thermal
+    # start's mean quanta on the mode).
+    assert f"thermal at {_TEMPERATURE_K:g} K (" in said, said
     assert (f"it holds "
             f"{rows['mean_quanta']:.4g} quanta on average; its spread is "
             f"{rows['spread_amu12_ang'] / rows['zero_point_amplitude_amu12_ang']:.4f}"
@@ -3775,28 +3788,27 @@ def test_the_spectrum_viewers_door_writes_the_same_doors_set(junction):
     assert again == 400 and "already exist" in refused["error"], refused
 
 
-def test_the_tab_cites_a_frame_set_and_says_what_each_frame_is(junction):
+def test_the_tab_cites_a_frame_set_and_answers_its_rows_as_stored(junction):
     """§ 3.8.1: the Transport tab cites either kind of § 3.1 -- and for a
-    pair the describe door says what its frames are: a mode's set its rows
-    as written and its weights (transport's `frame_average.answer`), and
-    beside them the vibration frame sets' words for each row, what the set
-    is and where it came from (`frame_set_said`,
-    `vibration_frames.said_of`); a family its count and no rows; a run one
-    structure.  The shared panel asks the pseudopotential directory of the
-    person exactly for a pair, which brings none; Task setup's folder
-    answer and the Results tab's record answer echo the frame-set
-    calculation's frames and words as the describe door states them.  THE
-    SILENT FAILURES: a card stating rows, weights or moves the cited set
-    does not hold, or a provenance it does not state, so a person cites
-    frames they misread; a pair not asked its pseudopotential directory,
-    described with none."""
+    pair the describe door answers its frames as the set stores them: a
+    mode's set its rows by name, value and unit and its weights
+    (transport's `frame_average.answer`), none interpreted -- no words, no
+    meaning, nothing of what made the frames (the user, 2026-11-26); a
+    family its count and no rows; a run one structure.  The shared panel
+    asks the pseudopotential directory of the person exactly for a pair,
+    which brings none; Task setup's folder answer and the Results tab's
+    record answer echo the frame-set calculation's frames as the describe
+    door states them.  THE SILENT FAILURES: a card stating rows, weights or
+    moves the cited set does not hold, so a person cites frames they
+    misread; a transport answer interpreting the maker's rows; a pair not
+    asked its pseudopotential directory, described with none."""
     from molbuilder.persist import sha256_of
     from molbuilder.runfiles import ROLE_SPECTRA
     from molbuilder.runs import on_label_at
     from molbuilder.vibration_frames import MASS_CHANNEL, ROWS
     from molbuilder.workingcopy_structure import StructureCodec
-    # WHAT THE CARD SAYS, from § 5.1's table and the rows the script wrote
-    # -- the pair's own, read back -- never from the definition's reader.
+    # WHAT THE CARD SHOWS, the rows the script wrote -- the pair's own,
+    # read back -- never from the definition's reader.
     pair = StructureCodec().load(junction.tree / junction.frame_set,
                                  frames=True)
 
@@ -3804,40 +3816,14 @@ def test_the_tab_cites_a_frame_set_and_says_what_each_frame_is(junction):
         return next(r[key] for r in pair.customized_rows(frame)
                     if r["name"] == name)
     expect = {
-        "structure": [{"name": n, "value": stated(n), "unit": u,
-                       "note": stated(n, key="note")}
-                      for n, k, u, w, pu in _SET_ROWS],
-        "columns": [{"name": n, "unit": u, "note": stated(n, 0, key="note")}
-                    for n, k, u, w, pu in _FRAME_ROWS],
+        "structure": [{"name": n, "value": stated(n), "unit": u}
+                      for n, u in _SET_ROWS],
+        "columns": [{"name": n, "unit": u} for n, u in _FRAME_ROWS],
         "frames": [[stated(row[0], f) for row in _FRAME_ROWS]
                    for f in range(_N_FRAMES)],
         "weights": [stated("weight", f) for f in range(_N_FRAMES)],
         "weight_sum": pytest.approx(1.0, abs=1e-12),
         "warnings": [],
-    }
-    # THE WORDS BESIDE THEM, the vibration frame sets' -- each row its words,
-    # page unit and kind, its meaning the set's note -- what the set is,
-    # and where it came from: the run the doors read and its result's
-    # sha256, as the set's own rows state them.
-    said = {
-        "structure": {n: {"words": w, "page_unit": pu, "kind": k,
-                          "means": stated(n, key="note"),
-                          "prose": n == "assumptions"}
-                      for n, k, u, w, pu in _SET_ROWS},
-        "frames": {n: {"words": w, "page_unit": pu, "kind": k,
-                       "means": stated(n, 0, key="note"), "prose": False}
-                   for n, k, u, w, pu in _FRAME_ROWS},
-        "what": "frames of one mode",
-        "provenance": {
-            "run": junction.vibration,
-            "result_sha256": sha256_of(on_label_at(
-                junction.tree / junction.vibration, ROLE_SPECTRA)),
-            "stated_as": "its rows vibration_run and "
-                         "vibration_result_sha256",
-            "rows": ["vibration_run", "vibration_result_sha256"]},
-        # ITS ASSUMPTIONS ARE ITS OWN ROW: none said for it.
-        "assumptions": None,
-        "said": [],
     }
     # ...and those rows the doors': its weights, its nodes, the
     # temperature stated, the mode's quanta and spread at it, and the
@@ -3853,6 +3839,11 @@ def test_the_tab_cites_a_frame_set_and_says_what_each_frame_is(junction):
         stated("zero_point_amplitude_amu12_ang") * (2 * n + 1) ** 0.5,
         rel=1e-9)
     assert {n: stated(n) for n in _SAMPLING} == _SAMPLING
+    # ...the run the doors read and its result's sha256, as the set's own
+    # rows state them (`engines/vibration-frames.md` § 5.1).
+    assert stated("vibration_run") == junction.vibration
+    assert stated("vibration_result_sha256") == sha256_of(on_label_at(
+        junction.tree / junction.vibration, ROLE_SPECTRA))
     # ...the masses the coordinates are measured with, the pair's channel;
     # ...every row written with its meaning, the vocabulary's own words
     # (`engines/vibration-frames.md` § 5.1).
@@ -3887,25 +3878,63 @@ def test_the_tab_cites_a_frame_set_and_says_what_each_frame_is(junction):
         fields[kind] = {f["name"] for sec in schema["schema"]["sections"]
                         for f in sec["fields"]}
     assert junction.tab_said["mode's set"][0]["frame_set"] == {
-        "n_frames": _N_FRAMES, "definition": expect}
-    assert junction.tab_said["mode's set"][0]["frame_set_said"] == said
+        "n_frames": _N_FRAMES, "definition": expect, "said": []}
     assert junction.tab_said["family"][0]["frame_set"] == {
-        "n_frames": _N_FRAMES, "definition": None}
+        "n_frames": _N_FRAMES, "definition": None, "said": []}
     assert junction.tab_said["run"][0]["frame_set"] == {
-        "n_frames": 1, "definition": None}
-    assert junction.tab_said["run"][0]["frame_set_said"] is None
+        "n_frames": 1, "definition": None, "said": []}
+    # ...AND NOTHING BESIDE THEM: no answer carries the maker's words.
+    for kind, (described, _schema) in junction.tab_said.items():
+        assert "frame_set_said" not in described, kind
     assert "psml_lib" in fields["mode's set"] and "psml_lib" in fields["family"]
     assert "psml_lib" not in fields["run"]
     # TASK SETUP, THE RESULTS TAB AND THE TAB'S REUSE ANSWER ECHO THE SAME
-    # FRAMES AND WORDS, through the same helpers (`web/task-setup.md` § 3,
+    # FRAMES, through the same helper (`web/task-setup.md` § 3,
     # `web/results.md` § 2.5, `engines/transport.md` § 2a.16) -- the last
     # two of the frames the calculation ran, the pair's files checked
-    # against the record.
+    # against the record and found as pinned.
     for answer in (junction.folder_said, junction.average_waiting,
                    junction.reuse_said):
         assert answer["frame_set"] \
             == junction.tab_said["mode's set"][0]["frame_set"]
-        assert answer["frame_set_said"] == said
+        assert "frame_set_said" not in answer
+
+
+def test_a_cited_pair_edited_after_the_calculation_is_said_until_put_back(
+        junction, monkeypatch):
+    """`engines/transport.md` § 3.8.1, § 3.1: the person edits the frame set
+    a calculation cited, after it ran; the Results tab's record answer and
+    the Transport tab's reuse answer say, beside the frames the calculation
+    ran, that the pair is not as its record pinned -- naming the file
+    edited, not the other, and the way on; put back as it was, nothing is
+    said.  Transport's own word of its citation, the one thing its card
+    adds to the set's rows.  THE SILENT FAILURE: a report showing frames
+    as the ones the calculation ran while the pair beside them says
+    otherwise, unsaid."""
+    from conftest import point_the_one_door_at
+    from molbuilder.web.app import create_app
+    point_the_one_door_at(junction.tree.parent, monkeypatch.setenv)
+    pair = junction.tree / junction.frame_set
+    client = create_app(config={}).test_client()
+
+    def said():
+        record = client.get("/api/transport/record?path="
+                            f"{junction.from_pair.bundle}").get_json()
+        reuse = client.get("/api/transport/describe_attempt?path="
+                           "P/transport/F&engine=siesta").get_json()
+        return record["frame_set"]["said"], reuse["frame_set"]["said"]
+    as_it_was = pair.read_bytes()
+    try:
+        # THE PERSON EDITS IT, as an editor saves it: its bytes another.
+        pair.write_bytes(as_it_was + b"\n")
+        for got in said():
+            assert len(got) == 1, got
+            assert pair.name in got[0] and "molstruct" not in got[0], got
+            assert got[0].endswith("cite the pair as it is now in a new "
+                                   "calculation, or put it back"), got
+    finally:
+        pair.write_bytes(as_it_was)
+    assert said() == ([], []), said()
 
 
 #: Two roundings stand between a point's total DOS as TBtrans printed it

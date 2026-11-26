@@ -9,6 +9,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from molbuilder.postprocess import states
 from molbuilder.vibration import thermal_spread_amu12_ang
 from molbuilder.vibration_frames import readout
 
@@ -49,13 +50,14 @@ def test_what_a_temperature_means_for_a_mode_is_the_contracts_table(
         kelvin, quanta, spread, moves):
     """`web/spectra.md` § 4.3: at a frame set's temperature, a mode's mean
     number of quanta, its spread and the outermost frames' largest atom move
-    for three, five and seven frames -- the motion toolkit's readout
-    (`vibration_frames.readout`), which the load door serves.  A row of the
+    for three, five and seven frames -- the motion toolkit's readout of the
+    mode bound to the thermal chain at it (`vibration_frames.readout`),
+    which the load door serves.  A row of the
     contract's own example (`science/vibrational-averaging.md` § 5, mode 48
     of the user's AuBDTAu), to the digits the table prints.  The silent
     failure: a dialog whose numbers are not the frames the doors write --
     another rule's node, a spread without the temperature."""
-    said = readout(_mode_48(), {"temperature_k": kelvin})
+    said = readout(_mode_48(), states.thermal(temperature_k=kelvin))
     assert said["mean_quanta"] == pytest.approx(quanta, abs=0.005)
     assert said["spread_over_zero_point"] == pytest.approx(
         spread, abs=0.0005 if spread < 1.01 else 0.005)

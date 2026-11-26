@@ -23,10 +23,12 @@ ROLE    the quantum mechanics of one harmonic oscillator, nothing molecular:
           level's one table here (:func:`_number_distribution`).
 USED-BY `vibration` (which hands the mechanics on under their names -- read
         there by the record's writers, `spectra.derived` and
-        `spectra.normal_modes`, the frame-set doors, `vibration_frames` and
-        `cli`, and the spectrum tab's door, `web.blueprints.spectra`),
-        `oscillator_state`, `distribution`, `sampling` (the whole-number
-        rule), and a person's script (`postprocess` hands the module on).
+        `spectra.normal_modes`, and the spectrum tab's door,
+        `web.blueprints.spectra`), `vibration_frames` (a set's mode's
+        oscillator, the quanta's words) and `cli` (the quanta's words)
+        directly, `oscillator_state`, `distribution`, `sampling` (the
+        whole-number rule), and a person's script (`postprocess` hands the
+        module on).
 TRAVELS with `vibration` in both vibration bundles (`runwrap.bundle_members`),
         so it imports the constants two ways and nothing else of molbuilder.
 """
@@ -298,9 +300,8 @@ def _position_times(v, first: int = 0) -> np.ndarray:
 def _position_operator(lo: int, hi: int) -> np.ndarray:
     """``xi = (a + a^dagger) / sqrt(2)`` on the oscillator's states ``lo`` to
     ``hi - 1`` as a matrix, :func:`_position_times` on each level -- exact
-    on every vector it moves without leaving them: :func:`position_matrix`,
-    and `vibration.State`'s moments on the window of levels ``xi`` reaches
-    from ``|n>``, a few states wide."""
+    on every vector it moves without leaving them -- :func:`position_matrix`
+    asks it."""
     return _position_times(np.eye(hi - lo), lo)
 
 

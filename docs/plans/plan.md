@@ -10,9 +10,9 @@ at 2.77.23 is [`archive/2026-11-22-plan-consolidation.md`](?doc=archive/2026-11-
 
 ---
 
-## ▶ Where we are *(2026-11-25)*
+## ▶ Where we are *(2026-11-26)*
 
-**2.84.0.** F0–F11 and F7a are closed (2.56.2–2.77.2). F12, *Proven*,
+**2.85.0.** F0–F11 and F7a are closed (2.56.2–2.77.2). F12, *Proven*,
 walked its three roads in the browser on real runs and ran the full batch
 (6106 fast and 805 e2e tests, none failed, at 2.77.2); its two review rounds
 ([`archive/audits/2026-11-18-f12-review/`](?doc=archive/audits/2026-11-18-f12-review/TRIAGE-round1.md))
@@ -20,7 +20,7 @@ sorted every finding into the releases below. **The finish plan** *(the
 user, 2026-11-19: "a consolidated plan to get things finished, not to drag
 things along")*: five releases, R1–R5, each with its review rounds. R1 and R2
 are done; R3, one home per fact on the server side, grew from one release
-into parts as reviews and the user's decisions added work, eighteen of them
+into parts as reviews and the user's decisions added work, nineteen of them
 shipped:
 
 | version | part | what it did | record |
@@ -46,6 +46,7 @@ shipped:
 | 2.82.0 | R3d2b2b2b1 | the motion toolkit's Python door: a vibration read from its run's folder; its frame sets written by one writer — a mode's own in any state, snapshots, a person's own — and read back as written; the outermost move for any state | `fix24-review.md` |
 | 2.83.0 | R3d2b2b2b2 | a mode's frame set in any state from the command line and the spectrum tab, the state asked every time and what it means said before the set is written; many quanta warned of, beyond 1 eV in a mode | `fix25-review.md` |
 | 2.84.0 | R3d2b2b4a | a mode's state built in steps — the generic tools and their manual (each call's equation, pseudocode and a run example), the modes that move chosen in steps; the steady drive, joining snapshot sets and drive groups removed | `fix26-review.md` |
+| 2.85.0 | R3d2b2b4b | one layer: every mode's state a chain or a distribution bound to the mode, a set read back by binding again, every old state type and keyword form removed; transport showing a cited frame set as the set stores it, interpreting none of it | `fix27-review.md` |
 
 Records: `archive/audits/2026-11-18-f12-review/fix<N>-review.md`. Since
 2.77.23 the host env holds `molbuilder-source.pth` on the development machine
@@ -87,10 +88,9 @@ built in R3d with the vibration's data files.
   and mean quanta at a temperature other than the modes' own, the shares
   summed by element, label or region, the mode over all atoms and the
   displaced geometry (`vibration`, 2.78.0),
-  a frame set's outermost move (`vibration.outermost_move_ang`, asked by the
-  motion toolkit, 2.82.0), the weights for a set's rows
-  at a state (`vibration_frames.weights_for_set`, by `State.weights_at`,
-  2.81.0).
+  a frame set's outermost move (`vibration.ModeDistribution.outermost_move`,
+  asked by the motion toolkit), the weights of a set's rows for a state
+  (`vibration_frames.weights_for_set`, by `vibration.weights_of_frames`).
 - **The design, written 2026-11-22** ([`engines/vibration.md`](?doc=engines/vibration.md)
   § 6.11; the theory [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
   § 2b): one `vibration` module owning every per-mode quantity and its
@@ -238,7 +238,9 @@ and an API reviewer** *(the user, 2026-11-23)*.
   written 2026-11-25: the theory, `science/vibrational-averaging.md` § 2e;
   the modules, the recipes and the four questions,
   `engines/vibration-frames.md` § 9 — decided 2026-11-25, the four
-  questions as recommended *("go with your recommendations on all four")*;
+  questions as recommended *("go with your recommendations on all four")*,
+  the design and the decisions archived
+  (`archive/2026-11-26-vibration-frames-steps-design.md`);
   the build in two releases — **R3d2b2b4a, the generic tools added**: the
   modules `oscillator`, `oscillator_state`, `distribution` and `sampling`
   of § 9.1, handed on by `postprocess`, each held to the science's closed
@@ -249,10 +251,10 @@ and an API reviewer** *(the user, 2026-11-23)*.
   § 2c.2); and, by the user's decision of 2026-11-25, the toolkit cut to
   lists — every state a list of chances, no push, phase or density matrix,
   and the steady drive (the *driven* and *warm driven* states) gone from
-  the tools, the doors and the page — built in 2.84.0; then
-  **R3d2b2b4b, the switch-over**: every move and caller of § 9.3 (the tests
-  retired first, then held to the science), § 9.2–§ 9.4's rules moved into § 1–§ 8
-  and the person's documents;
+  the tools, the doors and the page — built in 2.84.0; and
+  **R3d2b2b4b, the switch-over** — one layer, by the user's decision of
+  2026-11-26: every mode's state a chain or a distribution bound to the mode,
+  the old state types and keyword forms removed — built in 2.85.0;
   then **R3d2b2c, the example notebook**
   and its test, on the toolkit as decided:
   - **`vibration`, carried from § 2d's review**: no test draws snapshots
@@ -261,17 +263,9 @@ and an API reviewer** *(the user, 2026-11-23)*.
     built in 2.80.0: each piece and each visible change is its changelog
     row, which the plan does not restate.
   - **`vibration_frames`, carried, still open**: each row's meaning
-    for its kind of set (the vocabulary states one meaning a row); one
-    wording of a state — a mode's own set's `assumptions` row takes
-    `vibration_frames.state_words` (an older set's, `thermal_state_words`,
-    its thermal case), a snapshot set's says its states in
-    `vibration._state_words` (`set_apart_modes`) and its background in its
-    own phrase, and `weights_for_set`'s first words keep their own; `FrameRows`' rows beside
+    for its kind of set (the vocabulary states one meaning a row); `FrameRows`' rows beside
     a recipe's set read back (a `FrameSet` carries them); `frame_rows` the
-    function beside the writer's `frame_rows=` keyword; `quanta=` named on a
-    warm set's rows leaving its temperature unsaid, and naming nothing on a
-    classical set's rows giving the quantum thermal state —
-    said where the set states its own state. **No call of `vibration`
+    function beside the writer's `frame_rows=` keyword. **No call of `vibration`
     reaches it.**
   - **Tests** (the toolkit's rows of `tests/test_vibration_frames.py`, the
     doors' of `tests/test_vibration_mechanics_e2e.py` and

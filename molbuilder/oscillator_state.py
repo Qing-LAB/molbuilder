@@ -26,18 +26,20 @@ ROLE    the quantum mechanics of one oscillator's state, nothing molecular.
           -- an :class:`OscillatorState`: its list (``populations``), its
           mean quanta and its words.
 USED-BY `distribution.of_state` (a state's distribution, by the route its
-        reduced chain takes), and a person's script (`postprocess` hands the
-        module on as ``states``).
-TRAVELS with `vibration` once it builds on this module (R3d2b2b4b,
-        `engines/vibration-frames.md` § 9.3): numpy, math and `oscillator`,
-        imported two ways.
+        reduced chain takes), `vibration` (a chain bound to a mode),
+        `vibration_frames` (the doors' choice as a chain, a set's chain
+        recorded and made again), and a person's script (`postprocess` hands
+        the module on as ``states``).
+TRAVELS with `vibration` in both vibration bundles, which binds a chain
+        to a mode (`engines/vibration-frames.md` § 2): numpy, math and
+        `oscillator`, imported two ways.
 """
 from __future__ import annotations
 
 import functools
 import math
 from dataclasses import dataclass
-from typing import Any, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -136,6 +138,53 @@ class Chain:
         return (s.name in ("thermal", "classical_thermal")
                 and s.get("temperature_k") is None
                 and s.get("mean_quanta") is None)
+
+    @property
+    def words(self) -> str:
+        """The chain in words, each step saying what it states
+        (:func:`_steps_words`) -- *thermal at 300 K; one quantum added*;
+        placed on an oscillator, its state's words add the mean quanta."""
+        return _steps_words(self.steps)
+
+    def to_record(self) -> List[Dict[str, Any]]:
+        """THE CHAIN AS A FRAME SET RECORDS IT (`engines/vibration-frames.md`
+        § 5): its steps in order, each ``{"step": name, "values": {...}}``,
+        the chain as given -- :meth:`from_record` makes it again."""
+        return [{"step": s.name, "values": dict(s.values)}
+                for s in self.steps]
+
+    @classmethod
+    def from_record(cls, record: Any) -> "Chain":
+        """A CHAIN MADE AGAIN FROM ITS RECORD (:meth:`to_record`), by the
+        starts and the events themselves, so it is checked as they check.
+        Refused by name: what is no list of steps, a first step that is no
+        start, a later one that is no event, and what a start refuses."""
+        steps = list(record) if isinstance(record, (list, tuple)) else []
+        if not steps or not all(isinstance(s, dict) for s in steps):
+            raise ValueError(f"a chain's record is its steps in order, each "
+                             f"{{\"step\", \"values\"}}; got {record!r}")
+        first = steps[0]
+        name, values = first.get("step"), dict(first.get("values") or {})
+        starts = {"ground": ground, "thermal": thermal,
+                  "classical_thermal": classical_thermal}
+        if name == "level":
+            chain = level(values.get("quanta"))
+        elif name in starts:
+            chain = starts[name](**values)
+        else:
+            raise ValueError(f"a chain starts with ground, level, thermal or "
+                             f"classical_thermal; its record starts with "
+                             f"{name!r}")
+        for s in steps[1:]:
+            if s.get("step") == "add_quantum":
+                chain = chain.add_quantum()
+            elif s.get("step") == "remove_quantum":
+                chain = chain.remove_quantum()
+            else:
+                raise ValueError(f"after its start a chain holds add_quantum "
+                                 f"and remove_quantum; its record holds "
+                                 f"{s.get('step')!r}")
+        return chain
 
     def _then(self, step: Step) -> "Chain":
         return Chain(self.steps + (step,))
@@ -492,30 +541,45 @@ class OscillatorState:
 
     @property
     def words(self) -> str:
-        """The state in words, each step saying itself (*thermal at 300 K
-        (0.621 mean quanta); one quantum added*)."""
-        out = []
-        for s in self.chain.steps:
-            if s.name == "ground":
-                out.append("the ground state")
-            elif s.name == "level":
-                out.append(f"{_quanta_words(s.get('quanta'))} "
-                           f"exactly")
-            elif s.name == "thermal":
-                t = s.get("temperature_k")
-                mean = _quanta_words(s.get("mean_quanta"), kind="mean ",
-                                     spec=".3g")
-                out.append(f"thermal at {t:g} K ({mean})" if t is not None
-                           else f"thermal, {mean}")
-            elif s.name == "classical_thermal":
-                out.append(f"the classical bell curve at "
-                           f"{s.get('temperature_k'):g} K, no zero-point "
-                           f"motion")
-            elif s.name == "add_quantum":
-                out.append("one quantum added")
+        """The state in words, each step saying itself, its thermal start's
+        mean resolved (*thermal at 300 K (0.621 mean quanta); one quantum
+        added*) -- :func:`_steps_words`."""
+        return _steps_words(self.chain.steps)
+
+
+def _steps_words(steps: Tuple[Step, ...]) -> str:
+    """A CHAIN'S STEPS IN WORDS, the one wording of a state's steps -- a
+    chain's (:attr:`Chain.words`) and a placed state's
+    (:attr:`OscillatorState.words`), each step saying what it states: a
+    thermal start its temperature and, placed, its mean quanta; a start
+    left open says so."""
+    out = []
+    for s in steps:
+        if s.name == "ground":
+            out.append("the ground state")
+        elif s.name == "level":
+            out.append(f"{_quanta_words(s.get('quanta'))} exactly")
+        elif s.name == "thermal":
+            t, n = s.get("temperature_k"), s.get("mean_quanta")
+            mean = (None if n is None else
+                    _quanta_words(n, kind="mean ", spec=".3g"))
+            if t is not None:
+                out.append(f"thermal at {t:g} K"
+                           + (f" ({mean})" if mean is not None else ""))
             else:
-                out.append("one quantum removed")
-        return "; ".join(out)
+                out.append(f"thermal, {mean}" if mean is not None
+                           else "thermal, its temperature open")
+        elif s.name == "classical_thermal":
+            t = s.get("temperature_k")
+            out.append("the classical bell curve "
+                       + (f"at {t:g} K" if t is not None
+                          else "at a temperature left open")
+                       + ", no zero-point motion")
+        elif s.name == "add_quantum":
+            out.append("one quantum added")
+        else:
+            out.append("one quantum removed")
+    return "; ".join(out)
 
 
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it

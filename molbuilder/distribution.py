@@ -17,10 +17,17 @@ ROLE    statistics of one coordinate, in the unit it is given -- a mode's
           science § 2e.3 -- every distribution here symmetric about 0;
         * :func:`of_state`, a state's distribution by the route its reduced
           chain takes (`engines/vibration-frames.md` § 9.1's diagram);
+        * a distribution in another unit (:class:`Scaled`, ``d.scaled(s)``),
+          each family's words and record and a family made again from its
+          record (:func:`from_record`); the one weights result,
+          :class:`PointWeights`, carrying the words its reader says
+          (``said``);
         * the numerics every rule takes: Gauss--Hermite, a discrete
           measure's Gauss rule by Lanczos and Golub--Welsch, a level's rule.
-USED-BY `vibration` (a mode's states and frames), and a person's script
-        (`postprocess` hands the module on as ``dist``).
+USED-BY `vibration` (a chain or a distribution bound to a mode, its draws,
+        frames and weights), `vibration_frames` (a set's state recorded and
+        made again, its rows' weights), and a person's script (`postprocess`
+        hands the module on as ``dist``).
 TRAVELS with `vibration` in both vibration bundles: numpy, math and
         `oscillator`, imported two ways.
 """
@@ -30,7 +37,7 @@ import functools
 import math
 import statistics
 from dataclasses import dataclass
-from typing import Callable, List, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Sequence, Tuple
 
 import numpy as np
 
@@ -39,13 +46,14 @@ try:                                        # inside molbuilder
     from .oscillator import (_EPSILON, _bracketed_newton, _checked_quanta,
                              _finite_non_negative, _level_sweep,
                              _number_distribution, _position_times,
-                             _table_shape, _Table, _whole, level_density,
-                             level_moment, spread_of_quanta)
+                             _quanta_words, _table_shape, _Table, _whole,
+                             level_density, level_moment, spread_of_quanta)
 except ImportError:                         # beside a job, in a bundle
     from oscillator import (  # type: ignore[no-redef]
         _EPSILON, _bracketed_newton, _checked_quanta, _finite_non_negative,
-        _level_sweep, _number_distribution, _position_times, _table_shape,
-        _Table, _whole, level_density, level_moment, spread_of_quanta)
+        _level_sweep, _number_distribution, _position_times, _quanta_words,
+        _table_shape, _Table, _whole, level_density, level_moment,
+        spread_of_quanta)
 
 _SQRT2 = math.sqrt(2.0)
 
@@ -227,12 +235,16 @@ class PointWeights:
     whether the points are the distribution's own rule (its weights for
     them those ``written``, or reproducing it to ``2m - 1``); ``beyond``,
     the share of the distribution beyond the outermost points, both sides;
-    ``below_zero``, the indices of the weights below zero past rounding."""
+    ``below_zero``, the indices of the weights below zero past rounding;
+    ``said``, the words whoever reads the points by says of them -- a frame
+    set's, `vibration.weights_of_frames` (none from :func:`points_weights`
+    itself): the one weights result."""
     weights: np.ndarray
     exact_to_degree: int
     own: bool
     beyond: float
     below_zero: Tuple[int, ...]
+    said: Tuple[str, ...] = ()
 
 
 def points_weights(points, moment: Callable[[int], float], cdf, scale: float,
@@ -294,6 +306,28 @@ class Distribution:
     def gauss_rule(self, nodes: int) -> Tuple[np.ndarray, np.ndarray]:
         raise NotImplementedError
 
+    @property
+    def words(self) -> str:
+        """The distribution in words -- a family says what it is; a
+        person's own class, its class's name."""
+        return f"a {type(self).__name__} distribution"
+
+    def to_record(self) -> Dict[str, Any]:
+        """WHAT A FRAME SET RECORDS OF IT, to make it again
+        (:func:`from_record`; `engines/vibration-frames.md` § 5): its family
+        and its numbers.  A distribution of a person's own class states
+        none -- refused by name: it can be drawn from and placed, not read
+        back."""
+        raise ValueError(
+            f"a {type(self).__name__} states no record to be made again from: "
+            f"a frame set records a chain, or one of the families -- "
+            f"Gaussian, QuantumAdded, Level, LevelList, Scaled")
+
+    def scaled(self, scale: float) -> "Scaled":
+        """The distribution in another unit, ``y = scale x``
+        (:class:`Scaled`)."""
+        return Scaled(self, scale)
+
     def _reach(self) -> float:
         """A point beyond which nothing of the distribution is left."""
         return 12.0 * math.sqrt(max(self.moment(2), 1e-300))
@@ -353,6 +387,14 @@ class Gaussian(Distribution):
         x, w = _gauss_hermite(_whole(nodes, "nodes", 1))
         return self.sigma * x, w
 
+    @property
+    def words(self) -> str:
+        return ("a point at rest at 0" if self.sigma == 0.0
+                else f"a bell curve of spread {self.sigma:.4g}")
+
+    def to_record(self) -> Dict[str, Any]:
+        return {"family": "Gaussian", "sigma": float(self.sigma)}
+
 
 class QuantumAdded(Distribution):
     """One quantum added to a thermal mode of mean ``nbar`` (science § 2d.4,
@@ -395,6 +437,14 @@ class QuantumAdded(Distribution):
         weights = np.concatenate((self.w_bell * wb, self.w_quantum * wq))
         return _gauss_rule_of(points, weights, m)
 
+    @property
+    def words(self) -> str:
+        return (f"one quantum added to a thermal state of "
+                f"{_quanta_words(self.nbar, kind='mean ', spec='.3g')}")
+
+    def to_record(self) -> Dict[str, Any]:
+        return {"family": "QuantumAdded", "nbar": float(self.nbar)}
+
 
 class Level(Distribution):
     """One level ``n`` of the oscillator, exactly ``n`` quanta: its density
@@ -429,6 +479,13 @@ class Level(Distribution):
     def gauss_rule(self, nodes: int):
         x, w = _number_state_rule(self.n, _whole(nodes, "nodes", 1))
         return _SQRT2 * x, w
+
+    @property
+    def words(self) -> str:
+        return f"{_quanta_words(self.n)} exactly"
+
+    def to_record(self) -> Dict[str, Any]:
+        return {"family": "Level", "n": int(self.n)}
 
 
 def _levels_density(populations, xi) -> np.ndarray:
@@ -503,6 +560,95 @@ class LevelList(Distribution):
         return _gauss_rule_of(np.concatenate(points), np.concatenate(weights),
                               m)
 
+    @property
+    def words(self) -> str:
+        mean = float((np.arange(self.populations.size)
+                      * self.populations).sum())
+        return (f"a list over {self.populations.size} levels, "
+                f"{_quanta_words(mean, kind='mean ', spec='.3g')}")
+
+    def to_record(self) -> Dict[str, Any]:
+        return {"family": "LevelList",
+                "populations": [float(p) for p in self.populations]}
+
+
+class Scaled(Distribution):
+    """A DISTRIBUTION IN ANOTHER UNIT (`engines/vibration-frames.md`
+    § 9.1): the distribution of ``y = scale x``, ``x`` drawn from ``base``
+    -- ``P_y(y) = P_x(y / s) / s``, ``F_y(y) = F_x(y / s)``, ``<y^k> = s^k
+    <x^k>``, its quantile, Gauss rule and draws the base's times ``s``; its
+    weights for points placed elsewhere the base's way, in ``y``.  A mode's
+    state in amu^1/2.Å is its distribution of ``x = Q / Q_zp`` scaled by
+    ``Q_zp`` (`vibration.Mode.bind`).  A Scaled of a Scaled is one, the
+    scales multiplied.  Refused by name: a base that is no distribution, a
+    scale that is no positive number."""
+
+    def __init__(self, base: Distribution, scale: float):
+        if not isinstance(base, Distribution):
+            raise ValueError(f"a distribution is scaled, not a "
+                             f"{type(base).__name__}")
+        s = _finite_non_negative(scale)
+        if s is None or s == 0.0:
+            raise ValueError(f"a scale is a positive number; got {scale!r}")
+        if isinstance(base, Scaled):
+            base, s = base.base, base.scale * s
+        self.base, self.scale = base, s
+
+    def pdf(self, y):
+        x = np.asarray(y, dtype=float) / self.scale
+        out = np.asarray(self.base.pdf(x), dtype=float) / self.scale
+        return float(out) if np.ndim(out) == 0 else out
+
+    def cdf(self, y):
+        out = np.asarray(self.base.cdf(np.asarray(y, dtype=float)
+                                       / self.scale), dtype=float)
+        return float(out) if np.ndim(out) == 0 else out
+
+    def moment(self, k: int) -> float:
+        k = _whole(k, "a moment's order", 0)
+        return self.scale ** k * self.base.moment(k)
+
+    def quantile(self, p):
+        out = self.scale * np.asarray(self.base.quantile(p), dtype=float)
+        return float(out) if np.ndim(out) == 0 else out
+
+    def draw(self, z):
+        return self.scale * np.asarray(self.base.draw(z), dtype=float)
+
+    def gauss_rule(self, nodes: int):
+        x, w = self.base.gauss_rule(nodes)
+        return self.scale * np.asarray(x, dtype=float), w
+
+    @property
+    def words(self) -> str:
+        return f"{self.base.words}, scaled by {self.scale:.4g}"
+
+    def to_record(self) -> Dict[str, Any]:
+        return {"family": "Scaled", "scale": float(self.scale),
+                "base": self.base.to_record()}
+
+
+def from_record(record: Any) -> Distribution:
+    """A DISTRIBUTION MADE AGAIN FROM ITS RECORD
+    (:meth:`Distribution.to_record`; `engines/vibration-frames.md` § 5):
+    its family made with its numbers, so it is checked as the family checks
+    them.  Refused by name: what is no record of a family, or a family's
+    record missing a number."""
+    family = record.get("family") if isinstance(record, dict) else None
+    makers = {"Gaussian": lambda r: Gaussian(r["sigma"]),
+              "QuantumAdded": lambda r: QuantumAdded(r["nbar"]),
+              "Level": lambda r: Level(r["n"]),
+              "LevelList": lambda r: LevelList(r["populations"]),
+              "Scaled": lambda r: Scaled(from_record(r["base"]), r["scale"])}
+    if family not in makers:
+        raise ValueError(f"a distribution's record names its family -- "
+                         f"{', '.join(makers)}; got {record!r}")
+    try:
+        return makers[family](record)
+    except KeyError as exc:
+        raise ValueError(f"a {family} record states its {exc.args[0]}; got "
+                         f"{record!r}") from None
+
 
 def of_state(state) -> Distribution:
     """A STATE'S DISTRIBUTION, in ``x = Q / Q_zp`` -- by the route its
@@ -538,5 +684,5 @@ def of_state(state) -> Distribution:
 TRAVELS_WITH = ("molbuilder.oscillator",)
 
 __all__ = ["Distribution", "Gaussian", "QuantumAdded", "Level",
-           "LevelList", "of_state",
+           "LevelList", "Scaled", "of_state", "from_record",
            "PointWeights", "points_weights"]

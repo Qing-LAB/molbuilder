@@ -1974,13 +1974,17 @@ def cmd_frameset_from_mode(run, mode, temperature, mean_quanta, quanta,
             --mode 7 --temperature 300 --out P/structure/mode7.xyz
     """
     from .structure import frame_words
-    from .vibration import _quanta_words
+    from .oscillator import _quanta_words
     from .vibration_frames import (FrameSetError, StateRefused,
-                                   frameset_from_mode)
+                                   doors_chain, frameset_from_mode)
     try:
-        got = frameset_from_mode(run, mode=mode, temperature_k=temperature,
-                                 mean_quanta=mean_quanta, quanta=quanta,
-                                 nodes=int(nodes), out=out)
+        # THE CHOICE TYPED, AS A CHAIN (`engines/vibration-frames.md` § 6):
+        # --temperature the thermal state at it, --mean-quanta the thermal
+        # state of that mean, --quanta n quanta exactly.
+        chain = doors_chain(temperature_k=temperature,
+                            mean_quanta=mean_quanta, quanta=quanta)
+        got = frameset_from_mode(run, mode=mode, out=out, chain=chain,
+                                 nodes=int(nodes))
     except StateRefused as exc:
         # A STATE NAMED AS NONE IS HOW THE COMMAND WAS TYPED: a usage
         # error, exit 2 (`conventions.md` § 3).

@@ -231,14 +231,13 @@ served; a Save that changes a kept row's values, its rename or its label
 is refused by name, as the Transport tab's Describe refuses it — measured against the
 folder's own description, so an extension the command line wrote saves; a
 Save of another junction is another calculation, refused by its id (§ 2). *(The user, 2026-10-22, 2026-10-23; built
-2.33.0.)* **A cited frame set says what its frames are**,
-under them: what the set is, its rows and a row per frame — the frame-set
-card the Transport tab's junction card draws, from the describe door's own
-door (`frame_average.answer`, [`engines/transport.md`](?doc=engines/transport.md)
-§ 3.8.1), through the folder answer's `frame_set`, in the vibration frame
-sets' words and with the set's provenance read from the pair, the folder
-answer's `frame_set_said` (`vibration_frames.said_of`); a citation that does
-not read says why, and the folder still opens.
+2.33.0.)* **A cited frame set shows its rows as it stores them**,
+under them: its count, each row's stored name, value and unit, and a row per
+frame — the frame-set card the Transport tab's junction card draws, from the
+describe door's own door (`frame_average.answer`,
+[`engines/transport.md`](?doc=engines/transport.md) § 3.8.1), through the
+folder answer's `frame_set`, none of its rows interpreted; a citation that
+does not read says why, and the folder still opens.
 
 **Under them, every value shared by every stage** — *Shared by every
 stage*: each item the catalogue marks `shared` for this calculation's kind,

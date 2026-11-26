@@ -8,9 +8,9 @@ ROLE    :func:`read` -- the structure's rows and each frame's as written,
         each row's meaning (:meth:`FrameRows.meaning`), and each frame's
         ``weight``
 USED-BY the frames' post-process (`frame_average`: the weighted average, the
-        data file's frame part, what a page is answered); the vibration frame
-        sets' words and weights (`vibration_frames`); a data file's frame
-        set's rows (`postprocess.frame_rows`); the report log's reader
+        data file's frame part, what a page is answered); a vibration's set
+        read back and its rows' weights (`vibration_frames`); a data file's
+        frame set's rows (`postprocess.frame_rows`); the report log's reader
         (`parse.instruments.reports`, :func:`finite_number`)
 
 **A calculation over the frames needs the frames and nothing else** (user,

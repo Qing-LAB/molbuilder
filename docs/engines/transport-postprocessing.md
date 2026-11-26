@@ -129,25 +129,26 @@ s.average_why.to_series()           # why an average is none, where it is
 **Averaged at another state** — a mode's own set. Each frame is its
 position along the mode; its weight is the motion's. The same frames
 averaged over a bell curve at another temperature, at $n$ quanta, classical
-— any state of the toolkit's table — the weights the motion toolkit's for the set's rows
+— any chain or distribution ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 2) — the weights the motion toolkit's for the set's rows
 ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 7;
 [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
 § 5.4), the averaging transport's own (`frame_average.averaged_at`) —
 nothing computed again, nothing written:
 
 ```python
-from molbuilder.postprocess import reaveraged
-r = reaveraged("F.transport.nc", temperature_k=77.0)    # the bell curve at 77 K
+from molbuilder.postprocess import reaveraged, states
+r = reaveraged("F.transport.nc", states.thermal(temperature_k=77.0))   # the bell curve at 77 K
 r["weights"].weights              # each frame's weight for this state
 r["weights"].beyond               # the share of the state's motion beyond the outermost frames
 r["weights"].exact_to_degree      # the degree the weights reproduce the state's averages to
 r["conductance_change_percent"]   # <ΔG>/G at each voltage
 r["said"]                         # the state taken, the share beyond, a weight below zero, ...
 r["assumptions"]                  # transport's own, then the set's, for the state it was written for
-reaveraged("F.transport.nc", quanta=1)                  # one quantum exactly
+reaveraged("F.transport.nc", states.level(1))                       # one quantum exactly
+reaveraged("F.transport.nc", states.thermal().add_quantum())         # one photon on the set's warm mode
 ```
 
-Its rules — the state's table, the temperature it takes when none is
+Its rules — the binding, the temperature an open start takes when none is
 given, what it says beside the weights and what it refuses — are the
 toolkit's, stated once ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
 § 2's table, § 7; the weights alone, `postprocess.weights_for_set(frame_rows(path),
@@ -195,8 +196,8 @@ state and the thermal one ([`engines/vibration-frames.md`](?doc=engines/vibratio
 
 **A set against its variation in one mode.** Two transport calculations,
 over two snapshot sets drawn with the same seed **at the same temperature** —
-the second with one mode set apart in another state of the toolkit's table —
-one quantum exactly, say (`with_mode(k, quanta=1)`) — so they differ by that
+the second with one mode set apart in another state, a chain bound to it —
+one photon on it, say (`with_mode(k, states.thermal().add_quantum())`) — so they differ by that
 mode alone. Each frame of the one and the same
 frame of the other differ by that mode's draw alone ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
 § 3.3), so the difference is taken frame by frame, and its error from the

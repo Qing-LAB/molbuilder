@@ -35,8 +35,9 @@ inside its run -> ``write_moved`` (imported from ``mb_pyscf.pyz``) · the parse
 registry's structure readers -> ``load`` (``parse/coords``) · the paste and
 the upload (``web/blueprints/_shared.structure_from_text``) ->
 ``read_document`` · a cited pair against a calculation's record of it --
-the transport composition (``transport.compose``) and the vibration frame
-sets' words (``vibration_frames.said_of``) -> :func:`pair_files_changed`.
+the transport composition (``transport.compose``), which refuses on it,
+and says it on the frame-set card (``compose.pair_changed_said``) ->
+:func:`pair_files_changed`.
 
 Layer: L2 — reuses `structure` (L1) + the `sidecars.molstruct` write/read stack.
 """
@@ -213,8 +214,8 @@ def pair_files_changed(path, pinned) -> List[str]:
     ``pinned`` (``{file name: sha256}``, a calculation's record of them)
     states: changed since, gone, or never pinned.  The one comparison every
     reader of a cited pair against its record asks -- a transport
-    calculation's composition, which refuses on it, and the vibration frame
-    sets' words, which say it (`engines/transport.md` § 3.1, § 3.8.1)."""
+    calculation's composition, which refuses on it, and says it on the
+    frame-set card (`engines/transport.md` § 3.1, § 3.8.1)."""
     pinned = dict(pinned or {})
     changed: List[str] = []
     for f in (Path(path), molstruct.sidecar_path_for(Path(path))):

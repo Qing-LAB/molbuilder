@@ -37,7 +37,7 @@ import xarray as xr
 | `infrared_view(path, direction=, partition=)` | the infrared the spectrum viewer draws |
 | `raman_view(path, laser_nm=, broaden_ev=)` | a SIESTA vibration's Raman at a laser |
 | `read_optical_data(path)` | `<label>.optical.nc`: the optical calls, each frame's ε₂ |
-| `outermost_move(path, mode=, nodes=, temperature_k=, quanta=, mean_quanta=, classical=)` | how far a frame set of that state moves the atom moving most |
+| `outermost_move(path, *, mode, chain_or_distribution, nodes=None)` | how far a frame set of that state — a chain or a distribution bound to the mode — moves the atom moving most |
 | `read_steps(path)` | the relaxation's or the force constants' steps, in your atoms' order (§ 7) |
 | `Oscillator`, `states`, `dist`, `oscillator`, `sampling` | the generic tools — one oscillator of a frequency, a mode's state built in steps, one coordinate's distribution, random streams and the statistics of results: their manual, each call with its equation, pseudocode and an example, is [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 9.1 |
 
@@ -126,24 +126,25 @@ m.displaced(0.05)                                 # every atom at R + Q L, Q = 0
 m.with_frequency(0.96 * m.frequency_cm1)          # the same pattern at a scaled frequency
 ```
 
-**Where the molecule sits along the mode** is a state — at a temperature,
-at a mean number of quanta, with `quanta` exactly, or the classical limit
-(`classical=True`) — the table of states is
-[`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 2:
+**Where the molecule sits along the mode** is a state — a chain of steps
+(`states.thermal(...)`, `states.level(n)`, `states.thermal(...).add_quantum()`,
+…) or a distribution of your own, bound to the mode — the binding and its
+table of chains are [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 2, the tools' manual § 9.1:
 
 ```python
-s = m.state(temperature_k=0.0)        # the zero-point motion: spread Q_zp
-s.spread_amu12_ang, s.mean_quanta
-s.atom_rms_ang                        # each atom's r.m.s. move, Å
-s.pdf(0.0), s.cdf(0.05), s.moment(4)  # density, distribution, <Q^4>
-f = m.state(quanta=1).frames(nodes=3) # three frames, exact to degree 5
-f.q_amu12_ang[:, 0], f.weights        # where along the mode, (0, +q, -q), each one's weight
-f.positions_ang                       # each frame's geometry, every atom at R + Q L
-s.draw(1000, seed=7)                  # coordinates drawn from the state, the mode's own stream
+from molbuilder.postprocess import states
+s = m.bind(states.thermal(temperature_k=0.0))   # the zero-point motion: spread Q_zp
+s.spread_amu12_ang, s.mean_quanta, s.words
+s.atom_rms_ang                                  # each atom's r.m.s. move, Å
+s.distribution.pdf(0.0), s.distribution.cdf(0.05), s.distribution.moment(4)   # density, distribution, <Q^4>
+f = m.bind(states.level(1)).frames(nodes=3)     # three frames, exact to degree 5
+f.q_amu12_ang[:, 0], f.weights                  # where along the mode, (0, +q, -q), each one's weight
+f.positions_ang                                 # each frame's geometry, every atom at R + Q L
+s.draw(1000, seed=7)                            # coordinates drawn from the state, the mode's own stream
 ```
 
-Which state takes the record's temperature when none is given, and says so
-(`s.temperature_k`, `s.temperature_from`), is one table,
+An open start (`states.thermal()`) takes the record's temperature and says so
+(`s.temperature_k`, `s.temperature_from`) — one table,
 [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 2. An
 imaginary mode has moves for a coordinate given and no state.
 
@@ -151,7 +152,8 @@ imaginary mode has moves for a coordinate given and no state.
 
 *(The motion and its snapshots built, 2.80.0; reading a run's folder, the
 writer and the reader, 2.82.0; the command line and the page for any state,
-2.83.0; the generic tools and the modes chosen in steps, 2.84.0 — the
+2.83.0; the generic tools and the modes chosen in steps, 2.84.0; every
+mode's state a chain or a distribution bound to the mode, 2.85.0 — the
 tools' manual is [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
 § 9.1; the design and every choice is [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md),
 the theory [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
@@ -161,27 +163,28 @@ Paths come from the projects tree's doors, which check each name, so they
 hold wherever the script or notebook runs; `P` the project:
 
 ```python
-from molbuilder.postprocess import vibration, write_frame_set, structure_dir, topic_dir
+from molbuilder.postprocess import vibration, states, write_frame_set, structure_dir, topic_dir
 v = vibration(structure_dir("P", "spectrum", "V") / "01_freq/run-0")   # the run's folder, or its result file
 out = topic_dir("P", "structure")                                     # where a transport citation reads sets
 
 # THE WHOLE MOLECULE: every mode thermal at 300 K, mode 7 holding one quantum exactly
-motion = v.motion(temperature_k=300.0).with_mode(7, quanta=1)
+warm = states.thermal(temperature_k=300.0)
+motion = v.motion(warm).with_mode(7, states.level(1))
 snaps = motion.sample(64, seed=20261123, antithetic=True)   # seed and pairing: yours, stated
 snaps.mode_index_1based            # the modes, one column each
 snaps.atom_moves_ang.shape         # (65, n_atoms, 3): frame 0 (the relaxed geometry), then the displacement map
 snaps.said                         # the largest move over the set, the mode moving it
 write_frame_set(out / "v-300K-m7-1q.xyz", snaps)    # frame 0 relaxed at weight 0, then the 64
 
-baseline = v.motion(temperature_k=300.0).sample(64, seed=20261123, antithetic=True)
+baseline = v.motion(warm).sample(64, seed=20261123, antithetic=True)
 write_frame_set(out / "v-300K.xyz", baseline)       # the same temperature, every mode but 7 drawn alike
 
 # THE MODES THAT MOVE, CHOSEN IN STEPS: every mode from 50 cm-1 up, mode 3 back in
 chosen = v.mode_selection().window(50.0, None).add([3])
-motion2 = v.motion(temperature_k=300.0, modes=chosen)
+motion2 = v.motion(warm, modes=chosen)
 
-# ONE MODE ON ITS OWN: three frames of mode 7 at 300 K
-f = v.mode(7).state(temperature_k=300.0).frames(nodes=3)
+# ONE MODE ON ITS OWN: three frames of mode 7 at 300 K -- or one photon on it, warm.add_quantum()
+f = v.mode(7).bind(warm).frames(nodes=3)
 f.q_amu12_ang[:, 0], f.weights     # 0, ±sqrt(3) sigma; 2/3, 1/6, 1/6
 write_frame_set(out / "v-m7-300K.xyz", f)
 ```

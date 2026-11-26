@@ -2,8 +2,8 @@
 each drawn from the science's closed forms with numpy and scipy (the
 Hermite functions, Mehler's sum, the one-quantum distribution function, the
 lists the events make), never from molbuilder's own numbers -- but for the
-one figure that sets molbuilder's draws (`vibration.State.draw`) beside the
-density they must follow.
+one figure that sets molbuilder's draws (a state's distribution's ``draw``,
+`distribution.of_state`) beside the density they must follow.
 
 Run from the repository root with the molbuilder env's Python:
 
@@ -170,10 +170,14 @@ def fig_inverse_transform():
 
 def fig_draws():
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from molbuilder.vibration import state
-    q_zp = 1.0
-    one = state(q_zp, 1600.0, quanta=1).draw(40000, seed=11)
-    warm = state(q_zp, 1600.0, mean_quanta=1.0).draw(40000, seed=11)
+    from molbuilder.distribution import of_state
+    from molbuilder.oscillator import Oscillator
+    from molbuilder.oscillator_state import level, thermal
+    from molbuilder.sampling import normal_stream
+    osc = Oscillator(1600.0)
+    z = normal_stream((11, 0, 0), 40000)          # seed 11, no mode's stream
+    one = of_state(level(1).on(osc)).draw(z)
+    warm = of_state(thermal(mean_quanta=1.0).on(osc)).draw(z)
     x = np.linspace(-5.5, 5.5, 1101)
     fig, (a, b) = plt.subplots(1, 2, figsize=(7.6, 3.0),
                                gridspec_kw={"wspace": 0.25}, sharey=True)
@@ -192,8 +196,8 @@ def fig_draws():
         ax.legend(frameon=False, loc="upper center", ncol=2, fontsize=8)
         ax.set_ylim(0, 0.40)
     a.set_ylabel(r"$P(Q)\;\times Q_{\rm zp}$")
-    fig.suptitle("molbuilder's draws (vibration.State.draw) against the "
-                 "density they must follow", fontsize=10.5, y=1.03)
+    fig.suptitle("molbuilder's draws (dist.of_state(state).draw) against "
+                 "the density they must follow", fontsize=10.5, y=1.03)
     save(fig, "draws-follow-the-density.svg")
 
 

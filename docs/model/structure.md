@@ -623,11 +623,9 @@ carried exactly as written into the calculation's record and data file,
 never computed from and never checked by the calculation (`frameset.read`,
 the one reader). The
 summary `summarize` prints, transport's, says each row by its name, value and
-unit as written, a whole number whole; the pages — above transport and the toolkit both — say
-a row in the plain words the vibration maker's vocabulary gives a name it
-knows, where the row's unit is the vocabulary's or it states none, and any
-other by its name and unit as written ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
-§ 5.1, § 6). **What travels with the set**: its `info` keys and channels go
+unit as written, a whole number whole, and transport's pages show each by
+its stored name, value and unit, none interpreted
+([`engines/transport.md`](?doc=engines/transport.md) § 3.8.1). **What travels with the set**: its `info` keys and channels go
 wherever the structure goes, as every structure's do — into a composed
 junction, and with it into a calculation's sidecar and data file
 (`structure_json`), cited whole as the structure. **Of `info`, a calculation
@@ -654,17 +652,13 @@ which masses a coordinate is measured with, beside the `mass_amu` channel
 that holds them. The one reader (`frameset.read`) carries every row's note
 as written, a frame row read with the first meaning any frame writes — the
 one rule, `FrameRows.meaning(name, of_frames=True)`, which every reader of a
-row's meaning asks; a row
-the vibration maker's vocabulary names, written without one, is said so by
-the toolkit when it reads its own sets — a warning, never a refusal. **A
-citation carries a row whole** — name, value, unit and note: a transport
-calculation's record and its data file
-([`engines/transport.md`](?doc=engines/transport.md) § 2a.12), and the pages
-that draw them, so a number cited downstream keeps what it means and where
-it came from.
+row's meaning asks. **A citation carries a row whole** — name, value, unit
+and note: a transport calculation's record and its data file
+([`engines/transport.md`](?doc=engines/transport.md) § 2a.12), so a number
+cited downstream keeps what it means and where it came from.
 
 **A vibration's frame set, as its maker writes it** — its rows, their names,
-units, meanings and page words — is the motion toolkit's vocabulary
+units and meanings — is the motion toolkit's vocabulary
 ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 5.1).
 How many frames a set has, where they sit and what they state is its
 maker's.
@@ -968,9 +962,8 @@ def pair_files_changed(path, pinned) -> list[str]:   # beside the codec
     are not those `pinned` ({file name: sha256}) states: changed since,
     gone, or never pinned. The one comparison every reader of a cited pair
     against its record asks: a transport calculation's composition, which
-    refuses on it, and the frame-set card's words, which say it
-    (`engines/transport.md` § 3.1; the words, `engines/vibration-frames.md`
-    § 6)."""
+    refuses on it, and the frame-set card, which says it
+    (`engines/transport.md` § 3.1, § 3.8.1)."""
 ```
 
 > **The rule this shape exists to make checkable:** *every structure↔bytes

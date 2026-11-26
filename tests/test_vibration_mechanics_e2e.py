@@ -49,14 +49,15 @@ def test_h2s_bond_moves_by_the_textbooks_zero_point_amplitude(
     r.m.s. at 0 K is ``sqrt(hbar / 2 mu omega)``; at ``Q_zp`` each atom moves
     half of it, the two in opposite directions along the bond; the
     projection of those moves gives ``Q_zp`` back; at 0 K the state's spread
-    is ``Q_zp`` and each atom's r.m.s. move half the bond's; a state asked
-    with no temperature is at the one the record states (§ 6.11 § 9 item 6),
+    is ``Q_zp`` and each atom's r.m.s. move half the bond's; an open
+    thermal start bound to the mode is at the temperature the record states
+    (§ 6.11 § 9 item 6; `engines/vibration-frames.md` § 2),
     its spread ``Q_zp sqrt(coth(h c nu / 2 k_B T))`` -- the same from the
     JSON and from its data file; the vibration says the path it was read
     from, as given, and the structure the result states.  THE SILENT FAILURE: a mass, a unit or a
     normalisation off, which every number derived from the mode would carry
     without a sign; or the record's temperature misread from one file."""
-    from molbuilder.postprocess import vibration
+    from molbuilder.postprocess import states, vibration
     result, data = _files(real_h2_vibration)
     read = result if which == "json" else data
     v = vibration(read)
@@ -79,11 +80,11 @@ def test_h2s_bond_moves_by_the_textbooks_zero_point_amplitude(
     assert np.abs(along) == pytest.approx([bond_rms / 2] * 2, rel=1e-6)
     assert mode.coordinate(u) == pytest.approx(
         mode.zero_point_amplitude_amu12_ang, rel=1e-9)
-    cold = mode.state(temperature_k=0.0)
+    cold = mode.bind(states.thermal(temperature_k=0.0))
     assert cold.spread_amu12_ang == pytest.approx(
         mode.zero_point_amplitude_amu12_ang, rel=1e-12)
     assert cold.atom_rms_ang == pytest.approx([bond_rms / 2] * 2, rel=1e-6)
-    taken = mode.state()
+    taken = mode.bind(states.thermal())
     assert (taken.temperature_k, taken.temperature_from) == (
         stated_t, "the record's")
     q_zp = math.sqrt(codata.hbar / (2.0 * omega) / AMU_KG) * 1e10
@@ -221,10 +222,8 @@ def test_a_run_folder_reads_as_its_vibration_and_writes_its_set(
     from molbuilder.frameset import read
     from molbuilder.persist import sha256_of
     from molbuilder.postprocess import (outermost_move, read_frame_set,
-                                        vibration, write_frame_set)
+                                        states, vibration, write_frame_set)
     from molbuilder.projects import address
-    from molbuilder.vibration_frames import (
-        outermost_move as vf_outermost_move)
     from molbuilder.workingcopy_structure import StructureCodec
     run = real_h2_vibration.attempt("freq")
     result, data = _files(real_h2_vibration)
@@ -236,8 +235,9 @@ def test_a_run_folder_reads_as_its_vibration_and_writes_its_set(
     # A PySCF DECK RECORDS NO RELAXATION (§ 1): none, and why, said.
     assert v.relaxation_calculation is None
     assert "no transport citation" in v.relaxation_said
-    written = write_frame_set(tmp_path / "h2.xyz",
-                              v.mode(1).state(temperature_k=300.0).frames(3))
+    written = write_frame_set(
+        tmp_path / "h2.xyz",
+        v.mode(1).bind(states.thermal(temperature_k=300.0)).frames(3))
     s = StructureCodec().load(written.path, frames=True)
     rows = read(s)
     assert rows.value("vibration_run") == address(run)
@@ -246,11 +246,13 @@ def test_a_run_folder_reads_as_its_vibration_and_writes_its_set(
     assert v.relaxation_said in written.said
     # THE SET REOPENS ITS RUN, the one its vibration_run row names (§ 5).
     back = read_frame_set(written.path)
-    assert back.state is not None and back.state.mode.vibration.run == run
-    # ANY STATE'S OUTERMOST MOVE, from the run's folder (§ 4).
-    two = v.mode(1).state(quanta=2)
-    assert outermost_move(run, mode=1, quanta=2, nodes=5) == \
-        vf_outermost_move(two, 5)
+    assert back.mode_distribution is not None
+    assert back.mode_distribution.mode.vibration.run == run
+    # ANY STATE'S OUTERMOST MOVE, from the run's folder (§ 4): the mode's
+    # state's own, one rule at two doors.
+    two = states.level(2)
+    assert outermost_move(run, mode=1, chain_or_distribution=two,
+                          nodes=5) == v.mode(1).bind(two).outermost_move(5)
 
 
 #: EACH STATE THE DOORS ASK (`engines/vibration-frames.md` § 6), as typed on

@@ -304,10 +304,10 @@ UNITS: Dict[str, str] = {unit: means for unit, means, _, _ in _TABLE}
 #: writer (`ncdata.check_said`) and read by :func:`unit_of_name`.
 UNIT_IN_NAME: Dict[str, str] = {unit: in_name
                                 for unit, _, in_name, _ in _TABLE}
-#: EACH UNIT AS A PAGE SHOWS IT (:data:`_TABLE`): the look the vibration
-#: frame sets' words give a row's unit (`vibration_frames.Row.page_unit`),
-#: and the look of the unit a name carries that a row's ``unit`` may repeat
-#: (`model/structure.md` § 2.2d); empty for a number of no unit.
+#: EACH UNIT AS A PAGE SHOWS IT (:data:`_TABLE`): the look of the unit a
+#: name carries that a row's ``unit`` may repeat, read back as its spelling
+#: (:func:`unit_spelled`; `model/structure.md` § 2.2d); empty for a number
+#: of no unit.
 UNIT_ON_A_PAGE: Dict[str, str] = {unit: on_page
                                   for unit, _, _, on_page in _TABLE}
 

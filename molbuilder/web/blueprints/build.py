@@ -58,7 +58,6 @@ from ._shared import (
     stated_params as _stated_params,
     catalogue_to_form_schema as _catalogue_to_form_schema,
     engine_key_for as _engine_key_for,
-    frame_set_said,
     issues_to_json as _issues_to_json,
     ok_structure_response,
     struct_from_body as _struct_from_body,
@@ -2467,11 +2466,9 @@ def api_task_setup_folder():
         "treatment": task.treatment if task is not None else None,
         "treatment_note": _treatment_note(task),
         # WHAT THE CITED JUNCTION'S FRAMES ARE -- the count and the rows as
-        # written -- by the describe door's own helper
-        # (`frame_average.answer`; `engines/transport.md` § 3.8.1), and the
-        # page's words for them and where the set came from
-        # (`frame_set_said`); null for every other kind.  The "What came
-        # over" card draws them.
+        # the set stores them -- by the describe door's own helper
+        # (`frame_average.answer`; `engines/transport.md` § 3.8.1); null for
+        # every other kind.  The "What came over" card draws them.
         **_folder_frame_set(task, folder),
         # THE MACHINE IT IS SET TO -- its first prep's, read from its copy
         # of the record, or null before that (`configuration.md` M-3): the
@@ -2629,15 +2626,14 @@ def _folder_ladder(calc) -> dict:
 
 
 def _folder_frame_set(task, folder) -> Dict[str, Any]:
-    """``{frame_set, frame_set_said}``: the cited junction's frames, as the
-    describe door answers them (`frame_average.answer`), for a description
-    of a kind that cites its structure (the kind table's
-    ``description.cites`` -- a transport calculation's junction), and the
-    page's words for them (`_shared.frame_set_said`); each ``None`` for
-    every other kind.  A citation that does not read says why, in its words
-    -- the folder still opens."""
+    """``{frame_set}``: the cited junction's frames, as the describe door
+    answers them (`frame_average.answer`: its rows as the set stores them,
+    none interpreted), for a description of a kind that cites its structure
+    (the kind table's ``description.cites`` -- a transport calculation's
+    junction); ``None`` for every other kind.  A citation that does not
+    read says why, in its words -- the folder still opens."""
     from molbuilder.kind_table import description_part, kind as _kind
-    none = {"frame_set": None, "frame_set_said": None}
+    none = {"frame_set": None}
     cites = _kind(task.calculation).description.cites if task else None
     if not cites:
         return none
@@ -2653,14 +2649,10 @@ def _folder_frame_set(task, folder) -> Dict[str, Any]:
         return {"frame_set": {
             "n_frames": None, "definition": None,
             "why": f"{folder} is in no projects tree, so its citation "
-                   f"{cited_at} names nothing"}, "frame_set_said": None}
+                   f"{cited_at} names nothing"}}
     # ...ITS FRAMES, by the kind's own reading of its citation (its
-    # ``cited_frames`` part), and their words.
-    frames = cited_frames(str(cited_at), tree)
-    return {"frame_set": frames,
-            "frame_set_said": frame_set_said(
-                cited_at, tree, n_frames=frames.get("n_frames"))
-            if frames.get("n_frames") else None}
+    # ``cited_frames`` part).
+    return {"frame_set": cited_frames(str(cited_at), tree)}
 
 
 def _folder_set_to(folder):

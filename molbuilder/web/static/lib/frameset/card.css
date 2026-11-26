@@ -28,3 +28,24 @@
     text-align: left;
     color: var(--text-secondary);
 }
+
+/* The set's rows as stored: name, value, unit. A value may be sentences
+ * (a maker's assumptions), so it wraps; the name and unit stay on one line. */
+.frameset-rows {
+    margin-bottom: var(--space-sm);
+}
+
+.frameset-rows th,
+.frameset-rows td {
+    text-align: left;
+    vertical-align: top;
+}
+
+.frameset-rows .frameset-name,
+.frameset-rows .frameset-unit {
+    white-space: nowrap;
+}
+
+.frameset-rows .frameset-value {
+    white-space: normal;
+}

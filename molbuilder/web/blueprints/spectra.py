@@ -110,14 +110,17 @@ def _temperature_k(body):
 
 def _framesets(results, path, asked: Optional[Dict[str, Any]]):
     """EACH MODE'S READOUT FOR THE DIALOG'S STATE (`web/spectra.md` § 4.3)
-    -- ``(state, {mode number: block})``: at ``asked``, else at the thermal
-    state at the record's temperature, the box the dialog starts at; ``None``
-    where neither is stated or the result holds no geometry yet.  Each block
-    is the motion toolkit's (`vibration_frames.readout`) on the result's own
-    modes; a state the table refuses is a ``ValueError`` (a 400).  A
-    result with no geometry yet is asked as such (``atoms_weighted``, what
-    its `vibration` is refused on), never a caught refusal."""
-    from molbuilder.vibration_frames import readout
+    -- ``(state, {mode number: block})``: at ``asked``, the dialog's choice
+    as it sent it, else at the thermal state at the record's temperature,
+    the box the dialog starts at -- ``state`` said back as the dialog holds
+    it; ``None`` where neither is stated or the result holds no geometry
+    yet.  The choice is made a chain by the doors' rule
+    (`vibration_frames.read_state_ask`), each block the motion toolkit's
+    readout of the mode bound to it (`vibration_frames.readout`); a choice
+    the doors refuse is a ``ValueError`` (a 400).  A result with no
+    geometry yet is asked as such (``atoms_weighted``, what its `vibration`
+    is refused on), never a caught refusal."""
+    from molbuilder.vibration_frames import read_state_ask, readout
     if results.atoms_weighted() is None:
         return None
     v = results.vibration(read_path=str(path))
@@ -126,7 +129,8 @@ def _framesets(results, path, asked: Optional[Dict[str, Any]]):
         if v.record_temperature_k is None:
             return None
         state = {"temperature_k": float(v.record_temperature_k)}
-    return state, {m.index_1based: readout(m, state) for m in v.modes}
+    chain = read_state_ask(state)
+    return state, {m.index_1based: readout(m, chain) for m in v.modes}
 
 
 def _view_asked(body, key: str, read_ask) -> Optional[Dict[str, Any]]:
@@ -350,7 +354,10 @@ def api_spectra_load():
     try:
         temperature_k = _temperature_k(body)
         from molbuilder.vibration_frames import read_state_ask
-        frameset_state = _view_asked(body, "frameset_state", read_state_ask)
+        # THE DIALOG'S CHOICE, refused here before the file is read; kept
+        # as sent, to be said back as the dialog holds it.
+        _view_asked(body, "frameset_state", read_state_ask)
+        frameset_state = body.get("frameset_state")
         from molbuilder.spectra import infrared as _ir, raman as _raman
         infrared = _view_asked(body, "infrared", _ir.read_ask)
         raman = _view_asked(body, "raman", _raman.read_ask)
@@ -409,8 +416,9 @@ def api_spectra_frameset():
     (`vibration_frames.frameset_from_mode`: the run door, the state's own
     rule and the motion toolkit's one writer; `engines/vibration-frames.md`
     § 4, § 5, § 6; `web/spectra.md` § 4.3): ``{path, mode, nodes, out}``
-    and the state's arguments (``temperature_k``, ``quanta``,
-    ``mean_quanta``, as the dialog asks them) -- the
+    and the state's choice (``temperature_k``, ``quanta``,
+    ``mean_quanta``, as the dialog asks them; made a chain by
+    `vibration_frames.doors_chain`) -- the
     vibration result the page shows, whose folder is its run's, the frame
     count (the doors' default when unsaid), and the pair's ``.xyz``, each
     path inside the tree (the fence, `web-api.md` § 2.1), the ``.xyz``
@@ -418,7 +426,7 @@ def api_spectra_frameset():
     frames, said}``, or the writer's refusal in its words (400)."""
     from molbuilder.persist import unknown_keys
     from molbuilder.vibration_frames import (STATE_ASK_KEYS, FrameSetError,
-                                             frameset_from_mode)
+                                             doors_chain, frameset_from_mode)
     from molbuilder.projects import projects_root
     from .files import _resolve_within_roots, _writable
     body = request.get_json(silent=True) or {}
@@ -444,9 +452,8 @@ def api_spectra_frameset():
             400)
     root = projects_root()
     try:
-        got = frameset_from_mode(
-            run, mode=mode, out=out, **rule,
-            **{k: body.get(k) for k in STATE_ASK_KEYS})
+        chain = doors_chain(**{k: body.get(k) for k in STATE_ASK_KEYS})
+        got = frameset_from_mode(run, mode=mode, out=out, chain=chain, **rule)
     except FrameSetError as exc:
         return err(str(exc), 400)
     return jsonify({"ok": True, **got.to_wire(root)})

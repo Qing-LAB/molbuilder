@@ -302,7 +302,7 @@ def test_a_described_calculations_report_opens_before_its_first_prep(
     """`web/results.md` § 2.5: the Results tab opens a transport
     calculation's report from `molbuilder describe` on -- before its first
     prep composes the junction, the report says so and carries no frame set
-    (`/api/transport/record`: ``frame_set`` and ``frame_set_said`` null).
+    (`/api/transport/record`: ``frame_set`` null).
     THE SILENT FAILURE: a report answering an error page from a Save until
     the first prep, and every poll after it (2.81.0's first build).  The
     cited relaxation is the road's (`support.road.prepared_here`), going."""
@@ -319,7 +319,7 @@ def test_a_described_calculations_report_opens_before_its_first_prep(
             f"/api/transport/record?path={transport}")
     assert got.status_code == 200, got.get_json()
     body = got.get_json()
-    assert body["frame_set"] is None and body["frame_set_said"] is None, body
+    assert body["frame_set"] is None, body
     # ...and its average says why there is none (§ 2a.12), every point
     # still to come.
     assert body["record"]["average"]["why"], body["record"]["average"]

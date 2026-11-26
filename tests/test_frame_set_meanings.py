@@ -3,16 +3,19 @@ calculation cites them, and the one row it reads is each frame's weight.
 
 `model/structure.md` § 2.2f; `engines/transport.md` § 2a.12, § 3.8.1: the
 calculation reads each frame's ``weight`` and carries every other row whole
--- name, value, unit and meaning -- never checking it and never saying it in
-words of its own; what is said beside the average is the weights' and
-transport's own assumptions, said of frames.  API-level: the frame set is
-made through the Structure API, as a person's script makes it, and each of
-transport's readers is asked -- the page's answer, the record's average and
-citation, `summarize`'s lines and the data file's frame part.
+-- name, value, unit and meaning -- never checking it, and a page is
+answered each by its stored name, value and unit, none interpreted (the
+user, 2026-11-26: "transport does transport calculation and that's it");
+what is said beside the average is the weights' and transport's own
+assumptions, said of frames, and of a calculation's citation its pair no
+longer as pinned.  API-level: the frame set is made through the Structure
+API, as a person's script makes it, and each of transport's readers is
+asked -- the page's answer, the record's average and citation,
+`summarize`'s lines, the data file's frame part and the citation's words.
 
 The silent failures it guards: a person's own row refused by a calculation,
-or relabelled with words it never had; a harmonic mode's assumptions stated
-beside frames a person built.
+or relabelled with words it never had; a maker's note drawn on a transport
+page; a harmonic mode's assumptions stated beside frames a person built.
 """
 import math
 
@@ -45,24 +48,27 @@ def _frames(weights=(0.5, 0.5), note=_OWN):
     return s
 
 
-def test_the_page_is_answered_the_rows_as_written():
-    """§ 3.8.1: the describe door's frames are the rows as written -- each
-    name, value, unit and meaning -- a person's own row in its own unit
-    carried, and no words of transport's own.  The silent failure: a row of
-    the person's relabelled, or the citation refused for it."""
+def test_the_page_is_answered_the_rows_as_the_set_stores_them():
+    """§ 3.8.1: the describe door's frames are the rows as the set stores
+    them -- each name, value and unit -- a person's own row in its own unit
+    carried, none interpreted: no words of transport's own and no meaning
+    drawn, the maker's notes staying in its file.  The silent failures: a
+    row of the person's relabelled, or the citation refused for it; a
+    maker's note answered for a transport page to draw."""
     from molbuilder.frame_average import answer
-    definition = answer(_frames())["definition"]
+    got = answer(_frames())
+    assert set(got) == {"n_frames", "definition", "said"}, got
+    assert got["said"] == [], got
+    definition = got["definition"]
     assert definition["structure"] == [
-        {"name": "mode_index_1based", "value": 6, "unit": "1", "note": None},
-        {"name": "frequency_cm1", "value": 2548.365564447995,
-         "unit": None, "note": "the mode's wavenumber"},
-        {"name": "seed", "value": 20261123, "unit": "1", "note": None},
-        {"name": "sampling_nodes", "value": 3, "unit": "1", "note": None},
-        {"name": "bond", "value": "H-H", "unit": None,
-         "note": "the bond the frames stretch"}]
+        {"name": "mode_index_1based", "value": 6, "unit": "1"},
+        {"name": "frequency_cm1", "value": 2548.365564447995, "unit": None},
+        {"name": "seed", "value": 20261123, "unit": "1"},
+        {"name": "sampling_nodes", "value": 3, "unit": "1"},
+        {"name": "bond", "value": "H-H", "unit": None}]
     assert definition["columns"] == [
-        {"name": "weight", "unit": "1", "note": _OWN},
-        {"name": "bond_stretch", "unit": "nm", "note": None}]
+        {"name": "weight", "unit": "1"},
+        {"name": "bond_stretch", "unit": "nm"}]
     assert definition["frames"] == [[0.5, 0.0], [0.5, 0.05]]
     assert set(definition) == {"structure", "columns", "frames", "weights",
                                "weight_sum", "warnings"}, definition
@@ -142,8 +148,7 @@ def test_a_page_opens_whatever_rows_a_set_writes(page):
     s = _frames()
     if page == "the citation":
         columns = answer(s)["definition"]["columns"]
-        assert {"name": "bond_stretch", "unit": "nm",
-                "note": None} in columns, columns
+        assert {"name": "bond_stretch", "unit": "nm"} in columns, columns
         return
     said = average_said(2, read(s), [], [], same_volts)
     assert said["why"] is None and said["weights"] == [0.5, 0.5], said
@@ -194,3 +199,40 @@ def test_the_data_file_writes_each_frames_weight_and_no_other_row():
         "average_conductance_change_percent", "average_why",
         "average_conductance_why"}
     assert attrs["frame_warnings"] == average["warnings"], attrs
+
+
+@pytest.mark.parametrize("edited, changed, unchanged", [
+    ("the .xyz", ["set.xyz"], "set.molstruct.json"),
+    ("the sidecar", ["set.molstruct.json"], "set.xyz"),
+    ("nothing", [], None),
+])
+def test_a_calculations_cited_pair_changed_since_is_said(tmp_path, edited,
+                                                         changed, unchanged):
+    """§ 3.8.1, § 3.1: a calculation's cited pair either of whose files no
+    longer holds the bytes its record pinned is said, naming the file, with
+    its way on -- transport's own word of its citation, the frames shown
+    being the ones the calculation ran; a pair as pinned says nothing.  The
+    silent failure: a Results tab showing a pair's rows as the ones the
+    calculation ran after a person edited it."""
+    from molbuilder.persist import sha256_of
+    from molbuilder.transport.compose import pair_changed_said
+    from molbuilder.workingcopy_structure import StructureCodec
+    path = StructureCodec().write(_frames(), tmp_path / "set.xyz")
+    sidecar = path.with_name("set.molstruct.json")
+    pinned = {path.name: sha256_of(path), sidecar.name: sha256_of(sidecar)}
+    # THE PERSON EDITS ONE FILE after the record pinned it, as an editor
+    # saves it: its bytes another.
+    target = {"the .xyz": path, "the sidecar": sidecar}.get(edited)
+    if target is not None:
+        target.write_text(target.read_text() + "\n")
+    said = pair_changed_said(path, pinned)
+    if not changed:
+        assert said is None, said
+        return
+    assert said.startswith("the cited pair has changed since this "
+                           "calculation cited it"), said
+    assert all(name in said for name in changed), said
+    assert unchanged not in said, said
+    assert "the frames shown are the ones the calculation ran" in said
+    assert said.endswith("cite the pair as it is now in a new calculation, "
+                         "or put it back"), said

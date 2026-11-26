@@ -222,14 +222,10 @@ CITATION_CONDITION = (
     ".molstruct.json carrying info.calculation: one geometry, as the "
     "Results tab or `" + as_typed("xv2xyz", "--from-run") + "` saves a "
     "finished "
-    "relaxation, or a frame set, the junction moved along one vibration "
-    "mode, as the Results tab's Write frame set saves it from a vibration's "
-    "result.  Relax the junction through "
-    + RELAX_THROUGH + ", then cite that "
-    "run or the pair saved from it; to move it along a vibration, open the "
-    "vibration's result on the Results tab, select the mode, press Write "
-    "frame set and cite the .xyz it saves -- a vibration's own folder is "
-    "not cited")
+    "relaxation, or a frame set: several geometries of the junction in one "
+    "pair, its first frame the relaxed one.  Relax the junction through "
+    + RELAX_THROUGH + ", then cite that run or a pair holding it -- a "
+    "vibration's own folder is not cited")
 
 
 def classify_citation(cited: Path) -> "CitedRun | CitedPair":
@@ -952,6 +948,25 @@ def _pair_unchanged(cited: CitedPair, provenance, citation: str) -> None:
             f"the pair as it was; cite the pair as it is now in a new "
             f"transport calculation (`{as_typed('describe')}`), or restore it"
             f".")
+
+
+def pair_changed_said(path, pinned) -> Optional[str]:
+    """WHAT A PAGE SAYS OF A CALCULATION'S CITED PAIR no longer as its
+    record pinned it (`engines/transport.md` § 3.8.1): the pair at ``path``
+    against ``pinned`` (the record's ``files``, ``{file name: sha256}``) by
+    the one comparison the composition refuses on
+    (`workingcopy_structure.pair_files_changed`) -- the words with their way
+    on, or ``None`` where both files are as pinned.  The frames a page draws
+    are the ones the calculation ran, whatever became of the pair."""
+    from ..workingcopy_structure import pair_files_changed
+    changed = pair_files_changed(path, pinned)
+    if not changed:
+        return None
+    return (f"the cited pair has changed since this calculation cited it -- "
+            f"{', '.join(changed)} {'is' if len(changed) == 1 else 'are'} "
+            f"not as its record pinned: the frames shown are the ones the "
+            f"calculation ran; cite the pair as it is now in a new "
+            f"calculation, or put it back")
 
 
 def read_provenance(base_dir, *, read=None) -> Optional[Dict]:

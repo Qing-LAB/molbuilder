@@ -646,7 +646,7 @@ colour a token, the presenter owning its sheet (`lib/inspectors/transport.css`):
 │ │ are several frames                │ │ clickable, the table below it    │ │
 │ └───────────────────────────────────┘ └──────────────────────────────────┘ │
 │ ┌ Frame set (several frames only) ────────────────────────────────────────┐ │
-│ │ what the set is, its rows in words, where it came from; a row per frame │ │
+│ │ its count, its rows as stored (name · value · unit); a row per frame    │ │
 │ └─────────────────────────────────────────────────────────────────────────┘ │
 │ ┌ Convergence [ seed | electrode L | electrode R | device ] ─────────────┐ │
 │ │ each rung's SCF: energy and residuals per iteration; the device's two   │ │
@@ -822,28 +822,19 @@ the same way and open the report at that point. A legend entry clicked hides
 its curve — Plotly's own legend, nothing built. **The selected frame's
 `customized` rows** are MolView's Info page's, which follows the frame bar
 ([`molview.md`](?doc=web/molview.md) § 6.4) — never a second copy here.
-**The frame set and where it came from**: for a cited set of several
-frames, a *Frame set* card below the device and the curves — the Transport
-tab's (`lib/frameset/card.js`): what the set is (*3 frames of one mode*), its
-rows in the vibration frame sets' words where they speak for a row, else by
-name and unit as written, a row the vocabulary marks as prose on its own
-line, a mode's own set written before 2.81.0 its harmonic assumptions in the
-toolkit's words, a table of each frame's rows numbered as the frame bar
-numbers them, and its provenance line — a vibration's set's `vibration_run`
-and `vibration_result_sha256` rows, said there once, or an older set's
-`info.vibration` — every word of the frames the calculation ran, so a pair
-moved or deleted since takes nothing from the card; with what is said of
-the weights, the one place the report says it, and, in the warning tone,
-when either file of the cited pair at the record's path, its `.xyz` or its
-`.molstruct.json`, is not as the record pinned it — the words of an older
-set and of a changed pair are
-[`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 6's,
-their one home. Its data is `/api/transport/record`'s
-`frame_set` — the composed junction's frames and rows as the calculation ran
-them (`frame_average.answer`) — and `frame_set_said`, which the transport
-blueprint asks of the toolkit, `vibration_frames.said_of(pair_path,
-recorded_files, structure=)` with the record's `files` mapping and the
-composed junction
+**The frame set, as it stores itself**: for a cited set of several frames,
+a *Frame set* card below the device and the curves — the Transport tab's
+(`lib/frameset/card.js`): its count, its rows as the set stores them —
+each row's stored name, value and unit — and a table of each frame's rows
+numbered as the frame bar numbers them, every row the frames the calculation
+ran state, none interpreted, so a pair moved or deleted since takes nothing
+from the card; with what is said of the weights, the one place the report
+says it, and, in the warning tone, when either file of the cited pair at the
+record's path, its `.xyz` or its `.molstruct.json`, is not as the record
+pinned it. Its data is `/api/transport/record`'s `frame_set` — the composed
+junction's frames and rows as the calculation ran them
+(`frame_average.answer`) and `said`, the citation's words, the pair's files
+against the record's `files` mapping
 ([`engines/transport.md`](?doc=engines/transport.md) § 3.8.1).
 **The PDOS of a selection** is asked at the selected frame and voltage
 (`/api/transport/pdos`, its `frame`) — once the frame has settled: while

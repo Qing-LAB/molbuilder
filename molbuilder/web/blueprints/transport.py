@@ -52,7 +52,7 @@ from flask import Blueprint, jsonify, request
 from ._shared import (
     err,
     catalogue_to_form_schema,
-    frame_set_said,
+    cited_pair_said,
     issues_to_json as _issues_to_json,
 )
 
@@ -342,15 +342,10 @@ def api_transport_describe_attempt() -> Any:
             pass
 
     # WHAT ITS FRAMES ARE (§ 3.8.1): a cited pair's count and its rows as
-    # written, the frames' post-process's answer -- a cited run is one
-    # structure -- and beside them the page's words for each row and where
-    # the set came from, the vibration frame sets' (`frame_set_said`).
+    # the set stores them, the frames' post-process's answer -- a cited run
+    # is one structure -- none of them interpreted.
     frame_set = answer(cited.structure if isinstance(cited, CitedPair)
                        else None)
-    frames_said = (frame_set_said(citation, root,
-                                  n_frames=frame_set["n_frames"],
-                                  structure=cited.structure)
-                   if isinstance(cited, CitedPair) else None)
     if finished is not None:
         # ITS FRAME 0 IS THE FINISHED JUNCTION, or it is refused here, where
         # it is picked, the junction the tab holds staying held; the rename
@@ -377,7 +372,6 @@ def api_transport_describe_attempt() -> Any:
         # choice it holds and offers to withdraw it (§ 4).
         "swap_electrodes": swap,
         "frame_set": frame_set,
-        "frame_set_said": frames_said,
     })
 
 
@@ -435,12 +429,14 @@ def _describe_reused(folder: str, root) -> Any:
         stands] + ([f"its junction's record does not read: {unread}"]
                    if unread else [])
         + ([unstated] if unstated else []))
-    # ITS FRAMES, as any citation's are said (§ 3.8.1, § 2a.9): the
-    # junction's rows as it ran them, and beside them the cited pair's words
-    # and provenance, its files against the sha256 the calculation pinned.
-    frame_set = answer(junction if junction is not None
-                       and junction.n_frames > 1 else None)
+    # ITS FRAMES, as any citation's are shown (§ 3.8.1, § 2a.9): the
+    # junction's rows as it ran them, stored, and the cited pair's files
+    # against the sha256 the calculation pinned.
     provenance = read_provenance(calc.base) or {}
+    frame_set = answer(junction if junction is not None
+                       and junction.n_frames > 1 else None,
+                       said=cited_pair_said(citation_of(task), root,
+                                            provenance.get("files")))
     return jsonify({
         "ok": True, "citation": citation_of(task), "reuses": rel,
         "concluded": True, "summary": summary,
@@ -448,9 +444,6 @@ def _describe_reused(folder: str, root) -> Any:
         "structure": junction.to_dict() if junction is not None else None,
         "fix": None, "swap_electrodes": task.swap_electrodes,
         "frame_set": frame_set,
-        "frame_set_said": frame_set_said(
-            citation_of(task), root, files=provenance.get("files"),
-            n_frames=frame_set["n_frames"], structure=junction),
         "bias": [float(v) for v in task.bias],
         "low_bias_approximation": task.low_bias_approximation,
         # THE WINDOW ITS TRANSMISSION COMPUTED, in the meta line's words --
@@ -506,13 +499,11 @@ def api_transport_record() -> Any:
 
     Beside the record, the cited frame set as the Results tab's frame-set
     card draws it (`web/results.md` § 2.5; `engines/transport.md` § 3.8.1):
-    ``frame_set`` -- the composed junction's frames and rows as written,
-    the describe door's answer (`frame_average.answer`), ``null`` for one
-    structure, before the first prep composes the junction and while it
-    does not read -- and ``frame_set_said`` -- the page's words for those
-    frames and where they came from, the cited pair's files checked against
-    the sha256 the record pinned (:func:`frame_set_said`), ``null`` with
-    it.
+    ``frame_set`` -- the composed junction's frames and rows as the set
+    stores them, the describe door's answer (`frame_average.answer`), its
+    ``said`` the cited pair's files checked against the sha256 the record
+    pinned (:func:`cited_pair_said`); ``null`` for one structure, before the
+    first prep composes the junction and while it does not read.
 
     Errors: 400 for a path outside the projects tree, or one that is not a
     transport calculation's; 404 for nothing there.
@@ -538,19 +529,17 @@ def api_transport_record() -> Any:
         recorded = None
     junction = recorded.structure if recorded is not None else None
     cited = record.get("frame_set") or {}
-    frame_set = (answer(junction) if junction is not None
-                 and junction.n_frames > 1 else None)
     # THE CALCULATION'S OWN TREE, as prep resolves its citation
     # (`projects.find_projects_root`), the folder answer's rule -- the
     # server's only for a calculation that sits in none.
     tree = (find_projects_root(Path(calc.base))
             or Path(projects_root()).resolve())
+    frame_set = (answer(junction, said=cited_pair_said(
+                     cited.get("citation"), tree, cited.get("files")))
+                 if junction is not None and junction.n_frames > 1
+                 else None)
     return jsonify({
-        "ok": True, "record": record, "frame_set": frame_set,
-        "frame_set_said": frame_set_said(
-            cited.get("citation"), tree, files=cited.get("files"),
-            n_frames=frame_set["n_frames"], structure=junction)
-        if frame_set else None})
+        "ok": True, "record": record, "frame_set": frame_set})
 
 
 def _transport_calc(raw: str):

@@ -7,9 +7,8 @@ This module is the SINGLE source of truth for:
 * Structure -> JSON response body construction (the structure sent once)
 * JSON -> dataclass coercion (used by Build for SiestaConfig /
   PySCFConfig form values)
-* a cited frame set's words beside its rows (``frame_set_said``: the
-  transport blueprint's describe door and record answer, the build
-  blueprint's folder answer)
+* a calculation's cited pair against its record (``cited_pair_said``:
+  the transport blueprint's record and reuse answers)
 
 If a helper is genuinely blueprint-specific (e.g. Build's
 ``/api/build/load`` accepts both multipart and JSON, Modify's body
@@ -44,34 +43,31 @@ from molbuilder.periodicity_gate import (notices_for_report,
 
 
 # --------------------------------------------------------------------- #
-#  A cited frame set, in a page's words                                   #
+#  A calculation's cited pair, against its record                         #
 # --------------------------------------------------------------------- #
 
-def frame_set_said(citation, tree_root, *, files=None, n_frames=None,
-                   structure=None) -> Optional[Dict[str, Any]]:
-    """WHAT A PAGE SAYS OF A CITED FRAME SET beside its rows -- the vibration
-    frame sets' words for each row, what the set is, where it came from and
-    what is said of the pair (`vibration_frames.said_of`;
-    `engines/transport.md` § 3.8.1) -- for a ``citation`` that is a pair of
-    several frames under ``tree_root``, its files checked against ``files``
-    (a calculation's record's ``files``, the sha256 each was pinned at);
-    ``None`` for a run's folder, one structure, or a citation outside the
-    tree.  ``structure``, the frames the page draws -- a calculation's
-    composed junction, a citation as read -- is what the words are of; the
-    pair is then read only for whether its files are as pinned.  The transport blueprint's describe door and record answer and
-    the build blueprint's folder answer each carry it as
-    ``frame_set_said``."""
-    if not citation or (n_frames is not None and n_frames < 2):
-        return None
+def cited_pair_said(citation, tree_root, files) -> List[str]:
+    """WHAT TRANSPORT SAYS OF A CALCULATION'S CITED PAIR beside its frames
+    (`engines/transport.md` § 3.8.1): for a ``citation`` that is a pair
+    under ``tree_root``, its files against ``files`` (the calculation's
+    record's, the sha256 each was pinned at), the words where either is not
+    as pinned (`compose.pair_changed_said`); nothing for a run's folder, a
+    citation outside the tree or a record that pinned nothing.  The frames
+    the page draws are the calculation's own, whatever became of the pair.
+    The transport blueprint's record and reuse answers carry it as their
+    ``frame_set``'s ``said``."""
+    if not citation or files is None:
+        return []
     from molbuilder.projects import OutsideRoot, at
     try:
         path = at(str(citation), tree_root)
     except OutsideRoot:
-        return None
+        return []
     if path.is_dir():
-        return None
-    from molbuilder.vibration_frames import said_of
-    return said_of(path, files, structure=structure)
+        return []
+    from molbuilder.transport.compose import pair_changed_said
+    said = pair_changed_said(path, files)
+    return [said] if said else []
 
 
 def card_of_finding(where: str, cfg, calculation: str) -> Optional[str]:

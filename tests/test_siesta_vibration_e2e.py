@@ -917,24 +917,26 @@ def test_an_optical_calls_monitor_says_where_its_run_is(real_co2_vibration):
 @pytest.mark.parametrize("cited", ["the stage's folder", "its run"])
 def test_a_vibration_cited_as_a_junction_names_its_frame_sets(
         real_co2_vibration, cited):
-    """`engines/transport.md` § 3.1: a transport calculation takes a
-    vibration through one of its modes -- a frame set, written from its
-    result by the Results tab's *Write frame set* (`web/spectra.md` § 4.3)
-    -- never through the vibration's own folder, which the citation door
-    refuses; its refusal names that way.
+    """`engines/transport.md` § 3.1: a transport calculation cites a frame
+    set -- several geometries of the junction in one pair -- never a
+    vibration's own folder, which the citation door refuses; its refusal
+    says a frame set is citable and the folder is not, and says nothing of
+    how a frame set is made, which is its maker's (the user, 2026-11-26:
+    transport says only what it accepts).
 
     THE SILENT FAILURE (the user, on Sol, 2026-10-28): the extension's
     frame-set chooser, given a vibration's stage folder, refused it and named
-    one way only -- relax the junction -- a road away from the frames the
-    person asked for."""
+    one way only -- relax the junction -- never saying a frame set is
+    citable."""
     from molbuilder.transport.compose import ComposeError, classify_citation
     run = real_co2_vibration.attempt("freq", 0)
     with pytest.raises(ComposeError) as got:
         classify_citation(run.parent if cited == "the stage's folder"
                           else run)
     said = str(got.value)
-    assert "Write frame set" in said and "cite the .xyz it saves" in said, \
-        said
+    assert "or a frame set: several geometries of the junction" in said, said
+    assert "a vibration's own folder is not cited" in said, said
+    assert "Write frame set" not in said, said
 
 
 def test_the_optical_calls_are_one_data_file_the_result_cites(

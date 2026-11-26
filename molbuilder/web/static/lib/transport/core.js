@@ -1269,12 +1269,11 @@ const WORKSPACE_TAG = "transport";
             meta.hidden = false;
             meta.replaceChildren(window.molbuilder.dom.codeWords(described.summary || ""));
         }
-        /* WHAT ITS FRAMES ARE (transport.md § 3.8.1), by the one card, in
-         * the words the answer carries beside them. */
+        /* WHAT ITS FRAMES ARE (transport.md § 3.8.1), by the one card: its
+         * rows as the set stores them. */
         var fsHost = _$("transport-junction-frameset");
         import("../frameset/card.js").then(function (mod) {
-            mod.renderFrameSet(fsHost, described.frame_set || null,
-                               described.frame_set_said || null);
+            mod.renderFrameSet(fsHost, described.frame_set || null);
         });
         /* WHAT THE COMPOSITION MEASURED -- each lead's measurements, the
          * orientation warning, a refusal -- through the one renderer
@@ -1330,8 +1329,8 @@ const WORKSPACE_TAG = "transport";
         import("../tree-picker.js").then(function (mod) {
             return mod.pickPath({
                 title: "Cite a frame set of " + name + "'s junction",
-                hint: "Pick a frame set's .xyz -- a vibration mode's "
-                    + "frames -- whose first frame is the junction " + name
+                hint: "Pick a frame set's .xyz whose first frame is the "
+                    + "junction " + name
                     + " ran.  \u25b8 expands.",
                 mode: "any",
                 describe: function (path) {

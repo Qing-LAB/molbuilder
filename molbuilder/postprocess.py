@@ -22,16 +22,17 @@ ROLE    ``parse`` -- an engine's file, a run's file → its result (the
         of a mixed selection from its data file and digests, summed as the
         report sums (`tbtnc.pdos_from_files`); ``frame_rows`` -- a
         transport calculation's frame set's rows, from its data file
-        (`frameset.read`); ``weights_for_set`` -- the weights for a mode's
-        own set's rows at a state (`vibration_frames.weights_for_set`);
-        ``reaveraged`` -- a mode's own set's transport
-        calculation averaged at another state, the motion toolkit's weights
-        for its rows (`vibration_frames.weights_for_set`) at transport's
-        averaging door (`frame_average.averaged_at`); ``outermost_move`` -- how far
-        a mode's frame set in any state moves its atom that moves most
-        (`vibration_frames.outermost_move_of`); ``vibration`` -- a vibration
-        to compute with, from its run's folder or its result file, its
-        modes, their states and the molecule's motion and snapshots
+        (`frameset.read`); ``weights_for_set`` -- the weights of a mode's
+        own set's rows for a state, a chain or a distribution
+        (`vibration_frames.weights_for_set`); ``reaveraged`` -- a mode's own
+        set's transport calculation averaged for another state, the motion
+        toolkit's weights of its rows (`vibration_frames.weights_for_set`)
+        at transport's averaging door (`frame_average.averaged_at`);
+        ``outermost_move`` -- how far a mode's frame set in any state moves
+        its atom that moves most (`vibration_frames.outermost_move_of`);
+        ``vibration`` -- a vibration to compute with, from its run's folder
+        or its result file, its modes, each bound to a chain or a
+        distribution (`Mode.bind`), and the molecule's motion and snapshots
         (`vibration.Vibration`; `vibration_frames.vibration_of_run`,
         `SpectraResults.vibration`; `engines/vibration-frames.md`);
         ``write_frame_set`` / ``read_frame_set`` -- the motion toolkit's one
@@ -308,49 +309,43 @@ def frame_rows(data_file):
     return read(Structure.from_dict(stated)) if stated else None
 
 
-def weights_for_set(rows, *, temperature_k=None, quanta=None,
-                    mean_quanta=None, classical=False):
-    """THE WEIGHTS FOR A MODE'S OWN SET'S ROWS AT A STATE
+def weights_for_set(rows, chain_or_distribution):
+    """THE WEIGHTS OF A MODE'S OWN SET'S ROWS FOR A STATE
     (`engines/vibration-frames.md` § 7) -- ``rows`` as :func:`frame_rows`
-    reads them, the state named as the toolkit's table names one, a
-    temperature not given the set's own, said: a `vibration.Weights`.
-    Answered, and refused by name, by the motion toolkit
-    (`vibration_frames.weights_for_set`)."""
+    reads them, ``chain_or_distribution`` a chain of steps (``states``) or a
+    distribution of ``x = Q / Q_zp`` (``dist``) placed on the set's mode, an
+    open start taking the set's own ``temperature_k`` row, said: a
+    `distribution.PointWeights`.  Answered, and refused by name, by the
+    motion toolkit (`vibration_frames.weights_for_set`)."""
     from .vibration_frames import weights_for_set as _weights_for_set
-    return _weights_for_set(
-        rows, classical=classical,
-        **_said(temperature_k=temperature_k, quanta=quanta,
-                mean_quanta=mean_quanta))
+    return _weights_for_set(rows, chain_or_distribution)
 
 
-def reaveraged(path, *, temperature_k=None, quanta=None,
-               mean_quanta=None, classical=False) -> Dict[str, Any]:
-    """A MODE'S OWN SET'S TRANSPORT CALCULATION AVERAGED AT ANOTHER STATE
+def reaveraged(path, chain_or_distribution) -> Dict[str, Any]:
+    """A MODE'S OWN SET'S TRANSPORT CALCULATION AVERAGED FOR ANOTHER STATE
     (`engines/vibration-frames.md` § 7; `science/vibrational-averaging.md`
     § 5.4), from its data file ``<label>.transport.nc`` -- two calls joined,
-    no rule of this layer's: the motion toolkit's weights for the set's rows
-    (:func:`frame_rows`) at the state named as its table names one
-    (`vibration_frames.weights_for_set`: a temperature not given the set's
-    own ``temperature_k`` row, said), and transport's averaging of the
-    file's frames at those weights (`frame_average.averaged_at`).  Nothing
-    is computed again and nothing is written.
+    no rule of this layer's: the motion toolkit's weights of the set's rows
+    (:func:`frame_rows`) for ``chain_or_distribution``
+    (`vibration_frames.weights_for_set`: an open start the set's own
+    ``temperature_k`` row, said), and transport's averaging of the file's
+    frames at those weights (`frame_average.averaged_at`).  Nothing is
+    computed again and nothing is written.
 
     Answers ``{bias_v, energy_ev, transmission, conductance_g0,
     conductance_change_percent, weights, said, assumptions}``: at each
     voltage the averaged T(E), G/G0 at E_F and its change in per cent of
     frame 0's -- by the record's own rule at each voltage, NaN where it has
-    no value, its reason said -- ``weights`` the `vibration.Weights`,
+    no value, its reason said -- ``weights`` the `distribution.PointWeights`,
     ``said`` the weights' words then the average's, and ``assumptions``
-    transport's own, then the set's own, named so -- the motion it was
-    written for (`vibration_frames.assumptions_of_set`).  The state's rule and its
-    refusals are the toolkit's (`engines/vibration-frames.md` § 2, § 7);
-    a data file of another schema is refused by its door
+    transport's own, then the set's own, named so -- the state it was
+    written for (`vibration_frames.assumptions_of_set`).  The binding's
+    rule and its refusals are the toolkit's (`engines/vibration-frames.md`
+    § 2, § 7); a data file of another schema is refused by its door
     (`transport.datafile.DataFileError`)."""
     from .frame_average import averaged_at
     rows = frame_rows(path)
-    weights = weights_for_set(rows, temperature_k=temperature_k,
-                              quanta=quanta, mean_quanta=mean_quanta,
-                              classical=classical)
+    weights = weights_for_set(rows, chain_or_distribution)
     got = averaged_at(path, weights.weights)
     # WHAT THE NUMBERS ASSUME, beside them (science § 7, "never dropped"):
     # transport's own, then the set's -- its own row, or molbuilder's words
@@ -368,23 +363,20 @@ def reaveraged(path, *, temperature_k=None, quanta=None,
                 if own else [])]}
 
 
-def outermost_move(path, *, mode: int, nodes=None, temperature_k=None,
-                   quanta=None, mean_quanta=None, classical=False):
+def outermost_move(path, *, mode: int, chain_or_distribution, nodes=None):
     """THE OUTERMOST MOVE of mode ``mode`` (its number, as the result
     numbers its modes) of a vibration -- its run's folder, its
-    ``<label>.spectra.json`` or its data file (:func:`vibration`) -- in any
-    state of the toolkit's table, named by the same arguments (a thermal
-    or classical state given no temperature at the record's), for its
-    ``nodes``-point rule, in Angstrom: the largest atom's move at the
-    outermost frames of the set written there; ``None`` for an imaginary
-    mode, which has no state.  The path read, and refused, as
-    :func:`vibration` reads it; the move answered, and refused by name, by
-    the motion toolkit (`vibration_frames.outermost_move_of`)."""
+    ``<label>.spectra.json`` or its data file (:func:`vibration`) -- bound
+    to ``chain_or_distribution`` (an open start at the record's
+    temperature), for its ``nodes``-point rule (three when unsaid), in
+    Angstrom: the largest atom's move at the outermost frames of the set
+    written there; ``None`` for an imaginary mode, which has no state.  The
+    path read, and refused, as :func:`vibration` reads it; the move
+    answered, and refused by name, by the motion toolkit
+    (`vibration_frames.outermost_move_of`)."""
     from .vibration_frames import outermost_move_of
-    return outermost_move_of(
-        vibration(path), mode, classical=classical,
-        **_said(nodes=nodes, temperature_k=temperature_k, quanta=quanta,
-                mean_quanta=mean_quanta))
+    return outermost_move_of(vibration(path), mode, chain_or_distribution,
+                             nodes=nodes)
 
 
 def vibration(path):
@@ -402,7 +394,8 @@ def vibration(path):
     region with ``motion_shares(by=...)``), Gaussian's reduced mass and
     force constant, the spread and mean quanta at the modes' temperatures
     (``thermal``) -- and an atom's move for a coordinate and the coordinate
-    back, a state's density, moments, spread and frames, the mode at
+    back, the mode bound to a chain or a distribution (``m.bind(...)``,
+    its distribution in amu^1/2.Å, draws, frames and weights), the mode at
     another frequency (`vibration.Mode`), every atom in the user's order;
     and the vibration itself -- ``v.mode(n)``, ``v.displaced({...})``,
     ``v.with_frequency_scale(f)``, ``v.motion(...)``, the molecule's motion and
