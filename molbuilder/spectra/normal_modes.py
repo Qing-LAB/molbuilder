@@ -37,11 +37,11 @@ from __future__ import annotations
 try:                                        # inside molbuilder
     from ..constants import (BOLTZMANN_HARTREE_K, CM1_KELVIN,
                              CM1_PER_SQRT_HARTREE_BOHR2_AMU, HARTREE_CM1)
-    from ..vibration import mean_quanta
+    from ..vibration import bose_einstein_mean_quanta
 except ImportError:                         # beside a job, in either bundle
     from constants import (BOLTZMANN_HARTREE_K, CM1_KELVIN,
                            CM1_PER_SQRT_HARTREE_BOHR2_AMU, HARTREE_CM1)
-    from vibration import mean_quanta  # type: ignore[no-redef]
+    from vibration import bose_einstein_mean_quanta  # type: ignore[no-redef]
 
 
 def rigid_motions(positions, held, axis_kind, cell=None, tol_ang=1e-3):
@@ -298,7 +298,7 @@ def vibrational_thermo(freqs_cm1, temperature_K):
         return zpe, 0.0, 0.0
     # EACH MODE'S MEAN QUANTA, the one occupation rule (`vibration`), and
     # hbar omega / k_B T by the same constant it reads.
-    n = mean_quanta(nu, T)
+    n = bose_einstein_mean_quanta(nu, T)
     x = nu * CM1_KELVIN / T
     u = float((w * n).sum())
     s = float(BOLTZMANN_HARTREE_K * ((x * n - _np.log1p(-_np.exp(-x))).sum()))

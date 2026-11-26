@@ -248,9 +248,9 @@ def test_a_run_folder_reads_as_its_vibration_and_writes_its_set(
     back = read_frame_set(written.path)
     assert back.state is not None and back.state.mode.vibration.run == run
     # ANY STATE'S OUTERMOST MOVE, from the run's folder (§ 4).
-    swing = v.mode(1).state(swing_quanta=1.0)
-    assert outermost_move(run, mode=1, swing_quanta=1.0, nodes=5) == \
-        vf_outermost_move(swing, 5)
+    two = v.mode(1).state(quanta=2)
+    assert outermost_move(run, mode=1, quanta=2, nodes=5) == \
+        vf_outermost_move(two, 5)
 
 
 #: EACH STATE THE DOORS ASK (`engines/vibration-frames.md` § 6), as typed on
@@ -259,24 +259,18 @@ def test_a_run_folder_reads_as_its_vibration_and_writes_its_set(
 _DOORS_STATES = {
     "thermal": (["--temperature", "300"],
                 {"temperature_k": 300.0, "sampling_rule": "gauss-hermite",
-                 "quantum": 1}, {"quanta", "swing_quanta"}),
+                 "quantum": 1}, {"quanta"}),
     "n quanta": (["--quanta", "2"],
                  {"quanta": 2, "mean_quanta": 2.0, "sampling_rule": "gauss"},
-                 {"temperature_k", "swing_quanta"}),
+                 {"temperature_k"}),
     "mean quanta": (["--mean-quanta", "0.5"],
                     {"mean_quanta": 0.5, "sampling_rule": "gauss-hermite"},
                     {"temperature_k", "quanta"}),
-    "the coherent state": (["--swing-quanta", "1"],
-                           {"swing_quanta": 1.0, "mean_quanta": 1.0,
-                            "sampling_rule": "gauss"}, {"temperature_k"}),
-    "a warm driven mode": (["--swing-quanta", "1", "--temperature", "3000"],
-                           {"swing_quanta": 1.0, "temperature_k": 3000.0,
-                            "sampling_rule": "gauss"}, {"quanta"}),
-    # THE DIALOG'S OWN DEFAULTS, ticked warm at a room's temperature: a mean
-    # just above one quantum, said "1 quantum" as printed.
-    "warm at 300 K": (["--swing-quanta", "1", "--temperature", "300"],
-                      {"swing_quanta": 1.0, "temperature_k": 300.0,
-                       "sampling_rule": "gauss"}, {"quanta"}),
+    # A MEAN JUST ABOVE ONE QUANTUM, said "1 quantum" as printed.
+    "a mean just above one": (["--mean-quanta", "1.00004"],
+                              {"mean_quanta": 1.00004,
+                               "sampling_rule": "gauss-hermite"},
+                              {"temperature_k", "quanta"}),
 }
 
 
@@ -311,8 +305,7 @@ def test_the_command_line_writes_a_modes_set_in_any_state(doors_sets, kind):
     """`engines/vibration-frames.md` § 6 (the user's decision,
     `engines/vibration.md` § 6.11 § 9 item 2): `frameset from-mode` writes
     the run's mode in the state its flags name -- thermal, mean quanta, n
-    quanta, the coherent state, a warm driven mode (the dialog's defaults
-    among them, a mean said "1 quantum" as printed) -- its set stating that
+    quanta (a mean said "1 quantum" as printed) -- its set stating that
     state's rows (§ 5.1) and the command printing the state and each frame
     from 1.  The silent failure: a set sampling another state than the
     person typed."""

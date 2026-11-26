@@ -237,7 +237,7 @@ def test_a_mode_sets_assumptions_are_said_beside_it(tmp_path, written):
     words a set states them now, at its temperature; a person's set that
     states none is said nothing of, its state not known.  The silent
     failures: an older set's average shown with its harmonic picture nowhere
-    beside it; a person's driven set said to be thermal."""
+    beside it; a person's own set said to be thermal."""
     from molbuilder.vibration_frames import (assumptions_of_a_mode, said_of,
                                              thermal_state_words)
     rows = [("mode_index_1based", 6, "1", None),
@@ -355,43 +355,33 @@ def test_an_even_rules_set_at_its_own_state_says_nothing_of_another():
     assert got.said == (), got.said
 
 
-def test_a_swing_beyond_the_frames_is_said_not_refused():
-    """§ 9, § 7: a state reaching past the outermost frames is averaged and
-    the share beyond said -- never refused.  Three frames' blindness to the
-    shape is said with it (science § 5.4).  The silent failure: a swing the
-    frames never reached averaged from values extrapolated past them,
-    unsaid -- or a person's question refused where an answer with its
-    caveat stands."""
+def test_a_state_beyond_the_frames_is_said_not_refused():
+    """§ 9, § 7: a state reaching past the outermost frames -- a set written
+    at 0 K re-weighted to 300 K -- is averaged and the share beyond said,
+    never refused.  Three frames' blindness to the shape is said with it
+    (science § 5.4).  The silent failure: a motion the frames never reached
+    averaged from values extrapolated past them, unsaid -- or a person's
+    question refused where an answer with its caveat stands."""
     from molbuilder.vibration_frames import weights_for_set
-    got = weights_for_set(_mode_set(3, temperature_k=0.0), swing_quanta=9)
+    got = weights_for_set(_mode_set(3, temperature_k=0.0),
+                          temperature_k=300.0)
     assert got.beyond > 0.0, got
     assert math.fsum(got.weights) == pytest.approx(1.0, abs=1e-12)
     assert any("beyond the outermost frames" in s for s in got.said), got
     assert any("blind to the state's shape" in s for s in got.said), got
 
 
-def test_a_swing_named_alone_on_a_warm_set_says_its_temperature_is_not_used():
-    """§ 2's table, science § 6: a swing named by its quanta alone is the
-    cold coherent state, whatever the set's temperature -- said beside the
-    weights, with the way to the warm one, so the cold and the warm are
-    never confused silently."""
+def test_a_state_given_no_temperature_takes_the_sets_and_says_so():
+    """§ 2's table, § 7: a state that takes a temperature, given none, is
+    taken at the set's own ``temperature_k`` row, said first; one given a
+    temperature says nothing of it.  The silent failure: a temperature the
+    person never named used unsaid."""
     from molbuilder.vibration_frames import weights_for_set
-    got = weights_for_set(_mode_set(3), swing_quanta=1)
-    assert got.said[0] == (
-        "the cold coherent state, 1 swing quantum: the set's temperature, "
-        "300 K, is not used -- temperature_k names the environment whose "
-        "thermal width the swing carries"), got.said
-    classical = weights_for_set(_mode_set(3), swing_quanta=1, classical=True)
-    assert classical.said[0].startswith("the classical swing alone, "), \
-        classical.said
-    warm = weights_for_set(_mode_set(3), swing_quanta=1, temperature_k=300.0)
-    cold_set = weights_for_set(_mode_set(3, temperature_k=0.0),
-                               swing_quanta=1)
-    for quiet in (warm, cold_set):
-        assert not any("is not used" in s for s in quiet.said), quiet.said
     thermal = weights_for_set(_mode_set(3), classical=True)
     assert thermal.said[0] == ("the classical state at the set's "
                                "temperature, 300 K (its temperature_k row)")
+    given = weights_for_set(_mode_set(3), temperature_k=300.0)
+    assert not any("temperature_k row" in s for s in given.said), given.said
 
 
 @pytest.mark.parametrize("rows, ask, refused", [
@@ -413,7 +403,7 @@ def test_a_set_the_state_cannot_weight_is_refused_by_name(rows, ask,
     stating no coordinate, a state that takes a temperature given none of
     a set stating none (naming the temperature to give), what is no set's
     rows (named by its kind, never printed whole).  A state that takes none
-    -- n quanta, a cold driven mode -- needs none.  The silent failure:
+    -- n quanta -- needs none.  The silent failure:
     weights for a motion the frames cannot carry, or a temperature the
     person never named taken from nowhere."""
     from molbuilder.vibration_frames import weights_for_set
@@ -435,7 +425,6 @@ def test_a_set_the_state_cannot_weight_is_refused_by_name(rows, ask,
     assert len(str(said.value)) < 400, str(said.value)
     if rows == "no temperature":
         assert len(weights_for_set(got, quanta=1).weights) == 3
-        assert len(weights_for_set(got, swing_quanta=1).weights) == 3
 
 
 # --------------------------------------------------------------------- #
@@ -455,18 +444,10 @@ _RECIPES = {
     "thermal": (lambda v: v.mode(1).state(temperature_k=300.0).frames(3),
                 {"sampling_rule": "gauss-hermite", "sampling_nodes": 3,
                  "quantum": 1, "mode_index_1based": 1, "temperature_k": 300.0},
-                {"quanta", "swing_quanta", "result_frequency_cm1"}),
+                {"quanta", "result_frequency_cm1"}),
     "an even rule": (lambda v: v.mode(2).state(temperature_k=300.0).frames(2),
                      {"sampling_nodes": 2, "mode_index_1based": 2},
                      set()),
-    "the coherent state": (lambda v: v.mode(1).state(swing_quanta=2.0)
-                           .frames(3),
-                           {"sampling_rule": "gauss", "swing_quanta": 2.0,
-                            "quantum": 1},
-                           {"temperature_k"}),
-    "a warm driven mode": (lambda v: v.mode(1).state(
-        swing_quanta=2.0, temperature_k=600.0).frames(3),
-        {"swing_quanta": 2.0, "temperature_k": 600.0}, set()),
     "classical": (lambda v: v.mode(1).state(temperature_k=300.0,
                                             classical=True).frames(3),
                   {"quantum": 0, "temperature_k": 300.0}, {"mean_quanta"}),
@@ -480,39 +461,31 @@ _RECIPES = {
                            {"frequency_scale": 0.96,
                             "result_frequency_cm1": 700.0,
                             "frequency_cm1": 0.96 * 700.0}, set()),
-    "snapshots": (lambda v: v.motion(300.0).with_mode(2, swing_quanta=1.5)
-                  .with_drive({1: 1.0, 3: 0.5}, lags_rad={1: 0.3, 3: 1.2})
+    "snapshots": (lambda v: v.motion(300.0).with_mode(2, quanta=2)
+                  .with_mode(1, temperature_k=77.0).with_mode(3, quanta=1)
                   .sample(4, seed=7, antithetic=True),
                   {"sampling_rule": "monte-carlo", "samples": 4, "seed": 7,
                    "start": 0, "antithetic": 1, "modes": "every real mode"},
                   # EVERY MODE SET APART: no mode keeps the background, so
                   # the set states neither its temperature nor whether it
                   # is quantum (§ 5.1) -- each mode's state is its own.
-                  {"mode_index_1based", "pooled", "temperature_k",
-                   "quantum"}),
-    "a pooled set": (lambda v: _pooled_set(v),
-                     {"sampling_rule": "monte-carlo", "samples": 8,
-                      "pooled": 1, "antithetic": 1},
-                     {"seed", "start"}),
+                  {"mode_index_1based", "temperature_k", "quantum"}),
     "snapshots of some modes": (lambda v: v.motion(300.0, modes=[2, 3])
                                 .sample(4, seed=3, antithetic=False),
                                 {"modes": "2, 3", "antithetic": 0},
-                                {"set_apart_modes", "pooled"}),
-    "a classical swing": (lambda v: v.mode(1).state(swing_quanta=2.0,
-                                                    classical=True).frames(3),
-                          {"quantum": 0, "swing_quanta": 2.0,
-                           "sampling_rule": "gauss"},
-                          {"temperature_k", "mean_quanta"}),
+                                {"set_apart_modes"}),
     "classical snapshots": (lambda v: v.motion(300.0, classical=True)
                             .sample(4, seed=5, antithetic=True),
                             {"quantum": 0, "temperature_k": 300.0},
                             {"set_apart_modes"}),
-    # A DRIVE GROUP'S KEY NOT ITS MODES, the record's temperature noted, a
-    # mode that left its drive taking the motion's temperature.
-    "a drive left": (lambda v: v.motion().with_drive(
-        {1: 1.0, 3: 0.5}, lags_rad={1: 0.3, 3: 1.2})
-        .with_mode(3, classical=True).sample(4, seed=11, antithetic=True),
-        {"quantum": 1, "temperature_k": 300.0}, set()),
+    # THE MODES CHOSEN IN STEPS, the record's temperature noted: a window,
+    # one mode added, one dropped (§ 3.1).
+    "modes chosen in steps": (lambda v: v.motion(modes=v.mode_selection()
+                                                 .window(500.0, None)
+                                                 .add([1]).drop([3]))
+                              .sample(4, seed=11, antithetic=True),
+                              {"modes": "1, 2", "quantum": 1,
+                               "temperature_k": 300.0}, set()),
     "scaled snapshots": (lambda v: v.with_frequency_scale(0.96).motion(300.0)
                          .sample(4, seed=13, antithetic=False),
                          {"frequency_scale": 0.96}, set()),
@@ -520,43 +493,23 @@ _RECIPES = {
 
 #: The recipes whose frames are snapshots (§ 3), each with its
 #: info.sampling.
-_SNAPSHOT_KINDS = {"snapshots", "a pooled set", "snapshots of some modes",
-                   "classical snapshots", "a drive left", "scaled snapshots"}
-
-
-def _pooled_set(v):
-    """Two draws of one motion, the seed's sequence drawn further, pooled
-    (§ 3.3) -- the person's one import."""
-    from molbuilder.postprocess import pooled
-    motion = v.motion(300.0)
-    return pooled(motion.sample(4, seed=7, antithetic=True),
-                  motion.sample(4, seed=7, start=4, antithetic=True))
+_SNAPSHOT_KINDS = {"snapshots", "snapshots of some modes",
+                   "classical snapshots", "modes chosen in steps",
+                   "scaled snapshots"}
 
 
 #: EACH MODE SET'S STATE IN ITS ASSUMPTIONS ROW, in the words of § 2's table
 #: (`engines/vibration-frames.md` § 2: the thermal state's bell curve and
-#: temperature, the coherent state's zero-point width, the warm driven
-#: state's thermal bell curve carried by the swing, the n-th standing wave,
-#: the classical bell curve, the bare classical swing).
+#: temperature, the n-th standing wave, the classical bell curve).
 _STATE_WORDS = {
     "thermal": ("thermal", "300 K", "sqrt(2n + 1)"),
     "an even rule": ("thermal", "300 K"),
-    "the coherent state": ("the coherent state", "zero-point width"),
-    "a warm driven mode": ("600 K", "thermal bell curve",
-                           "carried by the swing"),
     "classical": ("the classical bell curve", "300 K",
                   "no zero-point motion"),
     "n quanta": ("2 quanta", "standing wave"),
     "mean quanta": ("thermal", "0.4 mean quanta"),
     "a scaled frequency": ("thermal", "300 K"),
-    "a classical swing": ("bare classical swing",),
 }
-
-#: Each recipe's own words in its assumptions row (§ 5, § 5.1; science § 7,
-#: items 1, 7, 8, 9): whether a mode is driven, and what is said of a set of
-#: some modes.
-_DRIVEN = {"the coherent state", "a warm driven mode", "snapshots",
-           "a classical swing", "a drive left"}
 
 
 @pytest.mark.parametrize("kind", list(_RECIPES))
@@ -603,17 +556,16 @@ def test_a_recipes_set_is_written_with_the_rows_of_its_kind(tmp_path, kind):
     assert list(s.get_channel(MASS_CHANNEL).data.values()) == list(v.masses_amu)
     assert ("sampling" in (s.info or {})) == (kind in _SNAPSHOT_KINDS)
     # WHAT THE SET ASSUMES, in its own words: a mode's state as the toolkit
-    # words it, the driven sentence exactly with a driven mode, a set of
-    # some modes saying the others stay still.
+    # words it.
     assumptions = rows.value("assumptions")
-    assert ("A driven mode:" in assumptions) == (kind in _DRIVEN), assumptions
     if getattr(frames, "state", None) is not None:
         assert all(w in assumptions for w in _STATE_WORDS[kind]), assumptions
     else:
         assert rows.value("set_apart_modes") == (
             frames.motion.set_apart_modes or None)
         assert ("every mode not included stays at the relaxed geometry"
-                in assumptions) == (kind == "snapshots of some modes")
+                in assumptions) == (kind in ("snapshots of some modes",
+                                             "modes chosen in steps"))
         # THE BACKGROUND SAID WHERE A MODE KEEPS IT -- none where every
         # mode is set apart.
         assert ("each mode set apart" in assumptions) == (kind == "snapshots")
@@ -644,22 +596,17 @@ def test_a_set_read_back_is_the_set_written(tmp_path, kind):
     if hasattr(frames, "motion"):
         assert [(k, s.state) for k, s in back.motion.states.items()] == \
             [(k, s.state) for k, s in frames.motion.states.items()]
-        assert back.said == frames.said and back.drawings == frames.drawings
+        assert back.said == frames.said
+        assert (back.seed, back.start) == (frames.seed, frames.start)
         assert back.motion.said == frames.motion.said
         assert back.motion.set_apart_modes == frames.motion.set_apart_modes
-        if not frames.pooled:
-            # ONE MOTION (§ 3.3): the seed drawn further pools with it.
-            from molbuilder.postprocess import pooled
-            pooled(back, frames.motion.sample(
-                frames.samples, seed=frames.seed,
-                start=frames.start + frames.samples,
-                antithetic=frames.antithetic))
-            # THE MOTION WHOLE -- states, drive groups, keys and lags: drawn
-            # again from what was read, the same coordinates.
-            again = back.motion.sample(frames.samples, seed=frames.seed,
-                                       antithetic=frames.antithetic,
-                                       start=frames.start)
-            assert np.array_equal(again.q_amu12_ang, frames.q_amu12_ang)
+        assert back.motion.chosen_by == frames.motion.chosen_by
+        # THE MOTION WHOLE -- states and the modes chosen: drawn again from
+        # what was read, the same coordinates.
+        again = back.motion.sample(frames.samples, seed=frames.seed,
+                                   antithetic=frames.antithetic,
+                                   start=frames.start)
+        assert np.array_equal(again.q_amu12_ang, frames.q_amu12_ang)
     else:
         from molbuilder.vibration import THE_SETS
         assert back.state.state == frames.state.state
@@ -825,11 +772,9 @@ def test_the_writer_says_what_it_writes_as_given(tmp_path):
         got.said
 
 
-@pytest.mark.parametrize("asked", [dict(temperature_k=300.0),
-                                   dict(swing_quanta=2.0), dict(quanta=2),
+@pytest.mark.parametrize("asked", [dict(temperature_k=300.0), dict(quanta=2),
                                    dict(temperature_k=300.0, classical=True)],
-                         ids=["thermal", "the coherent state", "n quanta",
-                              "classical"])
+                         ids=["thermal", "n quanta", "classical"])
 @pytest.mark.parametrize("nodes", [3, 4])
 def test_the_outermost_move_is_the_written_sets_for_any_state(tmp_path, asked,
                                                               nodes):
@@ -1033,8 +978,6 @@ def test_a_set_at_the_results_own_frequency_states_no_scale(tmp_path, scaled):
      "no file or folder .* a vibration is read from its run's folder"),
     ("a file of another name", "SpectraJsonError",
      "not a vibration result -- a vibration is read from its run's folder"),
-    ("pooling a set read without its vibration", "ValueError",
-     "pools once its vibration"),
 ])
 def test_the_reader_and_the_run_door_refuse_by_name(tmp_path, call, cls,
                                                     refused):
@@ -1044,13 +987,13 @@ def test_the_reader_and_the_run_door_refuse_by_name(tmp_path, call, cls,
     states no frame set's rows; a folder that holds no run of ours, a path
     that is not there and a file of another name, each naming the two forms
     a vibration is read from where both are taken, the run door naming the
-    run's folder alone (the command line and the page ask it); a set read
-    back without its vibration pooled.  The model vibration has no result
+    run's folder alone (the command line and the page ask it).  The model
+    vibration has no result
     file: its sha256 is stated as the read door states one.  The silent
     failures: a set's results paired with another molecule's modes, a
     mistyped path read as nothing, or a way out the door then refuses."""
     from dataclasses import replace
-    from molbuilder.postprocess import (pooled, read_frame_set, vibration,
+    from molbuilder.postprocess import (read_frame_set, vibration,
                                         write_frame_set)
     from molbuilder.structure import Structure
     from molbuilder.workingcopy_structure import StructureCodec
@@ -1082,10 +1025,8 @@ def test_the_reader_and_the_run_door_refuse_by_name(tmp_path, call, cls,
             vibration(tmp_path)
         elif call == "no run, at the run door":
             vibration_frames.vibration_of_run(tmp_path)
-        elif call == "a path that is not there":
-            vibration(tmp_path / "nowhere")
         else:
-            pooled(read_frame_set(path), read_frame_set(path))
+            vibration(tmp_path / "nowhere")
     assert type(refusal.value).__name__ == cls
 
 
@@ -1118,21 +1059,16 @@ def _classical_spread(nu_cm1, temperature_k):
 
 #: EACH MODE SET'S FREQUENCY, SPREAD AND MEAN QUANTA, by science § 2b.3:
 #: a quantum state's spread ``Q_zp sqrt(2 <n> + 1)``, its mean quanta the
-#: bath's, a number state's own or a swing's added to its warmth's; a
-#: classical bell curve's ``sqrt(k_B T) / omega``; a bare classical swing's
-#: ``Q_0 / sqrt 2 = Q_zp sqrt(2 n_s)``, counting no quanta.
+#: thermal state's or a number state's own; a classical bell curve's
+#: ``sqrt(k_B T) / omega``, counting no quanta.
 _CLOSED_FORMS = {
     "thermal": (120.0, lambda q: (_n_th(120.0, 300.0), None)),
     "an even rule": (700.0, lambda q: (_n_th(700.0, 300.0), None)),
-    "the coherent state": (120.0, lambda q: (2.0, None)),
-    "a warm driven mode": (120.0, lambda q: (_n_th(120.0, 600.0) + 2.0,
-                                             None)),
     "classical": (120.0, lambda q: (None, _classical_spread(120.0, 300.0))),
     "n quanta": (120.0, lambda q: (2.0, None)),
     "mean quanta": (1600.0, lambda q: (0.4, None)),
     "a scaled frequency": (0.96 * 700.0,
                            lambda q: (_n_th(0.96 * 700.0, 300.0), None)),
-    "a classical swing": (120.0, lambda q: (None, q * math.sqrt(2.0 * 2.0))),
 }
 
 
@@ -1144,8 +1080,7 @@ def test_a_mode_sets_derived_rows_are_the_sciences(tmp_path, kind):
     spread, and the outermost move ``|q_out| max_A |L_A|`` -- each from
     the closed forms on CODATA's constants and the mode's own rows.  The
     silent failure: a set whose rows say another state than its frames
-    sample -- a coherent set stating the zero-point spread, a number
-    state's quanta lost."""
+    sample -- a number state's quanta lost."""
     from molbuilder.frameset import read
     from molbuilder.postprocess import write_frame_set
     from molbuilder.workingcopy_structure import StructureCodec
@@ -1293,31 +1228,20 @@ def test_a_snapshot_set_names_the_imaginary_modes_it_leaves_still(tmp_path):
 #  The doors' state and what it means before a set is written (§ 6)     #
 # --------------------------------------------------------------------- #
 
-@pytest.mark.parametrize(
-    "asked, words, mean, spread_ratio, swing_ratio, thermal", [
-        ({"temperature_k": 600.0}, "the thermal state at 600 K,",
-         lambda: _n_th(120.0, 600.0), None, None, False),
-        ({"mean_quanta": 1.0}, "a thermal state of 1 mean quantum,",
-         lambda: 1.0, None, None, False),
-        ({"quanta": 2}, "2 quanta exactly,", lambda: 2.0,
-         lambda: math.sqrt(5.0), None, False),
-        ({"swing_quanta": 4.0}, "the coherent state, 4 swing quanta:",
-         lambda: 4.0, lambda: 3.0, 4.0, True),
-        ({"swing_quanta": 4.0, "temperature_k": 600.0},
-         "the warm driven state, 4 swing quanta at 600 K:",
-         lambda: _n_th(120.0, 600.0) + 4.0, None, 4.0, False),
-    ], ids=["thermal", "one mean quantum", "n quanta", "the coherent state",
-            "a warm driven mode"])
+@pytest.mark.parametrize("asked, words, mean", [
+    ({"temperature_k": 600.0}, "the thermal state at 600 K,",
+     lambda: _n_th(120.0, 600.0)),
+    ({"mean_quanta": 1.0}, "a thermal state of 1 mean quantum,", lambda: 1.0),
+    ({"quanta": 2}, "2 quanta exactly,", lambda: 2.0),
+], ids=["thermal", "one mean quantum", "n quanta"])
 def test_what_a_state_means_for_a_mode_before_its_set_is_written(
-        asked, words, mean, spread_ratio, swing_ratio, thermal):
+        asked, words, mean):
     """`web/spectra.md` § 4.3's table, science § 2b.3: the readout under the
     dialog for each state -- the state in the set's words (§ 5.1), the mean
     quanta, the spread against the zero-point one (``sqrt(2 <n> + 1)``),
-    the outermost move for each frame count the doors offer, a driven
-    state's turning point ``2 sqrt(n_s)`` and, the coherent state alone,
-    the thermal quanta at the record's temperature it leaves out (300 K,
-    CODATA's Bose and Einstein).  The silent failure: a dialog whose
-    numbers or words are another state's than the frames written."""
+    the outermost move for each frame count the doors offer.  The silent
+    failure: a dialog whose numbers or words are another state's than the
+    frames written."""
     from molbuilder.vibration_frames import (OFFERED_NODES, outermost_move,
                                              readout)
     m = _model().mode(1)
@@ -1325,21 +1249,12 @@ def test_what_a_state_means_for_a_mode_before_its_set_is_written(
     assert said["state"].startswith(words), said["state"]
     n = mean()
     assert said["mean_quanta"] == pytest.approx(n, rel=1e-6)
-    ratio = spread_ratio() if spread_ratio else math.sqrt(2.0 * n + 1.0)
+    ratio = math.sqrt(2.0 * n + 1.0)
     assert said["spread_over_zero_point"] == pytest.approx(ratio, rel=1e-6)
     assert said["spread_amu12_ang"] == pytest.approx(
         ratio * _q_zp(120.0), rel=1e-6)
     assert said["outermost_move_ang"] == {
         str(k): outermost_move(m.state(**asked), k) for k in OFFERED_NODES}
-    assert said.get("swing_over_zero_point") == (
-        None if swing_ratio is None else pytest.approx(
-            2.0 * math.sqrt(swing_ratio), rel=1e-12))
-    assert ("thermal_quanta" in said) == thermal
-    if thermal:
-        assert said["thermal_quanta"] == pytest.approx(_n_th(120.0, 300.0),
-                                                       rel=1e-6)
-        assert said["thermal_spread_over_zero_point"] == pytest.approx(
-            math.sqrt(2.0 * _n_th(120.0, 300.0) + 1.0), rel=1e-6)
     assert readout(_with_imaginary_mode_1(_model()).mode(1), asked) is None
 
 
@@ -1350,10 +1265,9 @@ def test_what_a_state_means_for_a_mode_before_its_set_is_written(
     ({"quanta": 2.5}, "quanta is a whole number"),
     ({"quanta": 2, "temperature_k": 300.0},
      "a temperature and a number of quanta name no one state"),
-    ({"swing_quanta": -1.0}, "a number of swing quanta is 0 or more"),
     ({"mean_quanta": -0.5}, "a mean number of quanta is 0 or more"),
 ], ids=["no state", "a temperature in words", "below zero",
-        "half a quantum", "two states", "a swing below zero",
+        "half a quantum", "two states",
         "mean quanta below zero"])
 def test_the_doors_ask_the_state_every_time(asked, refused):
     """§ 2's table, § 6: `frameset from-mode` and *Write frame set…* ask the

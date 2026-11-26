@@ -570,7 +570,7 @@ included**: a transport point's frame level is `f001` for the frame of index 1
 (`engines/transport.md` § 2a.11, `paths.frame_token`, a vibration's optical
 calls' too). What a person reads counts from 1: every message, on the page and
 in the terminal alike — *frame 2 of 3* (`structure.frame_words`; the
-travelling module `vibration`, which imports numpy and the constants alone,
+travelling module `vibration`, which imports numpy, the constants, its own generic tools and the frequency-window rule alone,
 spells its own messages' frames the same way, a test holding the two one) —
 and the UI's
 own display — the frame bar's `1 / F`, the Molbuilder tab's frame picker, the

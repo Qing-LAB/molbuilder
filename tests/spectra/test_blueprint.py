@@ -51,14 +51,12 @@ class TestLoadEndpoint:
         ({"temperature_k": -5}, "temperature"),
         ({"temperature_k": "warm"}, "temperature"),
         ({"temperature_k": 300, "nodes": 9}, "3, 5 or 7"),
-        ({"swing_quanta": 1, "temprature_k": 300},
+        ({"quanta": 1, "temprature_k": 300},
          "did you mean 'temperature_k'"),
         ({"quanta": 1}, "no run of ours"),
-        ({"swing_quanta": 2}, "no run of ours"),
         ({"mean_quanta": 0.5}, "no run of ours"),
     ], ids=["no state", "below zero", "not a number", "nine frames",
-            "a misspelled key", "n quanta, no temperature",
-            "a driven mode, no temperature", "mean quanta"])
+            "a misspelled key", "n quanta, no temperature", "mean quanta"])
     def test_a_frame_set_asked_without_its_state_or_rule_is_refused(
             self, web_client, isolated_projects_root, ask, refused):
         """`engines/vibration-frames.md` § 2, § 6: the write door asks the
@@ -67,12 +65,12 @@ class TestLoadEndpoint:
         named (never the record's temperature assumed), a temperature that
         is not a number of kelvin, 0 or more, another frame count than
         three, five or seven, a key the door does not take (with the one it
-        is close to); a state that needs no temperature -- n quanta, a
-        driven mode, mean quanta -- goes on to the run (here no run at
-        all).  The silent failures: a set written at a state the person
-        never stated -- a misspelled temperature left out, the cold driven
-        state written -- at a rule the page does not offer, or a valid state
-        refused for a temperature it does not need."""
+        is close to); a state that needs no temperature -- n quanta, mean
+        quanta -- goes on to the run (here no run at all).  The silent
+        failures: a set written at a state the person never stated -- a
+        misspelled temperature left out -- at a rule the page does not
+        offer, or a valid state refused for a temperature it does not
+        need."""
         from molbuilder.projects import populate_project_skeleton
         tree = isolated_projects_root
         # The pair asked where a file may be written: a project's folder,

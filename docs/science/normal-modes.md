@@ -1234,7 +1234,7 @@ implementation sections cited are [`engines/vibration.md`](?doc=engines/vibratio
 | on SIESTA, relax with $\Delta R_F = 0$ first; $F_A \approx 0$, $F_F$ need not vanish | **the same, as the `relax` phase of one run** when the box is unticked (§ 4b.6 A), and the tool **verifies** it: the reference-step forces are read back and judged, and the assertion `already_relaxed` is asked on this engine too (§ 4b.6 A) |
 | one $\pm\delta$ pair per column; only the active coordinates displaced; 90 columns rather than 900 for 30 of 300 atoms | **the same** (`FC.First..FC.Last` on the sorted copy): six whole-system SCFs per free atom, stated by the pre-run check (`vibration.md` § 5.8) |
 | converge $\delta$: $\Delta F \gg \sigma_F$, $H(\delta) \approx H(\delta/2)$, $H_{ij} \approx H_{ji}$, $\omega(\delta) \approx \omega(\delta/2)$ | **built, but for $\Delta F \gg \sigma_F$**: the range and the noise-floor note are on the item; the ladder is describable, a later stage taking the first stage's relaxation over — two stages at different geometries refused — and `summarize task` compares the stages — $\omega$ per mode matched by shape and $H(\delta)$ from the raw `.FC` — into `<label>.fc-sweep.json` (`engines/vibration.md` § 5.9); the asymmetry is recorded per stage. The force change against the SCF's own noise is not estimated |
-| mode-displaced structures on SIESTA for $\mathrm{PDOS}(E, Q)$, $\varepsilon_r(Q)$, $\Gamma(Q)$, $\Delta\rho(r, Q)$, $T(E, Q)$ | **built for transport, on both engines**: one mode as one multi-frame pair — frame 0 the Hessian's geometry, then the nodes of the state's own Gauss rule along the mode, in the state the person states (thermal at a temperature, $n$ quanta, driven), the held atoms unmoved — and snapshots of many modes (the motion toolkit's writer, [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md); `vibration_frames.frameset_from_mode`, `molbuilder frameset from-mode`, the Spectrum tab's *Write frame set…*); a transport calculation citing it computes $T(E, Q)$ and the device's PDOS at each frame; $\varepsilon_r(Q)$, $\Gamma(Q)$ and $\Delta\rho(r, Q)$ are not built (V1.26) |
+| mode-displaced structures on SIESTA for $\mathrm{PDOS}(E, Q)$, $\varepsilon_r(Q)$, $\Gamma(Q)$, $\Delta\rho(r, Q)$, $T(E, Q)$ | **built for transport, on both engines**: one mode as one multi-frame pair — frame 0 the Hessian's geometry, then the nodes of the state's own Gauss rule along the mode, in the state the person states (thermal at a temperature or of a mean number of quanta, $n$ quanta), the held atoms unmoved — and snapshots of many modes (the motion toolkit's writer, [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md); `vibration_frames.frameset_from_mode`, `molbuilder frameset from-mode`, the Spectrum tab's *Write frame set…*); a transport calculation citing it computes $T(E, Q)$ and the device's PDOS at each frame; $\varepsilon_r(Q)$, $\Gamma(Q)$ and $\Delta\rho(r, Q)$ are not built (V1.26) |
 | the molecular dipole is undefined for the periodic metal; the metal electrons are signal; $\Delta\rho_\nu(r)$ as the intermediate quantity | **the same reasoning** (§ 4b.7); the Born-charge route recorded, the density-difference maps owed |
 | match PySCF and SIESTA modes by their displacement patterns, then read how adsorption moved them | **not built**; it is the same overlap calculation as the Model A/B/C comparison (§ 4b.9) |
 
@@ -1382,18 +1382,20 @@ first-order term averages away:
   \langle T\rangle = T_0 + \tfrac12\,T''\sigma^2 + O(\sigma^4)
   $$
 
-- *driven*: the mode pumped by light at its own frequency, $Q(t) = Q_d\cos\omega t$:
+- *excited*: the mode raised by light — $n$ quanta exactly, a photon
+  absorbed by a cold mode its first — its density even, $\langle Q\rangle =
+  0$, $\langle Q^2\rangle = (2n+1)\,\hbar/2\omega$ ([`vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 2b.3):
 
   $$
-  \text{time average} = T_0 + \tfrac14\,T''Q_d^2
+  \langle T\rangle = T_0 + \tfrac12\,T''(2n+1)\,\frac{\hbar}{2\omega} + \dots
   $$
 
 So a **DC** measurement — the averaged conductance, or its change when light
-drives a mode — sees only $T''$. The first derivative is an AC signal at the
+excites a mode — sees only $T''$. The first derivative is an AC signal at the
 vibration's frequency; it is also the linear coupling the inelastic-tunnelling
 literature quotes, $g_\nu = (\partial\varepsilon/\partial Q_\nu)\cdot Q_{\mathrm{zp}}$ [Frederiksen2007] (§ 4b.5 F). For a
 DC readout § 4b.3's detector criterion therefore reads: $\lvert\partial\mu/\partial Q_\nu\rvert$ large (the
-light drives the mode) **and** $\lvert\partial^2 T/\partial Q_\nu^2\rvert$ large (the driven motion changes
+light excites the mode) **and** $\lvert\partial^2 T/\partial Q_\nu^2\rvert$ large (the excited motion changes
 the DC current).
 
 Each mode is scored on its own: one frame set, one transport calculation a

@@ -1944,17 +1944,12 @@ def _in_the_tree(ctx, param, value):
 @click.option("--temperature", "temperature", type=float, default=None,
               metavar="KELVIN",
               help="the thermal state's temperature -- the junction's, or a "
-                   "pumped mode's effective one -- in K, 0 or more; with "
-                   "--swing-quanta, the environment's of a warm driven mode.")
+                   "pumped mode's effective one -- in K, 0 or more.")
 @click.option("--mean-quanta", "mean_quanta", type=float, default=None,
               metavar="N",
               help="the thermal state named by its mean number of quanta.")
 @click.option("--quanta", "quanta", type=int, default=None, metavar="N",
               help="n quanta exactly, a whole number, 0 or more.")
-@click.option("--swing-quanta", "swing_quanta", type=float, default=None,
-              metavar="NS",
-              help="a driven mode: the swing's quanta (the coherent state); "
-                   "with --temperature, a warm driven mode.")
 @click.option("--nodes", type=click.Choice([str(n) for n in OFFERED_NODES]),
               default=str(OFFERED_NODES[0]), show_default=True,
               help="the state's own Gauss rule's frames: the default, or "
@@ -1963,12 +1958,12 @@ def _in_the_tree(ctx, param, value):
               help="the pair's .xyz to write, in the projects tree; its "
                    ".molstruct.json beside it.")
 def cmd_frameset_from_mode(run, mode, temperature, mean_quanta, quanta,
-                           swing_quanta, nodes, out):
+                           nodes, out):
     """Write vibration RUN's mode as one multi-frame pair: one frame at
     each node of the state's own Gauss rule, each with its weight, the
     first the geometry the Hessian was taken at (the rule's middle node).
     The state is asked every time: --temperature (thermal), --mean-quanta,
-    --quanta, or --swing-quanta (driven; with --temperature, warm).  RUN is
+    or --quanta.  RUN is
     the vibration run's folder and OUT the pair's .xyz, each read from the
     projects tree as --bundle is.  A pair already at OUT is refused, never
     written over.
@@ -1985,8 +1980,7 @@ def cmd_frameset_from_mode(run, mode, temperature, mean_quanta, quanta,
     try:
         got = frameset_from_mode(run, mode=mode, temperature_k=temperature,
                                  mean_quanta=mean_quanta, quanta=quanta,
-                                 swing_quanta=swing_quanta, nodes=int(nodes),
-                                 out=out)
+                                 nodes=int(nodes), out=out)
     except StateRefused as exc:
         # A STATE NAMED AS NONE IS HOW THE COMMAND WAS TYPED: a usage
         # error, exit 2 (`conventions.md` § 3).
@@ -1999,7 +1993,7 @@ def cmd_frameset_from_mode(run, mode, temperature, mean_quanta, quanta,
     # A COUNT SAID AS PRINTED, its noun the figure's (`web/spectra.md`
     # § 4.3): a mean of 1.0004 holds "1 quantum".
     click.echo(f"  it holds "
-               f"{_quanta_words(got.mean_quanta, kind='', spec='.4g')} on "
+               f"{_quanta_words(got.mean_quanta, spec='.4g')} on "
                f"average; its "
                f"spread is {got.spread_over_zero_point:.4f} x its zero-point "
                f"amplitude")

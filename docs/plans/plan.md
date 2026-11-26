@@ -10,9 +10,9 @@ at 2.77.23 is [`archive/2026-11-22-plan-consolidation.md`](?doc=archive/2026-11-
 
 ---
 
-## ▶ Where we are *(2026-11-24)*
+## ▶ Where we are *(2026-11-25)*
 
-**2.83.0.** F0–F11 and F7a are closed (2.56.2–2.77.2). F12, *Proven*,
+**2.84.0.** F0–F11 and F7a are closed (2.56.2–2.77.2). F12, *Proven*,
 walked its three roads in the browser on real runs and ran the full batch
 (6106 fast and 805 e2e tests, none failed, at 2.77.2); its two review rounds
 ([`archive/audits/2026-11-18-f12-review/`](?doc=archive/audits/2026-11-18-f12-review/TRIAGE-round1.md))
@@ -20,7 +20,7 @@ sorted every finding into the releases below. **The finish plan** *(the
 user, 2026-11-19: "a consolidated plan to get things finished, not to drag
 things along")*: five releases, R1–R5, each with its review rounds. R1 and R2
 are done; R3, one home per fact on the server side, grew from one release
-into parts as reviews and the user's decisions added work, seventeen of them
+into parts as reviews and the user's decisions added work, eighteen of them
 shipped:
 
 | version | part | what it did | record |
@@ -45,6 +45,7 @@ shipped:
 | 2.81.1 | R3d2b2b2a | a structure's row says its unit once — a name that carries it leaves `unit` blank, any other number states one; held where a row is made (a script's doors, the Metadata page's Apply, which asks the server), every record already written read and carried as written; the units table one row per unit in `units.py` | `fix23-review.md` |
 | 2.82.0 | R3d2b2b2b1 | the motion toolkit's Python door: a vibration read from its run's folder; its frame sets written by one writer — a mode's own in any state, snapshots, a person's own — and read back as written; the outermost move for any state | `fix24-review.md` |
 | 2.83.0 | R3d2b2b2b2 | a mode's frame set in any state from the command line and the spectrum tab, the state asked every time and what it means said before the set is written; many quanta warned of, beyond 1 eV in a mode | `fix25-review.md` |
+| 2.84.0 | R3d2b2b4a | a mode's state built in steps — the generic tools and their manual (each call's equation, pseudocode and a run example), the modes that move chosen in steps; the steady drive, joining snapshot sets and drive groups removed | `fix26-review.md` |
 
 Records: `archive/audits/2026-11-18-f12-review/fix<N>-review.md`. Since
 2.77.23 the host env holds `molbuilder-source.pth` on the development machine
@@ -105,7 +106,7 @@ built in R3d with the vibration's data files.
   SCF's noise, each named as an estimate, a degenerate or crossing orbital
   marked; and *(the user, 2026-11-22)* the zero-point amplitude recalculated
   from any frequency, the distribution of a mode's coordinate in each state
-  ($n$ quanta, thermal, a swing, classical) with its moments and frames, each
+  ($n$ quanta, thermal, classical) with its moments and frames, each
   atom's move for a coordinate given and back, all validated by tests whose
   expectations are the science's closed forms. A science reader's review
   (2026-11-22) corrected the first draft (D8 missed, estimates called exact,
@@ -113,16 +114,15 @@ built in R3d with the vibration's data files.
   revision.
 - **The user's decisions, 2026-11-22** (§ 6.11 § 9): `jobset migrate` removes
   `displacement_amplitude_ang`, saying so, and writes the probe's temperature;
-  the frame-set maker offers $n$ quanta and a swing beside the thermal bell
+  the frame-set maker offers $n$ quanta beside the thermal bell
   curve, the probe following — the transport calculation reads the weights
   alone; the result stores the force constants, `with_masses` recomputing for
   isotopes; SIESTA's Raman step a choice (the force-constant step, or a
   fraction of the zero-point width) and its view's per-mode verdict by the
   relative rule; the probe's record holds the weights' numbers only, its
   slope, $g$ and $S$ views; every temperature explicit, the API's default the
-  record's — narrowed by the user on 2026-11-23 for a driven mode, whose
-  coherent state takes no temperature ([`engines/vibration.md`](?doc=engines/vibration.md)
-  § 6.11 § 9 item 6, quoted there).
+  record's ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.11 § 9
+  item 6, quoted there).
 - **Its documents**: [`engines/vibration.md`](?doc=engines/vibration.md)'s
   two diagrams redrawn — they stop at the Results tab and show neither the
   Raman optical calls (with the run's own copy of their files, 2.77.21), nor
@@ -167,7 +167,7 @@ and an API reviewer** *(the user, 2026-11-23)*.
   `mode` coordinate); an imaginary mode's spread, mean quanta and largest move
   `null` in the JSON (whose writer refuses a number that is not finite) and
   NaN in the data file; its force constant positive, $\mu\lvert\omega\rvert^2$,
-  as Gaussian prints it; `vibration.mean_quanta` refusing a frequency that is
+  as Gaussian prints it; `vibration.bose_einstein_mean_quanta` refusing a frequency that is
   not positive; `mdyn/angstrom` a row of the data files'
   units (`model/datafiles.md` § 2c, `units.UNITS`); every value derived by
   the module, written by both engines, checked on read; each atom's element
@@ -181,8 +181,8 @@ and an API reviewer** *(the user, 2026-11-23)*.
   **Built in releases**, each with its own review rounds: **R3d2b2a
   (2.80.0, done), the motion in `vibration`** — the travelling module's items (the pointer
   below: the states, every state's Gauss rule and its order, `draw`,
-  `weights_at`, `temperature_of_quanta`, the `Vibration`'s shared fields,
-  `Motion`, `Snapshots`, `pooled`) and the callers of a changed name;
+  `weights_at`, `bose_einstein_temperature`, the `Vibration`'s shared fields,
+  `Motion`, `Snapshots`) and the callers of a changed name;
   **R3d2b2b1 (2.81.0, done), transport made generic and the vocabulary the
   toolkit's** — made first, so a set the new writer writes is never laid out
   by transport's own table of rows; its pieces and visible changes are its
@@ -211,12 +211,12 @@ and an API reviewer** *(the user, 2026-11-23)*.
   thermal and (2) one mode a photon excited, the position distribution each
   mode's state gives (the separable harmonic Hamiltonian, the thermal density
   operator's position marginal, the state one heralded photon leaves on a
-  cold or a warm mode, many photons at random, a coherent drive), why the
+  cold or a warm mode, many photons at random), why the
   joint is their product and why a frozen geometry drawn from it averages a
   property exactly, and how each number of a snapshot is drawn — the keyed
   streams, a bell curve's `sigma z`, the number state's inverse transform
-  from one normal number and its tabulated distribution's accuracy, a
-  swing's phase, mirrored pairs, every atom's move — each step its function,
+  from one normal number and its tabulated distribution's accuracy,
+  mirrored pairs, every atom's move — each step its function,
   its derivation and the test holding it, reviewed by two science readers
   deriving each claim; next **R3d2b2b4, a mode's state from its steps —
   discussed with the user before any code** *(the user, 2026-11-25, asked
@@ -230,26 +230,34 @@ and an API reviewer** *(the user, 2026-11-23)*.
   direct results, but rather this is an effort to give support to a group of
   problem/category of problem such as distribution calculation etc.")*: the
   science of a mode's state written out as separate steps — the state, what
-  a photon, a drive or a bath does to it, its position distribution, its
+  a photon or a bath does to it, its position distribution, its
   distribution function and moments, a draw from one normal number — each
   step one tool, and every case of § 2b and § 2d (thermal, n quanta, an
-  effective temperature, a swing, one photon on a cold or a warm mode, a
-  quantum two modes share) a combination of them; the discussion first —
+  effective temperature, one photon on a cold or a warm mode) a combination
+  of them; the discussion first —
   written 2026-11-25: the theory, `science/vibrational-averaging.md` § 2e;
   the modules, the recipes and the four questions,
   `engines/vibration-frames.md` § 9 — decided 2026-11-25, the four
   questions as recommended *("go with your recommendations on all four")*;
-  the build, one release: the modules of § 9.1, every move and caller of
-  § 9.3 (the tests retired first, then held to the science), § 9's rules
-  moved into § 1–§ 8 and the person's documents;
+  the build in two releases — **R3d2b2b4a, the generic tools added**: the
+  modules `oscillator`, `oscillator_state`, `distribution` and `sampling`
+  of § 9.1, handed on by `postprocess`, each held to the science's closed
+  forms, today's states compared with them; with them, by the user's
+  decisions of the same day, the modes that move chosen in steps, every
+  fixed number documented (science § 2e.6), and joining snapshot sets and
+  the drive groups removed (degenerate modes set up by hand, science
+  § 2c.2); and, by the user's decision of 2026-11-25, the toolkit cut to
+  lists — every state a list of chances, no push, phase or density matrix,
+  and the steady drive (the *driven* and *warm driven* states) gone from
+  the tools, the doors and the page — built in 2.84.0; then
+  **R3d2b2b4b, the switch-over**: every move and caller of § 9.3 (the tests
+  retired first, then held to the science), § 9.2–§ 9.4's rules moved into § 1–§ 8
+  and the person's documents;
   then **R3d2b2c, the example notebook**
   and its test, on the toolkit as decided:
-  - **`vibration`, carried from § 2d's review**: `_NumberDistribution`'s
-    note says "one to two" panels between neighbouring zeros — measured,
-    1.14 at the least (n = 70): the zeros at least a panel's width apart
-    (`science/vibrational-averaging.md` § 2d.5); no test draws snapshots
-    with a held atom (§ 2d.7 item 3).
-  - **`vibration`** (L2, travels; numpy and the constants alone) — R3d2b2a,
+  - **`vibration`, carried from § 2d's review**: no test draws snapshots
+    with a held atom (`science/vibrational-averaging.md` § 2d.7 item 3).
+  - **`vibration`** (L2, travels; numpy, the constants, the generic tools of 2.84.0 and the frequency-window rule) — R3d2b2a,
     built in 2.80.0: each piece and each visible change is its changelog
     row, which the plan does not restate.
   - **`vibration_frames`, carried, still open**: each row's meaning
@@ -262,7 +270,7 @@ and an API reviewer** *(the user, 2026-11-23)*.
     a recipe's set read back (a `FrameSet` carries them); `frame_rows` the
     function beside the writer's `frame_rows=` keyword; `quanta=` named on a
     warm set's rows leaving its temperature unsaid, and naming nothing on a
-    warm-driven or classical set's rows giving the quantum thermal state —
+    classical set's rows giving the quantum thermal state —
     said where the set states its own state. **No call of `vibration`
     reaches it.**
   - **Tests** (the toolkit's rows of `tests/test_vibration_frames.py`, the

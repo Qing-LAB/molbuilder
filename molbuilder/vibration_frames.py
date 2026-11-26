@@ -129,7 +129,7 @@ ROWS: Tuple[Row, ...] = (
         "the factor every mode's frequency was scaled by, each pattern kept"),
     Row("assumptions", "structure", "given", "Assumptions",
         "the maker's assumptions, in words -- what the weights' average "
-        "holds under (science/vibrational-averaging.md 7, items 1, 7, 8, 9)",
+        "holds under (science/vibrational-averaging.md 7, items 1 and 7)",
         prose=True),
     Row("sampling_rule", "structure", "given", "Sampling rule",
         "the recipe, by name, that placed the frames and gave their weights: "
@@ -148,13 +148,10 @@ ROWS: Tuple[Row, ...] = (
         "a snapshot set: N, the snapshots drawn -- the frames after frame 0"),
     Row("seed", "structure", "given", "Seed",
         "a snapshot set: the seed, a whole number 0 or more, each mode's "
-        "streams are keyed by (with the mode's number)"),
+        "stream is keyed by (with the mode's number)"),
     Row("start", "structure", "given", "First snapshot",
         "a snapshot set: the first snapshot of the seed's sequence drawn -- "
         "0, or where a set continues another"),
-    Row("pooled", "structure", "given", "Pooled",
-        "a pooled set: 1; each part's seed, start and samples in "
-        "info.sampling"),
     Row("rng", "structure", "given", "Random generator",
         "a snapshot set: the generator and numpy's version -- the same seed "
         "gives the same frames on the same numpy"),
@@ -165,8 +162,7 @@ ROWS: Tuple[Row, ...] = (
         "a snapshot set: the modes included, by number"),
     Row("set_apart_modes", "structure", "given", "Modes set apart",
         "a snapshot set: each mode given a state of its own, in words -- its "
-        "state, its frequency where it is not the result's, and each drive "
-        "group with its modes and lags",
+        "state, and its frequency where it is not the result's",
         prose=True),
     Row("quantum", "structure", "given", "Quantum",
         "1 when the set's motion is quantum -- zero-point motion included "
@@ -192,18 +188,13 @@ ROWS: Tuple[Row, ...] = (
         "the temperature of the motion the frames sample: a thermal "
         "state's -- for a mode pumped at random moments its effective "
         "temperature, the one whose thermal state holds the same mean "
-        "number of quanta; a warm driven mode's, the temperature of the "
-        "environment whose thermal width the swing carries; a snapshot "
-        "set's background, where a mode not set apart keeps it"),
+        "number of quanta; a snapshot set's background, where a mode not "
+        "set apart keeps it"),
     Row("quanta", "structure", "given", "Quanta n",
         "a mode's own set of n quanta exactly: n"),
-    Row("swing_quanta", "structure", "given", "Swing quanta",
-        "a driven mode's set: the quanta the push adds, n_s; its swing "
-        "Q_0 = 2 Q_zp sqrt(n_s)"),
     Row("mean_quanta", "structure", "derived", "Mean quanta n",
-        "a mode's own set: the state's total mean number of quanta -- at a "
-        "temperature n = 1 / (exp(hbar omega / k_B T) - 1); a driven "
-        "state's adds its swing quanta"),
+        "a mode's own set: the state's mean number of quanta -- at a "
+        "temperature n = 1 / (exp(hbar omega / k_B T) - 1)"),
     Row("spread_amu12_ang", "structure", "derived", "Spread σ",
         "a mode's own set: the r.m.s. of the state the frames sample, "
         "sigma = Q_zp sqrt(2n + 1) for a quantum state"),
@@ -521,46 +512,19 @@ def state_words(s) -> str:
     """A mode's state (a `vibration.ModeState`) in the words a mode's own
     set's ``assumptions`` row says it (§ 5.1) -- one wording for every state
     of § 2, a thermal state's :func:`thermal_state_words`."""
-    from .vibration import (CLASSICAL, CLASSICAL_SWING, NUMBER, SWING,
-                            THERMAL, _quanta_words)
+    from .vibration import CLASSICAL, THERMAL, _quanta_words
     st = s.state
     t = s.temperature_k
     if st.kind == THERMAL:
         return (thermal_state_words(float(t)) if t is not None else
                 f"a thermal state of "
-                f"{_quanta_words(st.bath_quanta, kind='mean ')}, a "
+                f"{_quanta_words(st.thermal_quanta, kind='mean ')}, a "
                 f"Gaussian of spread sigma = Q_zp sqrt(2n + 1)")
     if st.kind == CLASSICAL:
         return (f"the classical bell curve at {t:g} K, a Gaussian of "
                 f"spread sqrt(k_B T) / omega, no zero-point motion")
-    if st.kind == NUMBER:
-        return (f"{_quanta_words(st.quanta, kind='')} exactly, the "
-                f"oscillator's standing wave |psi_n|^2")
-    if st.kind == SWING:
-        return (f"the coherent state, {_quanta_words(st.swing_quanta)}: a "
-                f"bell curve of the zero-point width whose centre swings as "
-                f"Q_0 cos(phi), Q_0 = 2 Q_zp sqrt(n_s)"
-                if st.is_coherent else
-                f"the warm driven state, {_quanta_words(st.swing_quanta)} at "
-                f"{t:g} K: the thermal bell curve of that temperature "
-                f"carried by the swing")
-    assert st.kind == CLASSICAL_SWING
-    return (f"a bare classical swing, {_quanta_words(st.swing_quanta)}"
-            if st.classical_spread_amu12_ang == 0.0 else
-            f"a classical swing, {_quanta_words(st.swing_quanta)}, carrying "
-            f"the classical bell curve at {t:g} K")
-
-
-#: What a set with a driven mode leaves out (science § 7, items 8 and 9),
-#: said in its ``assumptions`` row.
-_DRIVEN_LEFT_OUT = (
-    "  A driven mode: the field's own action on the electrons, and its "
-    "forced motion of the other infrared-active modes, are left out.")
-
-
-def _is_driven(s) -> bool:
-    from .vibration import DRIVEN_KINDS
-    return s.state.kind in DRIVEN_KINDS
+    return (f"{_quanta_words(st.quanta)} exactly, the oscillator's "
+            f"standing wave |psi_n|^2")
 
 
 def _keeps_background(motion) -> bool:
@@ -573,13 +537,12 @@ def _keeps_background(motion) -> bool:
 
 
 def _assumptions_of_snapshots(snaps, imaginary: Sequence[int]) -> str:
-    """A snapshot set's ``assumptions`` row (§ 5; science § 7, items 1, 7,
-    8, 9): harmonic modes, each mode's state -- the background where an
+    """A snapshot set's ``assumptions`` row (§ 5; science § 7, items 1 and
+    7): harmonic modes, each mode's state -- the background where an
     included mode keeps it, each mode set apart in its own words -- their
-    independence or the drive groups, every mode not included at the
-    relaxed geometry, the ``imaginary`` ones (no harmonic state) named, a
-    finite set's statistical error, and, with a driven mode, what the drive
-    leaves out."""
+    independence, every mode not included at the
+    relaxed geometry, the ``imaginary`` ones (no harmonic state) named, and
+    a finite set's statistical error."""
     motion = snaps.motion
     apart = motion.set_apart_modes
     if _keeps_background(motion):
@@ -591,12 +554,9 @@ def _assumptions_of_snapshots(snaps, imaginary: Sequence[int]) -> str:
         states = f"each mode set apart: {apart}"
     every = sorted(int(k) for k in snaps.mode_index_1based) == sorted(
         m.index_1based for m in motion.vibration.modes)
-    groups = ("the modes move independently, each drive group's modes with "
-              "one shared phase" if motion.drives else
-              "the modes move independently")
     pairs = (", averaged in mirrored pairs" if snaps.antithetic else "")
     out = ("Harmonic modes: each mode's coordinate follows its state's "
-           f"distribution -- {states} -- and {groups}"
+           f"distribution -- {states} -- and the modes move independently"
            + ("" if every else
               "; every mode not included stays at the relaxed geometry"
               + (f" (imaginary, no harmonic state: "
@@ -605,17 +565,16 @@ def _assumptions_of_snapshots(snaps, imaginary: Sequence[int]) -> str:
            + f".  A finite set of {snaps.samples} snapshots{pairs}: its "
            "average carries a statistical error, which the analysis of its "
            "results computes (Snapshots.standard_error).")
-    if any(_is_driven(s) for s in motion.states.values()):
-        out += _DRIVEN_LEFT_OUT
     return out
 
 
 def _sampling_of(snaps) -> Dict[str, Any]:
     """A snapshot set's ``info.sampling`` (§ 5): everything that made its
     frames -- the modes, the background, each mode's state by its fields,
-    each drive group with its key and lags, the modes left out, the motion's
-    notes, each drawing -- and each frame's coordinate along each mode,
-    indexed as the set is written; read back by :func:`read_frame_set`."""
+    how the modes were chosen, the modes left out, the motion's notes,
+    whether its snapshots are mirrored pairs -- and each frame's coordinate
+    along each mode, indexed as the set is written; read back by
+    :func:`read_frame_set`."""
     from dataclasses import asdict
     motion = snaps.motion
     states = {}
@@ -634,16 +593,10 @@ def _sampling_of(snaps) -> Dict[str, Any]:
         "frequency_scale": float(motion.vibration.frequency_scale),
         "states": states,
         "set_apart": [int(k) for k in motion.set_apart],
-        "drives": [{"modes": [int(k) for k in d.modes],
-                    "lags_rad": {str(k): float(v)
-                                 for k, v in d.lags_rad.items()},
-                    "key": [int(k) for k in d.key]}
-                   for d in motion.drives],
+        "mode_selection": list(motion.chosen_by),
         "left_out": [int(k) for k in motion.left_out],
         "notes": list(motion.notes),
         "antithetic": bool(snaps.antithetic),
-        "drawings": [[int(a), int(b), int(c)] for a, b, c in snaps.drawings],
-        "pieces": [int(n) for n in snaps.pieces],
         "q_amu12_ang": [[float(x) for x in row]
                         for row in snaps.q_amu12_ang]}
 
@@ -736,8 +689,7 @@ def write_frame_set(path, frames=None, weights=None, *, vibration=None,
     from .projects import address
     from .structure import (SAME_PLACE_ANG, AtomChannel, atom_words,
                             farthest_apart, frame_words)
-    from .vibration import (CLASSICAL, CLASSICAL_KINDS, NUMBER, THERMAL,
-                            Frames, Snapshots, Vibration)
+    from .vibration import CLASSICAL, LEVEL, Frames, Snapshots, Vibration
     from .workingcopy_structure import StructureCodec
 
     out = _checked_target(path)
@@ -780,13 +732,11 @@ def write_frame_set(path, frames=None, weights=None, *, vibration=None,
             mode = s.mode
             st = s.state
             stated.update({
-                "assumptions": assumptions_of_a_mode(state_words(s))
-                + (_DRIVEN_LEFT_OUT if _is_driven(s) else ""),
-                "sampling_rule": (_RULE_GAUSS_HERMITE
-                                  if st.kind in (THERMAL, CLASSICAL)
-                                  else _RULE_GAUSS),
+                "assumptions": assumptions_of_a_mode(state_words(s)),
+                "sampling_rule": (_RULE_GAUSS if st.kind == LEVEL
+                                  else _RULE_GAUSS_HERMITE),
                 "sampling_nodes": _nodes_of(frames),
-                "quantum": 0 if st.kind in CLASSICAL_KINDS else 1,
+                "quantum": 0 if st.kind == CLASSICAL else 1,
                 "mode_index_1based": int(mode.index_1based),
                 "frequency_cm1": float(mode.frequency_cm1),
                 "result_frequency_cm1": (
@@ -796,9 +746,7 @@ def write_frame_set(path, frames=None, weights=None, *, vibration=None,
                     mode.zero_point_amplitude_amu12_ang),
                 "temperature_k": (None if s.temperature_k is None
                                   else float(s.temperature_k)),
-                "quanta": int(st.quanta) if st.kind == NUMBER else None,
-                "swing_quanta": (float(st.swing_quanta)
-                                 if _is_driven(s) else None),
+                "quanta": int(st.quanta) if st.kind == LEVEL else None,
                 "mean_quanta": (None if s.mean_quanta is None
                                 else float(s.mean_quanta)),
                 "spread_amu12_ang": sigma,
@@ -822,10 +770,9 @@ def write_frame_set(path, frames=None, weights=None, *, vibration=None,
                 "assumptions": _assumptions_of_snapshots(snaps, imaginary),
                 "sampling_rule": _RULE_MONTE_CARLO,
                 "samples": int(snaps.samples),
-                "seed": None if snaps.pooled else int(snaps.seed),
-                "start": None if snaps.pooled else int(snaps.start),
-                "pooled": 1 if snaps.pooled else None,
-                "rng": f"numpy PCG64, SeedSequence([seed, mode, stream]), "
+                "seed": int(snaps.seed),
+                "start": int(snaps.start),
+                "rng": f"numpy PCG64, SeedSequence([seed, mode, 0]), "
                        f"numpy {np.__version__}",
                 "antithetic": 1 if snaps.antithetic else 0,
                 "modes": ("every real mode" if every_real
@@ -1048,20 +995,18 @@ OFFERED_NODES = (DEFAULT_NODES, 5, 7)
 #: The doors' words for the state they ask (§ 2: asked every time).
 _ASK_THE_STATE = (
     "the state the frames sample is asked every time, never assumed: a "
-    "temperature (the thermal state), a mean number of quanta, a number of "
-    "quanta, or swing quanta (a driven mode -- with the environment's "
-    "temperature for a warm one)")
+    "temperature (the thermal state), a mean number of quanta, or a number "
+    "of quanta")
 
 #: THE STATE'S ARGUMENTS, as the doors take them (§ 6) -- the page's ask
 #: (`frameset_state`) and the write door's keys, the command line's flags
 #: spelled as options (``--temperature``, ``--quanta``, …).
-STATE_ASK_KEYS = ("temperature_k", "quanta", "swing_quanta", "mean_quanta")
+STATE_ASK_KEYS = ("temperature_k", "quanta", "mean_quanta")
 
 #: Each argument in the doors' words.
 _ARGUMENT_WORDS = {"temperature_k": "a temperature",
                    "mean_quanta": "a mean number of quanta",
-                   "quanta": "a number of quanta",
-                   "swing_quanta": "swing quanta"}
+                   "quanta": "a number of quanta"}
 
 
 class StateRefused(FrameSetError):
@@ -1082,7 +1027,7 @@ def _offered(nodes) -> int:
     return int(nodes)
 
 
-def doors_state(*, temperature_k=None, quanta=None, swing_quanta=None,
+def doors_state(*, temperature_k=None, quanta=None,
                 mean_quanta=None) -> Dict[str, Any]:
     """THE STATE THE DOORS ASK (§ 2's table: `frameset from-mode` and
     *Write frame set…* ask it every time; § 6) -- the arguments named, as
@@ -1094,7 +1039,7 @@ def doors_state(*, temperature_k=None, quanta=None, swing_quanta=None,
     not take, a value that is none."""
     from .vibration import STATES, checked_state, checked_temperature_k
     named = {k: v for k, v in zip(STATE_ASK_KEYS, (temperature_k, quanta,
-                                                   swing_quanta, mean_quanta))
+                                                   mean_quanta))
              if v is not None}
     if not named:
         raise StateRefused(_ASK_THE_STATE)
@@ -1109,9 +1054,9 @@ def doors_state(*, temperature_k=None, quanta=None, swing_quanta=None,
         except ValueError:
             raise StateRefused(
                 f"the temperature is the one the frames sample -- the "
-                f"junction's, a pumped mode's effective one, or a driven "
-                f"mode's environment's -- a number of kelvin, 0 or more; "
-                f"{temperature_k!r} is not one") from None
+                f"junction's, or a pumped mode's effective one -- a number "
+                f"of kelvin, 0 or more; {temperature_k!r} is not one"
+            ) from None
     try:
         checked_state(**named)
     except ValueError as exc:
@@ -1122,7 +1067,7 @@ def doors_state(*, temperature_k=None, quanta=None, swing_quanta=None,
 def read_state_ask(raw: Any) -> Dict[str, Any]:
     """THE STATE A PAGE ASKS its readout at (`web/spectra.md` § 4.3, the
     load door's ``frameset_state``) -- ``{temperature_k?, quanta?,
-    swing_quanta?, mean_quanta?}`` (:data:`STATE_ASK_KEYS`), read by the
+    mean_quanta?}`` (:data:`STATE_ASK_KEYS`), read by the
     doors' rule (:func:`doors_state`).  Refused by name
     (:class:`StateRefused`): not that shape, a key it does not take -- with
     the key it is close to (`persist.unknown_keys`) -- or a state the doors
@@ -1165,7 +1110,7 @@ def _beyond_harmonic(m, s) -> Optional[str]:
     if energy <= HARMONIC_LIMIT_EV:
         return None
     return (f"mode {m.index_1based} holds "
-            f"{_quanta_words(s.mean_quanta, kind='', spec='.4g')} in this "
+            f"{_quanta_words(s.mean_quanta, spec='.4g')} in this "
             f"state, {energy:.3g} eV -- more than {HARMONIC_LIMIT_EV:g} eV, "
             f"far up its ladder, where the harmonic picture the frames are "
             f"drawn from may no longer hold")
@@ -1181,19 +1126,14 @@ def readout(m, state: Dict[str, Any],
     the block's ``state`` it in the set's words (:func:`state_words`),
     the outermost move for each frame count of ``node_counts``;
     ``beyond_harmonic`` the words where its quanta put more than
-    :data:`HARMONIC_LIMIT_EV` into the mode, else ``None``; a driven state
-    adding ``swing_over_zero_point``, the swing's turning point
-    ``Q_0 / Q_zp`` and, the coherent state, ``thermal_quanta`` and
-    ``thermal_spread_over_zero_point`` -- the mode's thermal state at the
-    record's temperature, what the coherent state, the cold driven one,
-    leaves out (§ 3.1), where the record states one.  ``None`` for an
+    :data:`HARMONIC_LIMIT_EV` into the mode, else ``None``.  ``None`` for an
     imaginary mode, which has no state."""
     if m.has_imag:
         return None
     s = _state_of(m, doors_state(**state))
     q_zp = float(m.zero_point_amplitude_amu12_ang)
     spread = float(s.spread_amu12_ang)
-    out: Dict[str, Any] = {
+    return {
         "mean_quanta": float(s.mean_quanta),
         "spread_amu12_ang": spread,
         "spread_over_zero_point": spread / q_zp,
@@ -1201,16 +1141,6 @@ def readout(m, state: Dict[str, Any],
                                for n in node_counts},
         "state": state_words(s),
         "beyond_harmonic": _beyond_harmonic(m, s)}
-    if _is_driven(s):
-        out["swing_over_zero_point"] = float(
-            s.state.swing_amplitude_amu12_ang) / q_zp
-        if (s.state.is_coherent
-                and m.vibration.record_temperature_k is not None):
-            warm = m.state(temperature_k=m.vibration.record_temperature_k)
-            out["thermal_quanta"] = float(warm.mean_quanta)
-            out["thermal_spread_over_zero_point"] = float(
-                warm.spread_amu12_ang) / q_zp
-    return out
 
 
 @dataclass(frozen=True)
@@ -1240,7 +1170,7 @@ class ModeFrames:
 
 
 def frameset_from_mode(run_folder, *, mode, out, nodes=OFFERED_NODES[0],
-                       temperature_k=None, quanta=None, swing_quanta=None,
+                       temperature_k=None, quanta=None,
                        mean_quanta=None) -> ModeFrames:
     """THE COMMAND LINE'S AND THE PAGE'S FRAME SET (§ 6; the user's decision,
     `engines/vibration.md` § 6.11 § 9 item 2): vibration run
@@ -1259,7 +1189,7 @@ def frameset_from_mode(run_folder, *, mode, out, nodes=OFFERED_NODES[0],
     does not hold or an imaginary one."""
     nodes = _offered(nodes)
     state = doors_state(temperature_k=temperature_k, quanta=quanta,
-                        swing_quanta=swing_quanta, mean_quanta=mean_quanta)
+                        mean_quanta=mean_quanta)
     _checked_target(out)
     v = vibration_of_run(run_folder)
     m = _mode_of(v, mode)
@@ -1334,8 +1264,8 @@ def _mode_set_of(rows) -> Tuple[float, float, Dict[str, Any]]:
     reader :func:`weights_for_set` and :func:`read_frame_set` ask: the
     mode's ``frequency_cm1`` and ``zero_point_amplitude_amu12_ang``, and the
     state the set was written for, as § 2's arguments (``temperature_k``,
-    ``mean_quanta`` for a set named by them, ``quanta``, ``swing_quanta``,
-    ``classical`` for a set whose ``quantum`` row is 0).  Refused by name
+    ``mean_quanta`` for a set named by them, ``quanta``, ``classical`` for a
+    set whose ``quantum`` row is 0).  Refused by name
     (``ValueError``): a set stating no mode's frequency and zero-point
     amplitude."""
     nu = finite_number(rows.value("frequency_cm1"))
@@ -1347,14 +1277,9 @@ def _mode_set_of(rows) -> Tuple[float, float, Dict[str, Any]]:
             "own set states: a state gives them no weights")
     own: Dict[str, Any] = {}
     quanta = finite_number(rows.value("quanta"))
-    swing = finite_number(rows.value("swing_quanta"))
     temperature = finite_number(rows.value("temperature_k"))
     if quanta is not None:
         own["quanta"] = int(quanta)
-    elif swing is not None:
-        own["swing_quanta"] = swing
-        if temperature is not None:
-            own["temperature_k"] = temperature
     elif temperature is not None:
         own["temperature_k"] = temperature
     elif finite_number(rows.value("mean_quanta")) is not None:
@@ -1532,23 +1457,19 @@ def read_frame_set(path, *, vibration=None):
     modes = np.array(sampling.get("modes") or [], dtype=int)
     q = np.asarray(sampling.get("q_amu12_ang") or [], dtype=float).reshape(
         n, len(modes))
-    drawings = tuple(tuple(int(x) for x in d)
-                     for d in sampling.get("drawings") or ())
     motion = _motion_of(v, sampling) if v is not None else None
     return Snapshots(motion, modes, q, bool(sampling.get("antithetic")),
-                     drawings, tuple(int(k) for k in
-                                     sampling.get("pieces") or ()),
+                     int(rows.value("seed")), int(rows.value("start")),
                      written_positions_ang=positions, read_said=tuple(said))
 
 
 def _motion_of(v, sampling):
     """The motion a snapshot set's ``info.sampling`` records, rebuilt
     whole on its vibration ``v`` at the set's frequency scale -- each mode's
-    state by its fields, the drive groups by their modes, lags and keys,
-    the motion's notes -- so a set read back draws and says as the one
-    written."""
+    state by its fields, the motion's notes -- so a set read back draws and
+    says as the one written."""
     from dataclasses import fields
-    from .vibration import Drive, ModeState, Motion, State
+    from .vibration import ModeState, Motion, State
     v = _at_scale(v, sampling.get("frequency_scale") or 1.0)
     states = {}
     for k, s in (sampling.get("states") or {}).items():
@@ -1557,17 +1478,13 @@ def _motion_of(v, sampling):
             mode=_mode_at(v, int(k), float(s["frequency_cm1"])),
             temperature_k=s.get("temperature_k"),
             temperature_from=s.get("temperature_from"))
-    drives = tuple(Drive(modes=tuple(int(k) for k in d["modes"]),
-                         lags_rad={int(k): float(x)
-                                   for k, x in d["lags_rad"].items()},
-                         key=tuple(int(k) for k in d["key"]))
-                   for d in sampling.get("drives") or ())
-    return Motion(v, states, drives, float(sampling["temperature_k"]),
+    return Motion(v, states, float(sampling["temperature_k"]),
                   str(sampling.get("temperature_from") or ""),
                   bool(sampling.get("classical")),
                   tuple(str(n) for n in sampling.get("notes") or ()),
                   tuple(int(k) for k in sampling.get("set_apart") or ()),
-                  tuple(int(k) for k in sampling.get("left_out") or ()))
+                  tuple(int(k) for k in sampling.get("left_out") or ()),
+                  tuple(str(s) for s in sampling.get("mode_selection") or ()))
 
 
 # ----------------------------------------------------------------------- #
@@ -1702,7 +1619,6 @@ def _provenance(rows, structure) -> Optional[Dict[str, Any]]:
 # ----------------------------------------------------------------------- #
 
 def weights_for_set(rows, *, temperature_k: Optional[float] = None,
-                    swing_quanta: Optional[float] = None,
                     quanta: Optional[int] = None,
                     mean_quanta: Optional[float] = None,
                     classical: bool = False):
@@ -1715,8 +1631,7 @@ def weights_for_set(rows, *, temperature_k: Optional[float] = None,
     `vibration.State.weights_at` given the set's written weights, a
     `vibration.Weights`.  Said first, where it is the set's: a state that
     takes a temperature, given none, taken at the set's own
-    ``temperature_k`` row, named; a swing named by its quanta alone on a set
-    that states a temperature above 0 K, that temperature not used.  Each
+    ``temperature_k`` row, named.  Each
     row it reads is taken in the unit its name carries
     (`model/structure.md` § 2.2d: a row is made so); a set written before
     2.81.1 whose row states another is read the same, unsaid.
@@ -1730,8 +1645,7 @@ def weights_for_set(rows, *, temperature_k: Optional[float] = None,
     refuse."""
     from .frameset import FrameRows
     from .structure import frame_words
-    from .vibration import (THE_SETS, _named, _quanta_words,
-                            _temperature_of, state)
+    from .vibration import THE_SETS, _named, _temperature_of, state
     if rows is not None and not isinstance(rows, FrameRows):
         raise ValueError(
             f"the weights are for a frame set's rows -- "
@@ -1759,27 +1673,17 @@ def weights_for_set(rows, *, temperature_k: Optional[float] = None,
             f"{', '.join(missing)} {'states' if len(missing) == 1 else 'state'}"
             f" no position along the mode (q_amu12_ang): every frame's "
             f"coordinate is what its weight is computed from")
-    named = _named(temperature_k, mean_quanta, quanta, swing_quanta,
-                   classical)
+    named = _named(temperature_k, mean_quanta, quanta, classical)
     stated = finite_number(rows.value("temperature_k"))
     t, source = _temperature_of(named, temperature_k, stated, THE_SETS)
     weights = state(q_zp, nu, temperature_k=t, mean_quanta=mean_quanta,
-                    quanta=quanta, swing_quanta=swing_quanta,
+                    quanta=quanta,
                     classical=classical).weights_at(q, written=rows.weights)
-    first: List[str] = []
-    if source == THE_SETS:
-        first.append(f"the {'classical' if classical else 'thermal'} state "
-                     f"at {source} temperature, {t:g} K (its temperature_k "
-                     f"row)")
-    elif (stated and temperature_k is None and swing_quanta is not None):
-        # SCIENCE § 6's TRAP: a warm set re-weighted to a swing named alone
-        # reads the cold one -- said, and what a temperature would mean.
-        first.append(
-            f"{'the classical swing alone' if classical else 'the cold coherent state'}"
-            f", {_quanta_words(float(swing_quanta))}: the set's temperature, "
-            f"{stated:g} K, is not used -- temperature_k names the "
-            f"environment whose thermal width the swing carries")
-    return replace(weights, said=(*first, *weights.said)) if first else weights
+    if source != THE_SETS:
+        return weights
+    return replace(weights, said=(
+        f"the {'classical' if classical else 'thermal'} state at {source} "
+        f"temperature, {t:g} K (its temperature_k row)", *weights.said))
 
 
 __all__ = ["FrameSetError", "TWO_FORMS", "vibration_of", "INFO_KEY", "MASS_CHANNEL", "ROWS", "Row",

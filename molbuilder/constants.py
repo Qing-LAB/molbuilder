@@ -158,7 +158,7 @@ HC_EV_NM: float = CM1_EV * 1e7
 
 #: hc/k_B -- kelvin per wavenumber: a mode of ν̃ cm⁻¹ has ħω/k_BT =
 #: ν̃ · CM1_KELVIN / T.  DERIVED from the two above, so the Spectrum page,
-#: the thermal spread of a mode (`vibration.thermal_spread_amu12_ang`)
+#: the thermal spread of a mode (`oscillator.thermal_spread_amu12_ang`)
 #: and anything else asking the question read one number.
 CM1_KELVIN: float = CM1_EV / BOLTZMANN_EV_K
 

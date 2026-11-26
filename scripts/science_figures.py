@@ -1,7 +1,7 @@
-"""THE FIGURES OF `docs/science/vibrational-averaging.md` § 2d -- each drawn
-from the science's closed forms with numpy and scipy (the Hermite functions,
-Mehler's sum, the coherent state's phase average, the one-quantum
-distribution function), never from molbuilder's own numbers -- but for the
+"""THE FIGURES OF `docs/science/vibrational-averaging.md` § 2d and § 2e --
+each drawn from the science's closed forms with numpy and scipy (the
+Hermite functions, Mehler's sum, the one-quantum distribution function, the
+lists the events make), never from molbuilder's own numbers -- but for the
 one figure that sets molbuilder's draws (`vibration.State.draw`) beside the
 density they must follow.
 
@@ -58,15 +58,6 @@ def thermal_p(n: int, nbar: float) -> float:
     return nbar ** n / (nbar + 1.0) ** (n + 1)
 
 
-def coherent(x, ns: float):
-    """The coherent state over its phase: N(Q0 cos phi, 1) averaged over a
-    uniform phase, Q0 = 2 sqrt(n_s), in x = Q / Q_zp."""
-    q0 = 2.0 * math.sqrt(ns)
-    phi = (np.arange(4000) + 0.5) * (2.0 * math.pi / 4000)
-    centres = q0 * np.cos(phi)
-    return gauss(np.asarray(x)[:, None] - centres[None, :], 1.0).mean(axis=1)
-
-
 def photon_added(x, nbar: float, nmax: int = 60):
     """One quantum added to a thermal state of nbar: p'_n = n nbar^(n-1) /
     (nbar+1)^(n+1)."""
@@ -109,8 +100,6 @@ def fig_states():
             label=r"one quantum: $|\psi_1|^2$ (one photon, cold mode)")
     ax.plot(x, photon_added(x, 1.0), color=C[3], lw=1.6, ls="-.",
             label=r"one photon on a warm mode ($\bar n = 1$): photon-added thermal")
-    ax.plot(x, coherent(x, 2.0), color=C[2], lw=1.6, ls=":",
-            label=r"driven: coherent state, $n_s = 2$")
     ax.set_xlabel(r"$Q\,/\,Q_{\rm zp}$")
     ax.set_ylabel(r"$P(Q)\;\times Q_{\rm zp}$")
     ax.set_title("Where one mode sits, in each state")
@@ -272,15 +261,21 @@ def fig_mirror():
 # ---------------------------------------------------------------------- #
 #  § 2e: a state as a list, the steps on it, the frames from it           #
 # ---------------------------------------------------------------------- #
-def _lists(nbar: float = 1.0, ns: float = 2.0, n0: int = 3, nmax: int = 13):
+def _list_density(x, p):
+    """P(x) of a list over the levels, sum_n p_n |psi_n(x)|^2."""
+    return sum(pn * psi2(k, x) for k, pn in enumerate(p) if pn)
+
+
+def _lists(nbar: float = 1.0, n0: int = 3, nmax: int = 13):
     """Four states as lists over the counts 0 .. nmax-1, each with its
-    P(x) (science § 2e.1's table): thermal, one quantum on a warm mode, a
-    steady drive on a cold mode (Poisson), n0 quanta exactly."""
+    P(x) (science § 2e.1's table): thermal, one quantum added to it, one
+    quantum taken from it, n0 quanta exactly."""
     n = np.arange(nmax)
     th = np.array([thermal_p(k, nbar) for k in n])
     added = np.array([k * nbar ** (k - 1) / (nbar + 1.0) ** (k + 1)
                       if k else 0.0 for k in n])
-    drive = stats.poisson.pmf(n, ns)
+    taken = np.array([(k + 1) * nbar ** k / (nbar + 1.0) ** (k + 2)
+                      for k in range(60)])
     number = (n == n0).astype(float)
     x = np.linspace(-7, 7, 801)
     return n, x, [
@@ -288,7 +283,8 @@ def _lists(nbar: float = 1.0, ns: float = 2.0, n0: int = 3, nmax: int = 13):
          gauss(x, math.sqrt(2 * nbar + 1))),
         (fr"one photon on it ($\bar n = {nbar:g}$)", added,
          photon_added(x, nbar)),
-        (fr"a steady drive, cold, $n_s = {ns:g}$", drive, coherent(x, ns)),
+        (fr"one quantum taken from it ($\bar n = {nbar:g}$)", taken[:nmax],
+         _list_density(x, taken)),
         (fr"{n0} quanta exactly", number, psi2(n0, x)),
     ]
 
@@ -379,37 +375,34 @@ def fig_worked_frames(nbar: float = 1.0):
     save(fig, "the-worked-chain-frames.svg")
 
 
-def fig_order_of_events(ns: float = 1.0, nmax: int = 9):
-    """Two events in either order on a cold mode (science § 2e.2): a pulse
-    of n_s swing quanta and one quantum added -- their lists, from the
-    displacement's matrix elements |<n|D|m>|^2 (generalised Laguerre)."""
+def fig_order_of_events(nbar: float = 1.0, nmax: int = 10):
+    """Two events in either order on a warm mode (science § 2e.2): one
+    quantum added and one removed -- p_n = (n+1)^2 t^n and n^2 t^n over
+    their sums, t = nbar / (nbar + 1), the second the first one level up."""
     n = np.arange(nmax)
-
-    def d2(nn, m):                    # |<nn|D(alpha)|m>|^2, |alpha|^2 = ns
-        lo, hi = min(nn, m), max(nn, m)
-        lag = special.eval_genlaguerre(lo, hi - lo, ns)
-        return (math.factorial(lo) / math.factorial(hi) * ns ** (hi - lo)
-                * math.exp(-ns) * lag * lag)
-    pulse = np.array([d2(k, 0) for k in n])             # ground -> pulse
-    pulse_then_photon = np.array([k * pulse[k - 1] if k else 0.0
-                                  for k in n]) / (ns + 1.0)
-    photon_then_pulse = np.array([d2(k, 1) for k in n])  # |1> -> pulse
+    t = nbar / (nbar + 1.0)
+    big = np.arange(400)
+    add_then_remove = (n + 1) ** 2 * t ** n / float(((big + 1) ** 2 * t ** big).sum())
+    remove_then_add = n ** 2 * t ** n / float((big ** 2 * t ** big).sum())
+    means = (float((big * (big + 1) ** 2 * t ** big).sum() / ((big + 1) ** 2 * t ** big).sum()),
+             float((big ** 3 * t ** big).sum() / (big ** 2 * t ** big).sum()))
     fig, axs = plt.subplots(1, 2, figsize=(7.6, 2.9), sharey=True,
                             gridspec_kw={"wspace": 0.12})
     for ax, p_n, title, col, mean in (
-            (axs[0], pulse_then_photon, "pulse → photon", C[1], 2.5),
-            (axs[1], photon_then_pulse, "photon → pulse", C[2], 2.0)):
+            (axs[0], add_then_remove, "added, then removed", C[1], means[0]),
+            (axs[1], remove_then_add, "removed, then added", C[2], means[1])):
         ax.bar(n, p_n, color=col, width=0.7)
-        ax.set_title(f"{title}: mean {mean:g}", loc="left")
+        frac = Fraction(mean).limit_denominator(12)
+        ax.set_title(f"{title}: mean {frac.numerator}/{frac.denominator}",
+                     loc="left")
         ax.set_xticks(n)
         ax.set_xlabel("n, the number of quanta")
     axs[0].set_ylabel(r"$p_n$")
-    axs[1].annotate(r"$p_1 = 0$ exactly", xy=(1, 0.0), xytext=(2.6, 0.33),
+    axs[1].annotate(r"$p_0 = 0$ exactly", xy=(0, 0.001), xytext=(-0.45, 0.178),
                     arrowprops={"arrowstyle": "->", "color": INK},
                     fontsize=8.5, color=INK)
-    fig.suptitle(fr"Order matters: the same two events on a cold mode "
-                 fr"($n_s = {ns:g}$), averaged over time", y=1.02,
-                 fontsize=10.5)
+    fig.suptitle(fr"Order matters: one quantum added and one removed on a "
+                 fr"warm mode ($\bar n = {nbar:g}$)", y=1.02, fontsize=10.5)
     save(fig, "order-of-events.svg")
 
 

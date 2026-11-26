@@ -3680,8 +3680,7 @@
     /* THE DIALOG'S STATES (web/spectra.md § 4.3's table), the one list the
      * dialog's choice, the fields it shows and what it reads and checks come
      * from: each state's label and fields -- each field, the argument the
-     * doors take it as, whether it is a whole number, its words, and the
-     * tick that asks it (a driven state's temperature, when *warm*). */
+     * doors take it as, whether it is a whole number, and its words. */
     const _DIALOG_STATES = {
         thermal: { label: "Thermal", fields: [
             { field: "temperature", arg: "temperature_k",
@@ -3689,26 +3688,15 @@
         quanta: { label: "n quanta", fields: [
             { field: "quanta", arg: "quanta", whole: true,
               why: "the quanta are a whole number, 0 or more" }] },
-        driven: { label: "Driven", fields: [
-            { field: "swing", arg: "swing_quanta",
-              why: "the swing quanta are a number, 0 or more" },
-            { field: "temperature", arg: "temperature_k", when: "warm",
-              why: "the temperature is a number of kelvin, 0 or more" }] },
     };
-    /* Every field and tick a state shows, once: what a change of state
-     * shows or hides. */
+    /* Every field a state shows, once: what a change of state shows or
+     * hides. */
     const _STATE_FIELDS = [...new Set(Object.values(_DIALOG_STATES).flatMap(
-        s => s.fields.flatMap(f => f.when ? [f.field, f.when] : [f.field])))];
-    /* The fields the state in ``v`` asks: a field its tick asks left out
-     * until it is ticked. */
-    const _fieldsAsked = (v) => ((_DIALOG_STATES[v.state] || {}).fields || [])
-        .filter(f => !f.when || v[f.when] === true);
-    /* The fields the state in ``v`` shows: those it asks, and each tick. */
-    const _fieldsShown = (v) => {
-        const fields = (_DIALOG_STATES[v.state] || {}).fields || [];
-        return new Set(_fieldsAsked(v).map(f => f.field)
-            .concat(fields.map(f => f.when).filter(Boolean)));
-    };
+        s => s.fields.map(f => f.field)))];
+    /* The fields the state in ``v`` asks. */
+    const _fieldsAsked = (v) => (_DIALOG_STATES[v.state] || {}).fields || [];
+    /* The names of the fields the state in ``v`` shows: those it asks. */
+    const _fieldsShown = (v) => new Set(_fieldsAsked(v).map(f => f.field));
 
     /* THE STATE THE DIALOG'S FIELDS NAME: its arguments as the doors take
      * them -- or, while a field it asks does not hold one, ``{why}``, the
@@ -3744,8 +3732,7 @@
         const zp = mode.largest_zero_point_move_ang != null
             ? Number(mode.largest_zero_point_move_ang) : null;
         const held = state.fileState.results || {};
-        // THE RECORD'S TEMPERATURE, which the box starts at and the cold
-        // driven state's thermal quanta are said at.
+        // THE RECORD'S TEMPERATURE, which the box starts at.
         const recordT = held.thermo && held.thermo.temperature_K != null
             ? Number(held.thermo.temperature_K) : null;
         // THE FRAME COUNTS THE DOORS OFFER, served with the load, the
@@ -3761,9 +3748,8 @@
         };
         // WHAT THE STATE MEANS FOR THIS MODE, the door's (§ 4.3's table):
         // the state in the set's words (``state``), its quanta and its
-        // spread against its zero-point one -- a driven state's swing, and
-        // the coherent state's, the thermal quanta it leaves out -- and the
-        // outermost move for the rule chosen.  A count said as the command
+        // spread against its zero-point one, and the outermost move for the
+        // rule chosen.  A count said as the command
         // line says it: four figures, the noun the figure's -- "1 quantum"
         // for a mean of 1.0004, "2 quanta".
         const figures = (x) => String(Number(Number(x).toPrecision(4)));
@@ -3776,20 +3762,9 @@
             if (!f || !f.state || move == null) return "";
             const head = f.state.charAt(0).toUpperCase() + f.state.slice(1)
                 + ".  The mode holds " + quanta(f.mean_quanta)
-                + " on average"
-                + (f.swing_over_zero_point != null
-                   ? "; its swing turns at " + figures(f.swing_over_zero_point)
-                     + " times its zero-point spread, and its spread is "
-                   : "; its spread is ")
+                + " on average; its spread is "
                 + figures(f.spread_over_zero_point)
-                + " times its zero-point spread."
-                + (f.thermal_quanta != null && recordT !== null
-                   ? "  At the record's " + recordT + " K its thermal "
-                     + "quanta would be " + figures(f.thermal_quanta)
-                     + " (spread " + figures(f.thermal_spread_over_zero_point)
-                     + " times the zero-point one) -- what the coherent "
-                     + "state leaves out."
-                   : "");
+                + " times its zero-point spread.";
             return head + "  With " + nodes + " frames the outermost frames "
                 + "move the atom that moves most by " + move.toFixed(4) + " Å"
                 + (zp !== null ? " (its largest zero-point move: "
@@ -3815,14 +3790,13 @@
         let timer = null, inBox = start, nodesNow = RULES[0];
         // EACH STATE'S FIELDS SHOWN FOR IT ALONE (`_DIALOG_STATES`), from the
         // first: the dialog opens thermal.
-        const opening = _fieldsShown({ state: "thermal", warm: false });
+        const opening = _fieldsShown({ state: "thermal" });
         const asked = await askFields({
             title: "Mode " + mode.index_1based + " as a frame set",
             hint: "The state of the motion the frames sample: thermal at a "
                 + "temperature -- the junction's, or for a mode pumped at "
-                + "random moments its effective temperature -- n quanta "
-                + "exactly, or driven by a swing.  Each frame's weight is "
-                + "the state's own rule's.",
+                + "random moments its effective temperature -- or n quanta "
+                + "exactly.  Each frame's weight is the state's own rule's.",
             fields: [
                 { name: "state", label: "State", value: "thermal",
                   options: Object.entries(_DIALOG_STATES).map(
@@ -3830,12 +3804,6 @@
                 { name: "quanta", label: "Quanta n", type: "number",
                   attrs: { min: "0", step: "1" }, value: "1",
                   hidden: !opening.has("quanta") },
-                { name: "swing", label: "Swing quanta nₛ", type: "number",
-                  attrs: { min: "0", step: "any" }, value: "1",
-                  hidden: !opening.has("swing") },
-                { name: "warm", label: "Warm: in an environment at the "
-                      + "temperature below", type: "checkbox", value: false,
-                  hidden: !opening.has("warm") },
                 { name: "temperature", label: "Temperature (K)",
                   type: "number", attrs: { min: "0", step: "any" },
                   value: recordT == null ? "" : recordT,

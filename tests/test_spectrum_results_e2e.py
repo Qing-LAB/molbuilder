@@ -942,11 +942,8 @@ def test_the_thermal_spread_is_served_at_the_temperature_asked(
 
 
 @pytest.mark.parametrize("asked", [{"temperature_k": 1000.0}, {"quanta": 2},
-                                   {"swing_quanta": 1.5},
-                                   {"swing_quanta": 1.5,
-                                    "temperature_k": 1000.0}],
-                         ids=["thermal", "n quanta", "the coherent state",
-                              "a warm driven mode"])
+                                   {"mean_quanta": 0.5}],
+                         ids=["thermal", "n quanta", "mean quanta"])
 def test_what_a_frame_sets_state_means_is_served_as_the_script_says_it(
         real_water_probed, web_client, monkeypatch, asked):
     """`web/spectra.md` § 4.3: at the frame-set dialog's state the load door
@@ -967,7 +964,6 @@ def test_what_a_frame_sets_state_means_is_served_as_the_script_says_it(
         assert said["spread_amu12_ang"] == pytest.approx(
             said["spread_over_zero_point"]
             * mode["zero_point_amplitude_amu12_ang"], rel=1e-12)
-        assert ("swing_over_zero_point" in said) == ("swing_quanta" in asked)
         for nodes in OFFERED_NODES:
             assert said["outermost_move_ang"][str(nodes)] == outermost_move(
                 path, mode=mode["index_1based"], nodes=nodes, **asked)
@@ -977,9 +973,8 @@ def test_write_frame_set_asks_the_state_and_writes_it(
         page, real_water_probed, monkeypatch):
     """`web/spectra.md` § 4.3 (the user's decision, `engines/vibration.md`
     § 6.11 § 9 item 2): *Write frame set…* asks which state the frames
-    sample -- thermal with its temperature box, n quanta with its number,
-    driven with its swing quanta and the warm tick that brings the box
-    back -- its note saying what the state in the fields means, a field
+    sample -- thermal with its temperature box, n quanta with its number --
+    its note saying what the state in the fields means, a field
     that holds none said in its words, the dialog anchored at its top; many
     quanta (beyond 1 eV in the mode, the user's choice of 2026-11-24) asked
     to confirm, a No writing nothing; the set written is that state's.  The
@@ -1012,8 +1007,7 @@ def test_write_frame_set_asks_the_state_and_writes_it(
         note = dialog.locator("[data-role='note']")
         # THERMAL FIRST, its box at the record's temperature, said.
         expect(field("temperature")).to_be_visible()
-        for name in ("quanta", "swing", "warm"):
-            expect(field(name)).to_be_hidden()
+        expect(field("quanta")).to_be_hidden()
         expect(note).to_contain_text("The thermal state at ", timeout=60000)
         # n QUANTA: its number, no temperature; the note follows it; a
         # number that is none said in the field's words.
@@ -1025,23 +1019,13 @@ def test_write_frame_set_asks_the_state_and_writes_it(
             "the quanta are a whole number, 0 or more")
         dialog.locator("[data-role='quanta']").fill("2")
         expect(note).to_contain_text("2 quanta exactly", timeout=60000)
-        # DRIVEN: its swing quanta and the warm tick; ticked, the box.
-        dialog.locator("[data-role='state']").select_option("driven")
-        expect(field("swing")).to_be_visible()
-        expect(field("temperature")).to_be_hidden()
-        expect(note).to_contain_text("The coherent state, 1 swing quantum",
+        # ONE QUANTUM, its noun singular.
+        dialog.locator("[data-role='quanta']").fill("1")
+        expect(note).to_contain_text("holds 1 quantum on average",
                                      timeout=60000)
-        expect(note).to_contain_text("holds 1 quantum on average")
-        expect(note).to_contain_text("what the coherent state leaves out")
-        dialog.locator("[data-role='warm']").check()
-        expect(field("temperature")).to_be_visible()
-        expect(note).to_contain_text("The warm driven state", timeout=60000)
-        # A MEAN JUST ABOVE ONE at the record's temperature, said as printed.
-        expect(note).to_contain_text("holds 1 quantum on average")
         # TEN QUANTA, 2 eV: said in the note; the note shorter at two
         # quanta lifts nothing -- the dialog's top and its Next stay where
         # they were.
-        dialog.locator("[data-role='state']").select_option("quanta")
         dialog.locator("[data-role='quanta']").fill("10")
         expect(note).to_contain_text("may no longer hold", timeout=60000)
         next_button = dialog.locator("[data-action='confirm']")

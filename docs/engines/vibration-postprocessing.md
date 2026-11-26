@@ -37,8 +37,9 @@ import xarray as xr
 | `infrared_view(path, direction=, partition=)` | the infrared the spectrum viewer draws |
 | `raman_view(path, laser_nm=, broaden_ev=)` | a SIESTA vibration's Raman at a laser |
 | `read_optical_data(path)` | `<label>.optical.nc`: the optical calls, each frame's ε₂ |
-| `outermost_move(path, mode=, nodes=, temperature_k=, quanta=, swing_quanta=, mean_quanta=, classical=)` | how far a frame set of that state moves the atom moving most |
+| `outermost_move(path, mode=, nodes=, temperature_k=, quanta=, mean_quanta=, classical=)` | how far a frame set of that state moves the atom moving most |
 | `read_steps(path)` | the relaxation's or the force constants' steps, in your atoms' order (§ 7) |
+| `Oscillator`, `states`, `dist`, `oscillator`, `sampling` | the generic tools — one oscillator of a frequency, a mode's state built in steps, one coordinate's distribution, random streams and the statistics of results: their manual, each call with its equation, pseudocode and an example, is [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 9.1 |
 
 The result sits in the run's folder: `01_freq/run-0/<label>.spectra.nc`, with its
 JSON beside it. The Results tab's Export, in its top line
@@ -126,9 +127,8 @@ m.with_frequency(0.96 * m.frequency_cm1)          # the same pattern at a scaled
 ```
 
 **Where the molecule sits along the mode** is a state — at a temperature,
-at a mean number of quanta, with `quanta` exactly, driven in a steady swing of
-`swing_quanta` (the coherent state; with a temperature, a warm mode driven),
-or the classical limits (`classical=True`) — the table of states is
+at a mean number of quanta, with `quanta` exactly, or the classical limit
+(`classical=True`) — the table of states is
 [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 2:
 
 ```python
@@ -139,7 +139,7 @@ s.pdf(0.0), s.cdf(0.05), s.moment(4)  # density, distribution, <Q^4>
 f = m.state(quanta=1).frames(nodes=3) # three frames, exact to degree 5
 f.q_amu12_ang[:, 0], f.weights        # where along the mode, (0, +q, -q), each one's weight
 f.positions_ang                       # each frame's geometry, every atom at R + Q L
-s.draw(1000, seed=7)                  # coordinates drawn from the state, the mode's own streams
+s.draw(1000, seed=7)                  # coordinates drawn from the state, the mode's own stream
 ```
 
 Which state takes the record's temperature when none is given, and says so
@@ -150,9 +150,10 @@ imaginary mode has moves for a coordinate given and no state.
 ## 2b. Frames from the modes — the motion toolkit
 
 *(The motion and its snapshots built, 2.80.0; reading a run's folder, the
-writer and the reader, 2.82.0 — the command line and the page for any state
-to build, [`plans/plan.md`](?doc=plans/plan.md) § 2;
-the design and every choice is [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md),
+writer and the reader, 2.82.0; the command line and the page for any state,
+2.83.0; the generic tools and the modes chosen in steps, 2.84.0 — the
+tools' manual is [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 9.1; the design and every choice is [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md),
 the theory [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
 § 2c, § 5.)* Frames for a calculation over them — transport's, any other —
 each written as a frame set the calculation reads by its weights alone.
@@ -164,19 +165,20 @@ from molbuilder.postprocess import vibration, write_frame_set, structure_dir, to
 v = vibration(structure_dir("P", "spectrum", "V") / "01_freq/run-0")   # the run's folder, or its result file
 out = topic_dir("P", "structure")                                     # where a transport citation reads sets
 
-# THE WHOLE MOLECULE: every mode thermal at 300 K, mode 7 driven, warm at 300 K too
-motion = v.motion(temperature_k=300.0).with_mode(7, swing_quanta=4, temperature_k=300.0)
+# THE WHOLE MOLECULE: every mode thermal at 300 K, mode 7 holding one quantum exactly
+motion = v.motion(temperature_k=300.0).with_mode(7, quanta=1)
 snaps = motion.sample(64, seed=20261123, antithetic=True)   # seed and pairing: yours, stated
 snaps.mode_index_1based            # the modes, one column each
 snaps.atom_moves_ang.shape         # (65, n_atoms, 3): frame 0 (the relaxed geometry), then the displacement map
 snaps.said                         # the largest move over the set, the mode moving it
-write_frame_set(out / "v-300K-drive7.xyz", snaps)   # frame 0 relaxed at weight 0, then the 64
+write_frame_set(out / "v-300K-m7-1q.xyz", snaps)    # frame 0 relaxed at weight 0, then the 64
 
 baseline = v.motion(temperature_k=300.0).sample(64, seed=20261123, antithetic=True)
 write_frame_set(out / "v-300K.xyz", baseline)       # the same temperature, every mode but 7 drawn alike
 
-# TWO MODES ON ONE LASER: one phase per snapshot, each mode's lag yours (the science says how)
-motion2 = v.motion(temperature_k=300.0).with_drive({9: 2.0, 11: 1.0}, lags_rad={9: 1.57, 11: 0.12})
+# THE MODES THAT MOVE, CHOSEN IN STEPS: every mode from 50 cm-1 up, mode 3 back in
+chosen = v.mode_selection().window(50.0, None).add([3])
+motion2 = v.motion(temperature_k=300.0, modes=chosen)
 
 # ONE MODE ON ITS OWN: three frames of mode 7 at 300 K
 f = v.mode(7).state(temperature_k=300.0).frames(nodes=3)
@@ -191,13 +193,10 @@ general form, worked in [`engines/vibration-frames.md`](?doc=engines/vibration-f
 can see, is the science's § 5.5: the error falls as $1/\sqrt N$, and a
 single mode's own effect is cheapest from that mode's own two sets.
 
-The driven mode is compared with its baseline **at one temperature** — the
-warm driven state against the thermal one — so the two differ by the drive
-alone; the cold coherent default against a warm baseline measures the drive
-less the mode's own thermal quanta, its exact baseline that one mode at 0 K
-beside the warm others, `with_mode(7, temperature_k=0.0)`
+The set with mode 7 set apart is compared with its baseline **at one
+temperature**, the same seed — so the two differ by mode 7's draw alone
 ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
-§ 6). After a transport calculation over a snapshot set, its average and that
+§ 5.5). After a transport calculation over a snapshot set, its average and that
 average's error are read from its data file, the pairs' means giving the
 error ([`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md)
 § 3.2). The example notebook, `docs/engines/vibration-frames.ipynb` *(to

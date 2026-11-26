@@ -1272,8 +1272,8 @@
 }
 % @verified 2026-10-27 library catalogue record (Open Library)
 
-% ---- Added 2026-10-28: a mode driven by light -- a swing's shape, and the
-% ---- frames it needs (science/vibrational-averaging.md 2a.2, 2a.3).
+% ---- Added 2026-10-28: the coherent state, which molbuilder does not model
+% ---- (science/vibrational-averaging.md 2a.2), and Mehler's formula (2d.3).
 
 @article{Glauber1963,
   author  = {Glauber, Roy J.},
@@ -1304,28 +1304,13 @@
 % @verified 2026-10-28 library catalogue records (Masaryk University, DESY);
 % the complement's title from the book's own table of contents.
 
-@article{TrefethenWeideman2014,
-  author  = {Trefethen, Lloyd N. and Weideman, J. A. C.},
-  title   = {The Exponentially Convergent Trapezoidal Rule},
-  journal = {SIAM Review},
-  volume  = {56},
-  number  = {3},
-  pages   = {385--458},
-  year    = {2014},
-  doi     = {10.1137/130932132}
-  % Checked against Crossref 2026-10-28.  Equally spaced points: exact for a
-  % trigonometric polynomial of lower degree, exponentially convergent for a
-  % smooth periodic function -- the equal phases a swing's density and
-  % distribution are averaged over (`vibration._swing_phases`).
-}
-
 @misc{DLMF,
   title        = {{NIST Digital Library of Mathematical Functions}},
   howpublished = {https://dlmf.nist.gov/},
-  note         = {Eq. 10.32.1, the integral form of the modified Bessel
-                  function I_0}
+  note         = {Eq. 18.18.28, Mehler's formula: the thermal state as
+                  the sum of its number states}
 }
-% @verified 2026-10-28 dlmf.nist.gov/10.32, eq. 10.32.1 read.
+% @verified 2026-11-24 dlmf.nist.gov/18.18, eq. 18.18.28 read.
 
 % ---- Added 2026-10-28: the infrared's set of atoms, measured and read
 % ---- against the literature (science/vibrational-optical-response.md 2.5).
@@ -1543,8 +1528,9 @@
   doi     = {10.1137/0903018}
   % Checked against Crossref 2026-11-23.  The discretized Stieltjes
   % procedure: a distribution's recurrence from a discrete distribution
-  % holding its averages, by the Lanczos recurrence -- the swing's Gauss
-  % rule (`science/vibrational-averaging.md` § 2a.3; `vibration.State.frames`).
+  % holding its averages, by the Lanczos recurrence -- the Gauss rule of a
+  % list over the levels, every level's own rule pooled
+  % (`science/vibrational-averaging.md` § 2a.3; `distribution.LevelList.gauss_rule`).
 }
 
 @article{PatrickGiustino2013,
@@ -1610,34 +1596,35 @@
   doi     = {10.1119/1.1971895}
   % Checked against Crossref 2026-11-23.  A classical force on a harmonic
   % oscillator that starts in its ground state leaves it in a coherent state
-  % (`science/vibrational-averaging.md` § 2a.2).
+  % (`science/vibrational-averaging.md` § 2a.2, what molbuilder does not
+  % model).
 }
 
-@article{TienGordon1963,
-  author  = {Tien, P. K. and Gordon, J. P.},
-  title   = {Multiphoton Process Observed in the Interaction of Microwave Fields with the Tunneling between Superconductor Films},
-  journal = {Physical Review},
-  volume  = {129},
-  number  = {2},
-  pages   = {647--651},
-  year    = {1963},
-  doi     = {10.1103/PhysRev.129.647}
-  % Checked against Crossref 2026-11-23.  Photon-assisted tunnelling: an
-  % oscillating field across a junction changes the current by itself
-  % (`science/vibrational-averaging.md` § 7, item 8).
+@article{Forst2011,
+  author  = {F{\"o}rst, M. and Manzoni, C. and Kaiser, S. and Tomioka, Y. and Tokura, Y. and Merlin, R. and Cavalleri, A.},
+  title   = {Nonlinear phononics as an ultrafast route to lattice control},
+  journal = {Nature Physics},
+  volume  = {7},
+  pages   = {854--856},
+  year    = {2011},
+  doi     = {10.1038/nphys2055}
+  % Checked against Crossref 2026-11-25.  An intense mid-infrared pulse
+  % drives an infrared-active mode coherently, for picoseconds
+  % (`science/vibrational-averaging.md` § 2a.2: why molbuilder does not
+  % model a coherent state).
 }
 
-@article{Ward2010,
-  author  = {Ward, Daniel R. and H{\"u}ser, Falco and Pauly, Fabian and Cuevas, Juan Carlos and Natelson, Douglas},
-  title   = {Optical rectification and field enhancement in a plasmonic nanogap},
-  journal = {Nature Nanotechnology},
-  volume  = {5},
-  pages   = {732--736},
-  year    = {2010},
-  doi     = {10.1038/nnano.2010.176}
-  % Checked against Crossref 2026-11-23.  The optical voltage across a
-  % nanogap, measured by its rectified current
-  % (`science/vibrational-averaging.md` § 7, item 8).
+@article{Cocker2016,
+  author  = {Cocker, Tyler L. and Peller, Dominik and Yu, Ping and Repp, Jascha and Huber, Rupert},
+  title   = {Tracking the ultrafast motion of a single molecule by femtosecond orbital imaging},
+  journal = {Nature},
+  volume  = {539},
+  pages   = {263--267},
+  year    = {2016},
+  doi     = {10.1038/nature19816}
+  % Checked against Crossref 2026-11-25.  Terahertz STM: one molecule's
+  % vibration set swinging by a terahertz pulse, the current read at a set
+  % delay (`science/vibrational-averaging.md` § 2a.2).
 }
 
 @misc{Ochterski1999,

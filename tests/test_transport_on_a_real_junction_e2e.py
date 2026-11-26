@@ -3222,10 +3222,9 @@ def test_the_frames_are_reaveraged_at_another_state(junction):
     set's rows (`postprocess.frame_rows`) at transport's averaging door.  At
     the set's own state -- its temperature taken from its own row, said --
     the weights are the set's own and the average the record's, the data
-    file's own; under a warm swing turning at the junction's spread, the
-    weights reproduce the motion's spread sqrt(sigma_T^2 + Q0^2 / 2) and
-    three frames are said blind to its shape; a swing turning past the
-    outermost frame is averaged, the share beyond said; a calculation of
+    file's own; at a temperature twice the set's -- a wider bell curve --
+    the weights reproduce its spread and three frames are said blind to its
+    shape, the share of it beyond the outermost frames said; a calculation of
     one structure refused, having no rows to weight.  The silent failures:
     a re-averaging that reads another variable or axis than the record
     averaged, or one that answers past the frames unsaid."""
@@ -3252,20 +3251,21 @@ def test_the_frames_are_reaveraged_at_another_state(junction):
     assert own["said"] == [f"the thermal state at the set's temperature, "
                            f"{_TEMPERATURE_K:g} K (its temperature_k row)"], \
         own["said"]
-    sigma_t = float(rows.value("spread_amu12_ang"))
     q_zp = float(rows.value("zero_point_amplitude_amu12_ang"))
-    swing = reaveraged(path, temperature_k=_TEMPERATURE_K,
-                       swing_quanta=(sigma_t / (2.0 * q_zp)) ** 2)
+    nu = float(rows.value("frequency_cm1"))
+    hot = reaveraged(path, temperature_k=2.0 * _TEMPERATURE_K)
     q = np.asarray([rows.value("q_amu12_ang", f) for f in range(_N_FRAMES)])
-    w = np.asarray(swing["weights"].weights)
+    w = np.asarray(hot["weights"].weights)
+    # BOSE AND EINSTEIN'S SPREAD at twice the temperature, by CODATA
+    from scipy import constants as codata
+    n_hot = 1.0 / np.expm1(codata.h * codata.c * nu * 100.0
+                           / (codata.k * 2.0 * _TEMPERATURE_K))
     assert w.sum() == pytest.approx(1.0, abs=1e-12)
-    assert float((w * q ** 2).sum()) == pytest.approx(1.5 * sigma_t ** 2,
-                                                      rel=1e-9)
-    assert any("blind to the state's shape" in s for s in swing["said"])
-    past = reaveraged(path, temperature_k=_TEMPERATURE_K,
-                      swing_quanta=(sigma_t / q_zp) ** 2)
-    assert past["weights"].beyond > 0.0
-    assert any("beyond the outermost frames" in s for s in past["said"])
+    assert float((w * q ** 2).sum()) == pytest.approx(
+        (2.0 * n_hot + 1.0) * q_zp ** 2, rel=1e-6)
+    assert any("blind to the state's shape" in s for s in hot["said"])
+    assert hot["weights"].beyond > 0.0
+    assert any("beyond the outermost frames" in s for s in hot["said"])
     with pytest.raises(ValueError,
                        match="one structure, or frames that state none"):
         reaveraged(data_file_path(junction.bundle, "T"),

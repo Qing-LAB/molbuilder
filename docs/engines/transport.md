@@ -3096,8 +3096,8 @@ counted but not read. At E_F the change in per cent is of frame 0's
 conductance, none where frame 0's is zero, said (*frame 1 of 3's
 conductance is zero*); `summarize` prints each voltage's averaged
 conductance *against frame 1 of 3's*. Comparing two sets — the same mode at another rule
-(`vibrational-averaging.md` § 5.3), a driven set against its baseline — is
-the person's. A point not done is a gap in
+(`vibrational-averaging.md` § 5.3), a set against its variation in one
+mode — is the person's. A point not done is a gap in
 the family and the average at that voltage waits for it — never computed from
 the frames that happen to be there. Every frame is named by its index:
 *frame 2 of 3* is `f001` (`model/structure.md` § 2.2e).

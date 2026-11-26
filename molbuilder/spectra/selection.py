@@ -1,5 +1,6 @@
 """Which modes a per-mode step runs on -- PySCF's orbital probe, SIESTA's
-optical calls.
+optical calls -- and which modes a motion moves, a mode selection's window
+(`vibration.ModeSelection.window`).
 
 One function, :func:`select_modes`, and both jobs import it: this file
 travels beside the job inside ``mb_pyscf.pyz`` and ``mb_vibration.pyz``

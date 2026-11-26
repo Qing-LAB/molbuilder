@@ -156,8 +156,7 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
     none, no mode carries it.  ``framesets`` is the frame-set dialog's
     readout (:func:`_framesets`): each mode is served its ``frameset`` --
     its mean number of quanta, its spread and the outermost move for each
-    frame count, a driven state's swing and the thermal state it leaves
-    out (`vibration_frames.readout`, § 4.3) -- at the state the dialog
+    frame count (`vibration_frames.readout`, § 4.3) -- at the state the dialog
     asked, else at the record's temperature, ``results.frameset_state``
     the state said back; the tab holds no constant and derives nothing.
 
@@ -411,7 +410,7 @@ def api_spectra_frameset():
     rule and the motion toolkit's one writer; `engines/vibration-frames.md`
     § 4, § 5, § 6; `web/spectra.md` § 4.3): ``{path, mode, nodes, out}``
     and the state's arguments (``temperature_k``, ``quanta``,
-    ``swing_quanta``, ``mean_quanta``, as the dialog asks them) -- the
+    ``mean_quanta``, as the dialog asks them) -- the
     vibration result the page shows, whose folder is its run's, the frame
     count (the doors' default when unsaid), and the pair's ``.xyz``, each
     path inside the tree (the fence, `web-api.md` § 2.1), the ``.xyz``

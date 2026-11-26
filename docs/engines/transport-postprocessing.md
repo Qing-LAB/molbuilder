@@ -128,9 +128,8 @@ s.average_why.to_series()           # why an average is none, where it is
 
 **Averaged at another state** — a mode's own set. Each frame is its
 position along the mode; its weight is the motion's. The same frames
-averaged over a bell curve at another temperature, with a swing added by a
-push in step with the mode, at $n$ quanta — any state of the toolkit's table
-— the weights the motion toolkit's for the set's rows
+averaged over a bell curve at another temperature, at $n$ quanta, classical
+— any state of the toolkit's table — the weights the motion toolkit's for the set's rows
 ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 7;
 [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
 § 5.4), the averaging transport's own (`frame_average.averaged_at`) —
@@ -145,7 +144,7 @@ r["weights"].exact_to_degree      # the degree the weights reproduce the state's
 r["conductance_change_percent"]   # <ΔG>/G at each voltage
 r["said"]                         # the state taken, the share beyond, a weight below zero, ...
 r["assumptions"]                  # transport's own, then the set's, for the state it was written for
-reaveraged("F.transport.nc", swing_quanta=2, temperature_k=300.0)   # a warm driven mode
+reaveraged("F.transport.nc", quanta=1)                  # one quantum exactly
 ```
 
 Its rules — the state's table, the temperature it takes when none is
@@ -156,8 +155,8 @@ toolkit's, stated once ([`engines/vibration-frames.md`](?doc=engines/vibration-f
 or to be blind (science § 5.4's items 1 and 2), frames placed for another
 motion are; a weight below zero is said of any frames. **Frames re-weighted are
 exact only to degree $m-1$** ($m$ for an odd number of symmetric frames and
-a symmetric state): a driven mode's effect read from one set re-weighted to
-the thermal state needs five frames at least, or two sets
+a symmetric state): one mode's change of state read from one set
+re-weighted needs five frames at least, or two sets, one per state
 ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
 § 6).
 
@@ -169,36 +168,37 @@ frames ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.
 $2j-1$ and $2j$ a pair), the spread of the pair means over $\sqrt{N/2}$:
 
 ```python
-import numpy as np
+from molbuilder.postprocess import sampling
 g = s.conductance_g0.sel(bias_v=0.0).values       # frame 0 first, the relaxed geometry
-pairs = g[1:].reshape(-1, 2).mean(axis=1)         # each mirrored pair's mean
-mean, error = pairs.mean(), pairs.std(ddof=1) / np.sqrt(len(pairs))
-# independent snapshots (antithetic 0): g[1:].mean(), g[1:].std(ddof=1) / np.sqrt(len(g) - 1)
+means = sampling.pair_means(g[1:])                # frame 0 left out; values 1,2 a pair, 3,4 the next:
+                                                  # (g[1]+g[2])/2, (g[3]+g[4])/2, ... -- grouped two by two by the function
+mean, error = sampling.mean_with_error(means)     # the average and its error, from the pair means
+# independent snapshots (antithetic 0): sampling.mean_with_error(g[1:])
 ```
 
 The motion toolkit gives the same from the data file's values whole, one
 per frame, frame 0 first — the set read back leaving frame 0 out itself
 (`read_frame_set(...).standard_error(g)`,
 an `Estimate`, and `parts` for the even and odd shares, [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
-§ 3.3, § 7). **More frames** are the same seed drawn further, or another seed: the
-new set's calculation's results join the first's at equal weights, each
-set's frame 0 left out, the error from all their pairs together (`pooled`,
-`p.standard_error(g1, g2)`, [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
-§ 3.3). **How many frames**: the error falls as $1/\sqrt N$, so a small
+§ 3.3, § 7). **More frames** are the same seed drawn further, or another seed,
+written as a set of their own: the two calculations' results put end to end,
+each set's frame 0 left out, are averaged with their error from all their
+pairs together (`sampling.mean_with_error` over `sampling.pair_means`,
+[`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 3.3,
+§ 9.1). **How many frames**: the error falls as $1/\sqrt N$, so a small
 effect needs many — how many, independent or paired, and the worked count,
 are [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
 § 5.5's, from the error a person's own frames give; one mode's effect alone is
-cheapest from that mode's own two sets — three frames each, driven and
-thermal ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+cheapest from that mode's own two sets — three frames each, the excited
+state and the thermal one ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
 § 4).
 
-**A driven set against its baseline.** Two transport calculations, over the
-driven set and over the thermal set drawn with the same seed **at the same
-temperature** — the warm driven state against the thermal one, so they differ
-by the drive alone ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
-§ 6: the cold default against a warm baseline measures the drive less the
-mode's own thermal quanta). Each frame of the one and the same frame of the
-other differ by the driven mode's draw alone ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+**A set against its variation in one mode.** Two transport calculations,
+over two snapshot sets drawn with the same seed **at the same temperature** —
+the second with one mode set apart in another state of the toolkit's table —
+one quantum exactly, say (`with_mode(k, quanta=1)`) — so they differ by that
+mode alone. Each frame of the one and the same
+frame of the other differ by that mode's draw alone ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
 § 3.3), so the difference is taken frame by frame, and its error from the
 spread of the differences — the other modes' part cancelling exactly only
 where the response adds over the modes, otherwise in part, as the spread
@@ -208,8 +208,8 @@ says ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md
 ```python
 d = xr.load_dataset("D.transport.nc", group="summary").conductance_g0.sel(bias_v=0.0).values
 b = xr.load_dataset("B.transport.nc", group="summary").conductance_g0.sel(bias_v=0.0).values
-diff = (d[1:] - b[1:]).reshape(-1, 2).mean(axis=1)            # pairs, as above
-change, error = diff.mean(), diff.std(ddof=1) / np.sqrt(len(diff))
+diff = sampling.pair_means(d[1:] - b[1:])     # frame 0 left out; pairs, as above
+change, error = sampling.mean_with_error(diff)
 ```
 
 ### 3.3 The convergence

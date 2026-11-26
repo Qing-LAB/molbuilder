@@ -34,9 +34,14 @@ ROLE    ``parse`` -- an engine's file, a run's file → its result (the
         modes, their states and the molecule's motion and snapshots
         (`vibration.Vibration`; `vibration_frames.vibration_of_run`,
         `SpectraResults.vibration`; `engines/vibration-frames.md`);
-        ``write_frame_set`` / ``read_frame_set`` / ``pooled`` -- the motion
-        toolkit's one writer and reader of a frame set, and snapshot sets
-        joined (`vibration_frames`, `vibration.pooled`); ``read_xv`` / ``read_xv_cell`` -- SIESTA's
+        ``write_frame_set`` / ``read_frame_set`` -- the motion toolkit's one
+        writer and reader of a frame set (`vibration_frames`); ``Oscillator``,
+        ``states``, ``dist``, ``oscillator`` and ``sampling`` -- one
+        oscillator of a frequency, a mode's state built in steps, one
+        coordinate's distribution, the oscillator's levels and operators,
+        and random streams with the statistics of arrays (`oscillator`,
+        `oscillator_state`, `distribution`, `sampling`;
+        `engines/vibration-frames.md` § 9); ``read_xv`` / ``read_xv_cell`` -- SIESTA's
         own ``.XV``, IN THE ENGINE'S ORDER, as its docstring says; and where
         a calculation is: ``projects_root``, ``project_dir``, ``topic_dir``,
         ``structure_dir``, ``list_projects``, ``list_topics``,
@@ -57,8 +62,12 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+from . import distribution as dist
+from . import oscillator, sampling
+from . import oscillator_state as states
 from .atom_index import AtomIndexUnknown, atom_index_map
 from .atom_permutation import MAP_KEY, AtomIndexMap
+from .oscillator import Oscillator
 from .parse.coords import read_xv, read_xv_cell
 from .projects import (list_projects, list_structures, list_topics,
                        project_dir, projects_root, structure_dir, topic_dir)
@@ -299,8 +308,8 @@ def frame_rows(data_file):
     return read(Structure.from_dict(stated)) if stated else None
 
 
-def weights_for_set(rows, *, temperature_k=None, swing_quanta=None,
-                    quanta=None, mean_quanta=None, classical=False):
+def weights_for_set(rows, *, temperature_k=None, quanta=None,
+                    mean_quanta=None, classical=False):
     """THE WEIGHTS FOR A MODE'S OWN SET'S ROWS AT A STATE
     (`engines/vibration-frames.md` § 7) -- ``rows`` as :func:`frame_rows`
     reads them, the state named as the toolkit's table names one, a
@@ -310,11 +319,11 @@ def weights_for_set(rows, *, temperature_k=None, swing_quanta=None,
     from .vibration_frames import weights_for_set as _weights_for_set
     return _weights_for_set(
         rows, classical=classical,
-        **_said(temperature_k=temperature_k, swing_quanta=swing_quanta,
-                quanta=quanta, mean_quanta=mean_quanta))
+        **_said(temperature_k=temperature_k, quanta=quanta,
+                mean_quanta=mean_quanta))
 
 
-def reaveraged(path, *, temperature_k=None, swing_quanta=None, quanta=None,
+def reaveraged(path, *, temperature_k=None, quanta=None,
                mean_quanta=None, classical=False) -> Dict[str, Any]:
     """A MODE'S OWN SET'S TRANSPORT CALCULATION AVERAGED AT ANOTHER STATE
     (`engines/vibration-frames.md` § 7; `science/vibrational-averaging.md`
@@ -340,8 +349,8 @@ def reaveraged(path, *, temperature_k=None, swing_quanta=None, quanta=None,
     from .frame_average import averaged_at
     rows = frame_rows(path)
     weights = weights_for_set(rows, temperature_k=temperature_k,
-                              swing_quanta=swing_quanta, quanta=quanta,
-                              mean_quanta=mean_quanta, classical=classical)
+                              quanta=quanta, mean_quanta=mean_quanta,
+                              classical=classical)
     got = averaged_at(path, weights.weights)
     # WHAT THE NUMBERS ASSUME, beside them (science § 7, "never dropped"):
     # transport's own, then the set's -- its own row, or molbuilder's words
@@ -360,8 +369,7 @@ def reaveraged(path, *, temperature_k=None, swing_quanta=None, quanta=None,
 
 
 def outermost_move(path, *, mode: int, nodes=None, temperature_k=None,
-                   quanta=None, swing_quanta=None, mean_quanta=None,
-                   classical=False):
+                   quanta=None, mean_quanta=None, classical=False):
     """THE OUTERMOST MOVE of mode ``mode`` (its number, as the result
     numbers its modes) of a vibration -- its run's folder, its
     ``<label>.spectra.json`` or its data file (:func:`vibration`) -- in any
@@ -376,7 +384,7 @@ def outermost_move(path, *, mode: int, nodes=None, temperature_k=None,
     return outermost_move_of(
         vibration(path), mode, classical=classical,
         **_said(nodes=nodes, temperature_k=temperature_k, quanta=quanta,
-                swing_quanta=swing_quanta, mean_quanta=mean_quanta))
+                mean_quanta=mean_quanta))
 
 
 def vibration(path):
@@ -433,22 +441,15 @@ def read_frame_set(path, *, vibration=None):
     return _read(path, vibration=vibration)
 
 
-def pooled(*sets):
-    """SNAPSHOT SETS OF ONE MOTION JOINED INTO ONE (`engines/vibration-
-    frames.md` § 3.3) -- answered, and refused by name, by the motion's own
-    module (`vibration.pooled`)."""
-    from .vibration import pooled as _pooled
-    return _pooled(*sets)
-
-
 __all__ = ["AtomIndexMap", "AtomIndexUnknown", "RunStepsError", "atom_index_map",
            "infrared_view", "list_runs", "parse", "raman_view", "read_optical_data",
            "read_steps_data", "read_raman_data", "read_spectra_data", "read_steps",
            "read_chart_data",
            "read_structure", "read_transport_data", "read_xv", "read_xv_cell", "reaveraged",
            "frame_rows", "weights_for_set", "write_frame_set",
-           "read_frame_set", "pooled",
+           "read_frame_set",
            "pdos",
            "outermost_move", "projects_root", "project_dir", "topic_dir",
            "structure_dir", "list_projects", "list_topics", "list_structures",
-           "vibration"]
+           "vibration", "Oscillator", "states", "dist", "oscillator",
+           "sampling"]

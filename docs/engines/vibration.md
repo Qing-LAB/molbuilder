@@ -1610,7 +1610,8 @@ runs its steps; every call is brought a copy (§ 5.11 § 2).
 
 | layer | module | what it answers |
 |---|---|---|
-| the mechanics | `vibration.py` | a mode's mechanics (§ 6.11 § 2): the zero-point amplitude, the occupation the thermo sums take, the mode geometry the SIESTA Raman phases displace by; in both bundles |
+| the oscillator | `oscillator.py`, `sampling.py`, `distribution.py` | one harmonic oscillator's mechanics — the zero-point amplitude, the occupation the thermo sums take — the seed's streams and one coordinate's distribution ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 9.1); in both bundles, beside `vibration.py` |
+| the mechanics | `vibration.py` | a mode's mechanics (§ 6.11 § 2) on the oscillator's: the mode geometry the SIESTA Raman phases displace by, the states, the motion; in both bundles |
 | the math | `spectra/normal_modes.py` | the harmonic path and the steps after it -- the wavenumbers, the display form, the thermo sums and their grid (§ 4.5, § 4.7) -- which both routes call: the PySCF deck imports them from `mb_pyscf.pyz` |
 | the analysis, engine-neutral | `spectra/vibrational_analysis.py` | a second-derivative block over the free atoms, the masses, the geometry with its held set and frame → the result (`SpectraResults`): frequencies, both eigenvector forms, the removed motions, the vibrational thermochemistry, the stationarity verdict, and every per-atom row back in the user order through the recorded permutation. The SIESTA finish calls it; the PySCF deck, holding its block in its own process, builds the same blocks from `normal_modes` (§ 4.5, the row below) |
 | the PySCF route | `spectra/pyscf_vibration.py` | the rules the PySCF script calls inside its run, imported from `mb_pyscf.pyz`: the HOMO and its orbital window, the Hessian with $d\mu/dR$ (`dipole_derivatives`), the GPU array bridge |
@@ -3662,15 +3663,19 @@ it**:
 | the largest single-atom zero-point move, $\max_A\lvert u_{\mathrm{zp},A}\rvert$ | `vibration.largest_zero_point_move_ang`, written by both engines; the spectra page reads it (`onWriteFrameSet`) | from v15 (§ 3) |
 | a mode's spread $\sigma(T) = Q_{\mathrm{zp}}\sqrt{\coth(\hbar\omega/2k_BT)}$ and mean quanta $n(T)$ | `vibration.thermal_row`, written by both engines; `vibration`, at load for the temperature the tab asks | at the modes' own temperatures from v15 (§ 3); at another, no — a view |
 | a frame set's outermost move for a rule, in any state | `vibration.outermost_move_ang` (its one rule), asked by the motion toolkit (`vibration_frames.outermost_move`, `outermost_move_of`) and the load door's readout for a state (`vibration_frames.readout`) | in the frame set's own record only |
-| the distribution of a mode's coordinate in a state other than thermal — $n$ quanta exactly, a steady swing | `vibration.state`, asked through `postprocess.vibration` (§ 6) | no — a view |
+| the distribution of a mode's coordinate in a state other than thermal — $n$ quanta exactly | `vibration.state`, asked through `postprocess.vibration` (§ 6) | no — a view |
 | each atom's move for a mode coordinate the person gives | `vibration.Mode.displacement`, and the coordinate back (`coordinate`), through `postprocess.vibration` (§ 6) | no — a view |
 | the probe's slope $\partial\varepsilon/\partial Q$ and the coupling $g_\nu = (\partial\varepsilon/\partial Q)\,Q_{\mathrm{zp}}$ | nowhere — the page draws $\Delta E/(2A)$ per Å of the display form | no ([`science/normal-modes.md`](?doc=science/normal-modes.md) § 4b.5 F: "not computed today") |
 | the probe's gap and its shift | the spectra page itself (`renderESPanel`, `_gapEq`, `_dgapMax`) | no |
 
-#### 2. One module, `vibration`
+#### 2. One module, `vibration`, on one oscillator's
 
 `molbuilder/vibration.py` owns **every per-mode quantity of a harmonic
-mode, its definition and its derivation** — the one door the writers, the
+mode** — the mechanics of one oscillator its definitions take, the
+zero-point amplitude, the mean quanta and the spreads, defined once in
+`molbuilder/oscillator.py` and handed on here under their names
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 9.1)
+— the one door the writers, the
 reader's check (§ 6.7), the load door, the motion toolkit
 ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)), the
 probe and `postprocess` ask: the mechanics (the
@@ -3698,11 +3703,13 @@ deck — VibrationView's drawn frames stay its own, sealed); **one meaning of
 "the largest move"**, the length of the atom's displacement vector (today also
 the largest Cartesian component, for the probe's $A$, which § 4 retires; the
 display form keeps its component scale for drawing alone); the thermal
-occupation $n(T)$ (`vibration.mean_quanta`, which the thermochemistry's sums ask);
+occupation $n(T)$ (`vibration.bose_einstein_mean_quanta`, which the thermochemistry's sums ask);
 the imaginary flag (the SIESTA finish and the PySCF deck); the projection of
 a derivative onto a mode, $\sum_k (\partial X/\partial R_k)\cdot L_k$ (the
-infrared, the Raman, the free atoms' infrared view); and $Q_{\mathrm{zp}}$ read
-from the record, never recomputed beside it (the frame-set maker does today).
+infrared, the Raman, the free atoms' infrared view); and $Q_{\mathrm{zp}}$,
+worked out from the frequency by the one function
+(`vibration.zero_point_amplitude_amu12_ang`), written beside it in the record
+and checked on read (§ 6.6).
 
 **What it holds today**: the mechanics, one mode's geometry and several
 modes' at once (`Vibration.displaced`), each atom's share of the motion, the
@@ -3731,7 +3738,7 @@ toolkit's (`vibration_frames.readout`, [`engines/vibration-frames.md`](?doc=engi
 | **each free atom's share of the motion**, `motion_share` *(the user, 2026-11-23: per atom)* | 1 | § 6.3; per atom, so the shares by element, by species label and by region are its sums, on request (§ 6), each atom's element its species label's name (`Structure.chemical_symbols`), which prep has made an element | — | **yes**, (mode, free_atom), derived and checked on read |
 | **largest zero-point move**, `largest_zero_point_move_ang` | Å | § 6.3: the length of the atom's move that is longest; for an imaginary mode `null` in the JSON (whose writer refuses a number that is not finite) and NaN in the data file, as $Q_{\mathrm{zp}}$ is | — | **yes**, derived and checked |
 | **reduced mass** `reduced_mass_amu` and **force constant** `force_constant_mdyn_per_ang` *(the user, 2026-11-23: "Yes, Gaussian's convention")* | amu, mdyn/Å | § 6.3, Gaussian's convention [Ochterski1999] — what Gaussian prints beside every frequency, chosen so a person compares with it directly: $k = \mu\,\omega^2$ is $5.8918\times10^{-7}$ mdyn/Å per amu·cm⁻²; for H₂'s stretch $\mu$ = 1.008 amu, the atom's own mass, by this convention, and $k$ twice the bond's spring constant; an imaginary mode's $k$ positive, $\mu\lvert\omega\rvert^2$, as Gaussian prints it (a transition state's Gaussian 16 log among GoodVibes' examples: +0.3210 mdyn/Å at −426.41 cm⁻¹, $\mu$ 2.9965 amu), `has_imag` saying the mode is imaginary; `null` for a mode with no motion | — | **yes**, derived and checked |
-| **spread** `thermal_spread_amu12_ang` and **mean quanta** `mean_quanta` | amu^½·Å, 1 | science § 2, § 2a; an imaginary mode's `null` in the JSON and NaN in the data file, a state it has not (`vibration.mean_quanta` refuses a frequency that is not positive) | **the modes' temperatures** *(the user, 2026-11-23: "Add 0 K and low ones")* — today's list, `normal_modes.mode_temperatures`: 0, 4, 10, 20, 30 and 40 K below the thermochemistry grid's 50–1500 K (§ 4.7), and the record's temperature where it is not among them — ascending, each once; a file keeps its own list (§ 6.6) | **yes**, (mode, temperature) |
+| **spread** `thermal_spread_amu12_ang` and **mean quanta** `mean_quanta` | amu^½·Å, 1 | science § 2, § 2a; an imaginary mode's `null` in the JSON and NaN in the data file, a state it has not (`vibration.bose_einstein_mean_quanta` refuses a frequency that is not positive) | **the modes' temperatures** *(the user, 2026-11-23: "Add 0 K and low ones")* — today's list, `normal_modes.mode_temperatures`: 0, 4, 10, 20, 30 and 40 K below the thermochemistry grid's 50–1500 K (§ 4.7), and the record's temperature where it is not among them — ascending, each once; a file keeps its own list (§ 6.6) | **yes**, (mode, temperature) |
 | a state's distribution, its moments and frames; each atom's move at a coordinate; the spread at another temperature; the free atoms' infrared at a direction; the Raman at a laser | — | science § 2b; as today | the person's choice | **no** — a view asked with its inputs, derived by the same module; a frame set's outermost move is the motion toolkit's view ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 1) |
 | the probe's node energies, nodes, weights, average and shift (§ 4) | — | § 4 | the probe's state | **yes**, PySCF, the probed modes; its slope, $g_\nu$, $S$ and checks a view |
 
@@ -3850,18 +3857,18 @@ u = m.displacement(0.05)                    # each atom's move (Å, xyz) at Q = 
 u = m.displacement(zero_point_widths=1.0)   # ... at Q = Q_zp
 q = m.coordinate(u)                         # back: Q = Σ_A m_A L_A·u_A
 
-s = m.state(temperature_k=300.0)            # or mean_quanta=0.5, quanta=2, swing_quanta=4 (the
-                                            #    coherent state), swing_quanta=4 with temperature_k=300
+s = m.state(temperature_k=300.0)            # or mean_quanta=0.5, quanta=2, or
+                                            #    temperature_k=300 with classical=True
 s.pdf(q), s.cdf(q), s.moment(4), s.spread_amu12_ang, s.mean_quanta
 s.atom_rms_ang                              # each atom's r.m.s. move in that state
 f = s.frames(nodes=5)                       # for averaging over it: f.q_amu12_ang,
                                             #   f.weights, f.positions_ang (each frame's geometry)
-x = s.draw(1000, seed=7)                    # coordinates drawn from it, the mode's own streams
+x = s.draw(1000, seed=7)                    # coordinates drawn from it, the mode's own stream
 w = m.state(temperature_k=77.0).weights_at(f.q_amu12_ang[:, 0])   # these frames re-weighted to 77 K
 
 m.with_frequency(1517.0)                    # Q_zp, u_zp and every spread at a frequency given
 v.mode(7), v.displaced({7: 0.12, 9: -0.05}), v.with_frequency_scale(0.96)
-snaps = v.motion(300.0).with_mode(7, swing_quanta=4).sample(64, seed=1, antithetic=True)
+snaps = v.motion(300.0).with_mode(7, quanta=1).sample(64, seed=1, antithetic=True)
 snaps.standard_error(values), snaps.parts(values)    # values one per frame, frame 0 first
 m.probe.coupling_eh, m.probe.huang_rhys, m.probe.shift_eh   # PySCF, a probed mode
 ```
@@ -3885,15 +3892,14 @@ reached through its vibration (`m.vibration`, `m.masses_amu`, …), the
 pattern over every atom (`eigenvector_canonical_over_atoms_per_amu12`, held
 rows zero) — with `displacement`, `coordinate`, `state` — a `ModeState`
 (`pdf`, `cdf`, `moment`, `spread_amu12_ang`, `mean_quanta`, `atom_rms_ang`,
-`swing_amplitude_amu12_ang`, `carried_spread_amu12_ang`, its state's fields
-`quanta`, `swing_quanta`, `bath_quanta`, `zero_point_amplitude_amu12_ang`,
+its state's fields `quanta`, `thermal_quanta`, `zero_point_amplitude_amu12_ang`,
 `classical_spread_amu12_ang`, `draw`, `weights_at`, `frames`: `q_amu12_ang`,
 `weights`, `exact_to_degree`, `positions_ang`) — `with_frequency`, `zero_point_*`; and on the
 `Vibration`, `mode(n)`, `displaced({...})`, `with_frequency_scale(...)` and
 `motion(...)`, the molecule's motion and its snapshots, their rules the
 motion toolkit's — a temperature not given ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
-§ 2's one table), a mode set apart and a drive group's phases (§ 3.1), the
-seed, pooling and the analyses (§ 3.3, § 7). **The record's stored
+§ 2's one table), a mode set apart and the modes that move chosen in steps
+(§ 3.1), the seed and the analyses (§ 3.3, § 7). **The record's stored
 values** (§ 3, from v15), each by its record name: `m.motion_share` (each free
 atom's share), `m.largest_zero_point_move_ang`, `m.reduced_mass_amu`,
 `m.force_constant_mdyn_per_ang` (`None` for a mode with no motion), and
@@ -3933,7 +3939,7 @@ the hot limit, science § 2b.3; the record's temperature, § 9 item 6). They
 are the closed forms, the textbook numbers and the sum rules of science
 § 2b.5 — the H₂ zero-point amplitude; a harmonic diatomic built from a spring
 constant and two masses; each state's normalisation, moments, nodes and
-limits; Mehler's sum; the swing's moments; each rule's exactness for the
+limits; Mehler's sum; each rule's exactness for the
 state it samples; the displacement and its projection back — and, end to
 end, a real PySCF H₂ run against CODATA's constants: the bond's r.m.s.
 $\sqrt{\hbar/2\mu\omega}$ from the file's frequency and masses, each atom
@@ -3947,7 +3953,7 @@ motion toolkit's. The
 snapshots' tests are the motion toolkit's (§ 8 there). The tests: `tests/test_vibration_mechanics.py` — H₂'s
 zero-point amplitude and bond move, a spring between two masses through the
 road's diagonalisation, each state's density, distribution, moments, zeros,
-turning-point weight and limits, Mehler's sum, the swing's, every rule's
+turning-point weight and limits, Mehler's sum, every rule's
 frames at its degree, the explicit temperature; the largest zero-point move
 on a bond along no axis, Gaussian's reduced mass and force constant, the
 shares by element, label and region, a mode's thermal row over today's
@@ -3994,8 +4000,8 @@ spread at a temperature, the states, an atom's move, frame sets,
    stand for ([`model/structure.md`](?doc=model/structure.md) § 2.2f) — the
    transport calculation is the same whatever the motion — and the maker
    (`frameset from-mode`, *Write frame set*) places the frames and writes
-   their weights for a mode with $n$ quanta exactly, or a steady swing,
-   beside the thermal bell curve D7 decided; the probe, which takes the
+   their weights for a mode with $n$ quanta exactly beside the thermal bell
+   curve D7 decided; the probe, which takes the
    maker's nodes (D8), follows.
 3. **Isotopes**. **Decided** (the user, 2026-11-22): the result stores the
    force constants over the free atoms, on both engines, and
@@ -4028,13 +4034,9 @@ spread at a temperature, the states, an atom's move, frame sets,
    temperature and says so — and **every temperature the API takes is that
    rule's**: given, it is used; not given, the temperature the record states.
    The probe's node energies are re-weighted for another temperature within
-   the nodes' reach (science § 5.4), the API saying so beyond it. *Narrowed
-   2026-11-23 for a driven mode* (the user: *"quantum mechanically, the
-   'driven mode' should only have one possible state"*): a driven mode given
-   no temperature is the pure coherent state and takes none; a warm driven
-   mode takes `temperature_k` — the table of which call takes the record's
-   temperature is [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
-   § 2.
+   the nodes' reach (science § 5.4), the API saying so beyond it — the
+   table of which call takes the record's temperature is
+   [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 2.
 
 ---
 
@@ -4082,18 +4084,19 @@ Each names where it holds and what pins it.
 | `molbuilder/spectra/normal_modes.py` | `rigid_motions`, `vibrational_modes`, `vibrational_thermo`, `vibrational_thermo_grid`, `thermo_block`, `vibrational_only_thermo`, `THERMO_GRID_K`, `MODE_TEMPERATURES_BELOW_GRID_K`, `mode_temperatures` — the one harmonic path, the thermo sums and the vibrational-only block both routes write, and the modes' temperatures' one door (§ 6.6); travels in both bundles, `mb_pyscf.pyz` and `mb_vibration.pyz` |
 | `molbuilder/spectra/pyscf_vibration.py` | `homo_index`, `mo_window`, `dipole_derivatives`, `as_numpy` — the PySCF route's rules, which the vibration script calls inside its run, imported from `mb_pyscf.pyz` |
 | `molbuilder/spectra/results.py` | `equilibrium_block`, `removed_motions_of`, `finite_or_none`, `SpectraResults`, `ModeData`, `ModeElectronicStructure`; the schema and its history; the reader's gates; the activity classes at serialisation; `atoms_weighted()`, each atom's element and mass as the modes weight it (the species label's name, `Structure.chemical_symbols`, no lookup; the mass by `mass_of`), the one reading the load door's shares, the derived values' masses and `vibration()` ask; the modes' temperatures the file states (`mode_temperatures_k`); `vibration()`, its modes as `vibration.Mode`s |
-| `molbuilder/vibration.py` | a harmonic mode's mechanics, from one module (§ 6.11): the zero-point amplitude from any frequency, the mean quanta and spread, the mode's geometry (`mode_over_atoms`, `largest_move`, `q_for_largest_move`, `atom_moves`, `displaced`, `coordinate_of`), each atom's share of the motion and its sums (`motion_shares_of`, `shares_by`), the zero-point displacement and the largest zero-point move (`zero_point_displacement_ang`, `largest_zero_point_move_ang`), the reduced mass and force constant (`reduced_mass_amu`, `force_constant_mdyn_per_ang`), a mode's row of spreads and quanta and its names (`thermal_row`, `THERMAL_ROW_KEYS`), the states, their draws, their own Gauss frames and their weights for frames placed elsewhere (`state`, `State`, `Frames`, `Weights`, `ModeState`), `temperature_of_quanta`, `Mode`, `Vibration` (`mode`, `displaced`, `with_frequency_scale`, `motion`), the molecule's motion and its snapshots (`Motion`, `Drive`, `Snapshots`, `Estimate`, `Parts`, `pooled`); asked by the result's derived values (`spectra/derived.py`), the thermochemistry, the frame-set maker, the transport average's motion, the SIESTA Raman phases, the load door, `SpectraResults.vibration` and `postprocess.vibration`; travels in both bundles, `mb_pyscf.pyz` and `mb_vibration.pyz` |
+| `molbuilder/oscillator.py`, `molbuilder/oscillator_state.py`, `molbuilder/distribution.py`, `molbuilder/sampling.py` | the generic tools ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 9.1): one oscillator's mechanics and levels, a state built in steps, one coordinate's distribution, random streams and the statistics of arrays — the first, third and fourth in both bundles, beside `vibration.py` |
+| `molbuilder/vibration.py` | a harmonic mode's numbers (§ 6.11), on the oscillator's mechanics: the zero-point amplitude from any frequency, the mean quanta and spread, the mode's geometry (`mode_over_atoms`, `largest_move`, `q_for_largest_move`, `atom_moves`, `displaced`, `coordinate_of`), each atom's share of the motion and its sums (`motion_shares_of`, `shares_by`), the zero-point displacement and the largest zero-point move (`zero_point_displacement_ang`, `largest_zero_point_move_ang`), the reduced mass and force constant (`reduced_mass_amu`, `force_constant_mdyn_per_ang`), a mode's row of spreads and quanta and its names (`thermal_row`, `THERMAL_ROW_KEYS`), the states, their draws, their own Gauss frames and their weights for frames placed elsewhere (`state`, `State`, `Frames`, `Weights`, `ModeState`), `bose_einstein_temperature`, `Mode`, `Vibration` (`mode`, `displaced`, `with_frequency_scale`, `motion`), the molecule's motion and its snapshots (`Motion`, `ModeSelection`, `Snapshots`, `Estimate`, `Parts`); asked by the result's derived values (`spectra/derived.py`), the thermochemistry, the frame-set maker, the SIESTA Raman phases, the load door, `SpectraResults.vibration` and `postprocess.vibration`; travels in both bundles, `mb_pyscf.pyz` and `mb_vibration.pyz` |
 | `molbuilder/spectra/result_keys.py` | the result's keys, each block's, and what a writer states of each (`WRITTEN_KEYS`) — the reader's refusal and the data file's load check (§ 6.10.5) |
 | `molbuilder/spectra/activity.py` | the active/inactive decision per channel (§ 6.6); travels in both bundles |
 | `molbuilder/spectra/derived.py` | the derived values a result states — each mode's activity classes, zero-point amplitude and displacement (v7), its share of the motion per free atom, largest zero-point move, reduced mass and force constant, and the `modes_thermal` block at the modes' temperatures (v15) — stated once for both writers and the reader's check, each composed by `vibration`; a block's stated list read one way (`stated_temperatures`), a block that is not one or states a key outside a mode's thermal row's refused (§ 6.7); the masses the file states (`free_masses_of`); the check's tolerance and its floor (`DERIVED_RTOL`, `DERIVED_FLOOR`, § 6.7) (§ 6.6, § 6.11 § 3); travels in both bundles |
-| `molbuilder/spectra/selection.py` | the mode selectors and the window (§ 4.8) |
+| `molbuilder/spectra/selection.py` | the mode selectors and the window (§ 4.8) — and a motion's mode selection's window (`vibration.ModeSelection`); travels as `mode_selection` |
 | `molbuilder/spectra/methods.py` | `render_methods_md`, `with_ir_route`, `extract_citation_keys` (§ 4.10); `siesta_methods_text`, the force-constant route's paragraph (§ 5.5), and its Raman sentence, `siesta_raman_sentence`; the views' sentences at load, `with_infrared_view` and `with_raman_view` (§ 5.10 ②, § 5.11 § 10) |
 | `molbuilder/spectra/infrared.py` | the free atoms' infrared from the run's charges, or a PySCF result's from its dipole change — `infrared_view_of`, the one door, over `infrared_view` and `dipole_view`; `read_ask` (§ 5.10 ②) |
 | `molbuilder/spectra/optical_data.py` | the optical calls' data file, `<label>.optical.nc` — its variable table, writer and reader, `read_optical_data` (§ 5.11 § 8) |
 | `molbuilder/spectra/raman.py` | the Raman at a laser — `raman_view`, `raman_view_of`, `read_ask`; `<label>.raman.nc`'s variable table and `read_raman_data` (§ 5.11 § 10) |
 | `molbuilder/spectra/export.py` | a vibration calculation's export — `export`, `result_path`, `name_of` (§ 5.11 § 10) |
 | `molbuilder/siesta/vibration_phases.py` | the phases of a SIESTA vibration run — `PHASES`, `Call`, a call's index entry and the count's words (§ 5.11 § 3, § 7); the run's index and its rules are `molbuilder/runpoints.py`, its declaration `molbuilder/spectra/vibration_points.py` ([`execution/runs-of-points.md`](?doc=execution/runs-of-points.md)) |
-| `molbuilder/postprocess.py` | a script's doors — `infrared_view`, `raman_view`, `read_spectra_data`, `read_optical_data`, `read_raman_data`, `outermost_move`, `vibration` |
+| `molbuilder/postprocess.py` | a script's doors — `infrared_view`, `raman_view`, `read_spectra_data`, `read_optical_data`, `read_raman_data`, `outermost_move`, `vibration`, and the generic tools `Oscillator`, `states`, `dist`, `oscillator`, `sampling` ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 9.1) |
 | `molbuilder/spectra/vibrational_analysis.py` | the analysis, engine-neutral: `vibrational_analysis` — a free-atom block, masses, geometry, held set and frame → `SpectraResults` (§ 5.5) |
 | `molbuilder/spectra/siesta_vibration.py` | the SIESTA run's Python: `plan`, `record` and `finish-run`, the vibration's own steps, which each call's report steps run around its engine and once no call is left; `read_force_constant_run`; `main`, which the entry of `mb_vibration.pyz` runs, and `VERBS`, the steps it runs, which a kind's record may name (`finish`, the analysis by hand, is none) (§ 5.5, § 5.11 § 3) |
 | `molbuilder/parse/engines/siesta_epsimg_reader.py` · `parse/engines/siesta_epsimg.py` | an optical call's `.EPSIMG`: its one reader, travelling, and its registered parser (§ 5.11 § 7) |

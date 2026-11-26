@@ -64,7 +64,7 @@ the whole cell's (§ 3.1, § 3.4).
 | the charge partition | infrared | Hirshfeld (§ 1a) |
 | the modes to compute Raman for — fixed before the run, since a mode exists only after the force-constant run | Raman | every mode — *Raman for*, the setting both engines share: all modes, or the modes in a frequency range a chemist knows before the run ([`engines/vibration.md`](?doc=engines/vibration.md) § 3.1, § 5.11 § 9) |
 | the laser's wavelength | Raman, after the run — the polarizability is taken at its frequency (§ 3.1) | — |
-| the mode's state the frames sample — thermal at a temperature (the junction's, or a pumped mode's effective one), $n$ quanta, or driven by a swing ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 2) | the spread of the frames along a mode (`vibrational-averaging.md` § 2a, § 5) | asked every time; the dialog opens thermal at the run's thermochemistry temperature ([`web/spectra.md`](?doc=web/spectra.md) § 4.3) |
+| the mode's state the frames sample — thermal at a temperature (the junction's, or a pumped mode's effective one), $n$ quanta, or classical ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 2) | the spread of the frames along a mode (`vibrational-averaging.md` § 2a, § 5) | asked every time; the dialog opens thermal at the run's thermochemistry temperature ([`web/spectra.md`](?doc=web/spectra.md) § 4.3) |
 
 ### 0.2 The workflow
 
@@ -939,9 +939,8 @@ $$
 $x_{\mathrm{out}}$ the rule's outermost node ($\sqrt{3/2}$ for three frames,
 2.0202 for five, 2.6520 for seven) and $Q_{\mathrm{zp}}$ the mode's
 zero-point amplitude, which every result states (`vibrational-averaging.md`
-§ 5). A mode pushed in step with the light swings, and its positions are
-not a bell curve; its frames are another rule (`vibrational-averaging.md`
-§ 2a.2, § 2a.3).
+§ 5). A mode holding $n$ quanta exactly is not a bell curve; its frames are
+another rule (`vibrational-averaging.md` § 2b.4).
 Raman's $\pm\delta Q$ (§ 3.2) is a different thing: a step for a derivative,
 not a motion to average over.
 
