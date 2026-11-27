@@ -1,7 +1,6 @@
-"""ONE COORDINATE'S DISTRIBUTION -- and every number a frame set takes from
-it: its density, its distribution function, its averages, a quantile, its
-Gauss rule, a draw from one normal number, and the weights for
-points placed elsewhere (`engines/vibration-frames.md` § 9.1 module 3;
+"""ONE COORDINATE'S DISTRIBUTION -- its density, its distribution function,
+its averages, a quantile, its Gauss rule, a draw from one normal number, and
+the weights for points placed elsewhere (`engines/vibration-frames.md` § 9.1 module 3;
 `science/vibrational-averaging.md` § 2a.3, § 2b.4, § 2d.5, § 2e.3, § 5.4).
 
 MODULE  distribution (L2; numpy and math, and `oscillator` -- nothing else of
@@ -66,7 +65,7 @@ def _gauss_hermite(nodes: int) -> Tuple[np.ndarray, np.ndarray]:
     """The Gauss–Hermite rule for the standard normal: points and weights
     summing to 1 (§ 5.1)."""
     x, w = np.polynomial.hermite.hermgauss(int(nodes))
-    return math.sqrt(2.0) * x, w / math.sqrt(math.pi)
+    return _SQRT2 * x, w / math.sqrt(math.pi)
 
 
 def _gauss_rule_of(points, probabilities, nodes: int
@@ -109,7 +108,6 @@ def _jacobi_rule(alpha: Sequence[float], beta: Sequence[float]
     return node, vec[0] ** 2
 
 
-_erf = np.frompyfunc(math.erf, 1, 1)
 _erfc = np.frompyfunc(math.erfc, 1, 1)
 
 
@@ -131,13 +129,13 @@ def _gaussian_density(x, sigma: float):
 
 def _gaussian_distribution(x, sigma: float):
     """The centred Gaussian of spread ``sigma``, the chance of ``x`` or
-    less: ``(1 + erf(x / sqrt(2) sigma)) / 2`` -- for a spread of 0, 1 from
+    less: ``Phi(x / sigma)`` (:func:`_standard_normal`, the one normal
+    distribution function, its far tails kept) -- for a spread of 0, 1 from
     0 on; arrays in, arrays out."""
     x = np.asarray(x, dtype=float)
     if sigma == 0.0:
         return np.where(x >= 0.0, 1.0, 0.0)
-    return 0.5 * (1.0 + np.asarray(_erf(x / (math.sqrt(2.0) * sigma)),
-                                   dtype=float))
+    return _standard_normal(x / sigma)
 
 
 def _gaussian_moment(sigma: float, k: int) -> float:
@@ -286,10 +284,9 @@ class Distribution:
     """ONE COORDINATE'S DISTRIBUTION, in the unit it is given: its density
     ``pdf``, its distribution function ``cdf``, its averages ``moment(k)``,
     ``quantile(p)`` (the point with ``cdf = p``), its ``gauss_rule(nodes)`` --
-    ``nodes`` points and weights reproducing its averages to degree ``2 nodes
-    - 1``,
-    as found -- a draw from one standard normal number ``z``, the point with
-    ``cdf = Phi(z)`` (science § 2d.5), and ``weights_at(points)``.  Every
+    ``nodes`` points and weights reproducing its averages to degree
+    ``2 nodes - 1`` -- a draw from one standard normal number ``z``, the
+    point with ``cdf = Phi(z)`` (science § 2d.5), and ``weights_at(points)``.  Every
     distribution here is symmetric about 0, ``P(x) = P(-x)``: a list's
     density is a sum of the levels' even densities, and every family's is
     even (science § 2e.3)."""
@@ -313,15 +310,14 @@ class Distribution:
         return f"a {type(self).__name__} distribution"
 
     def to_record(self) -> Dict[str, Any]:
-        """WHAT A FRAME SET RECORDS OF IT, to make it again
-        (:func:`from_record`; `engines/vibration-frames.md` § 5): its family
-        and its numbers.  A distribution of a person's own class states
-        none -- refused by name: it can be drawn from and placed, not read
-        back."""
+        """ITS RECORD, to make it again (:func:`from_record`; a frame set
+        keeps it, `engines/vibration-frames.md` § 5): its family and its
+        numbers.  A distribution of a person's own class states none --
+        refused by name: it can be drawn from and placed, not made again."""
         raise ValueError(
             f"a {type(self).__name__} states no record to be made again from: "
-            f"a frame set records a chain, or one of the families -- "
-            f"Gaussian, QuantumAdded, Level, LevelList, Scaled")
+            f"a record is one of the families' -- "
+            f"{', '.join(_FAMILIES)}")
 
     def scaled(self, scale: float) -> "Scaled":
         """The distribution in another unit, ``y = scale x``
@@ -564,7 +560,8 @@ class LevelList(Distribution):
     def words(self) -> str:
         mean = float((np.arange(self.populations.size)
                       * self.populations).sum())
-        return (f"a list over {self.populations.size} levels, "
+        size = self.populations.size
+        return (f"a list over {size} level{'' if size == 1 else 's'}, "
                 f"{_quanta_words(mean, kind='mean ', spec='.3g')}")
 
     def to_record(self) -> Dict[str, Any]:
@@ -628,6 +625,16 @@ class Scaled(Distribution):
                 "base": self.base.to_record()}
 
 
+#: EACH FAMILY MADE FROM ITS RECORD (:func:`from_record`) -- the one list of
+#: the families a record names.
+_MAKERS = {"Gaussian": lambda r: Gaussian(r["sigma"]),
+           "QuantumAdded": lambda r: QuantumAdded(r["nbar"]),
+           "Level": lambda r: Level(r["n"]),
+           "LevelList": lambda r: LevelList(r["populations"]),
+           "Scaled": lambda r: Scaled(from_record(r["base"]), r["scale"])}
+_FAMILIES = tuple(_MAKERS)
+
+
 def from_record(record: Any) -> Distribution:
     """A DISTRIBUTION MADE AGAIN FROM ITS RECORD
     (:meth:`Distribution.to_record`; `engines/vibration-frames.md` § 5):
@@ -635,16 +642,11 @@ def from_record(record: Any) -> Distribution:
     them.  Refused by name: what is no record of a family, or a family's
     record missing a number."""
     family = record.get("family") if isinstance(record, dict) else None
-    makers = {"Gaussian": lambda r: Gaussian(r["sigma"]),
-              "QuantumAdded": lambda r: QuantumAdded(r["nbar"]),
-              "Level": lambda r: Level(r["n"]),
-              "LevelList": lambda r: LevelList(r["populations"]),
-              "Scaled": lambda r: Scaled(from_record(r["base"]), r["scale"])}
-    if family not in makers:
+    if family not in _MAKERS:
         raise ValueError(f"a distribution's record names its family -- "
-                         f"{', '.join(makers)}; got {record!r}")
+                         f"{', '.join(_FAMILIES)}; got {record!r}")
     try:
-        return makers[family](record)
+        return _MAKERS[family](record)
     except KeyError as exc:
         raise ValueError(f"a {family} record states its {exc.args[0]}; got "
                          f"{record!r}") from None

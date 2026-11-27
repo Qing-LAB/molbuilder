@@ -1513,24 +1513,15 @@ modes by the overlap of their shapes over the molecule's atoms (§ 4b.9, V1.24).
 
 ### 4c.8 What the static-frame picture assumes
 
-Each is stated beside the numbers it limits, never dropped:
+What frames of a vibration assume, and what a calculation over any frames
+assumes, are [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
+§ 7's, each stated by its owner beside the numbers it limits — the frame
+set in its `assumptions` row, transport beside its average — never
+dropped. What this chapter's route adds:
 
-1. **Harmonic, independent modes** — and the partial Hessian's clamped gold
-   stiffens the lowest contact modes; the active-region check of § 4b.6 F bounds
-   that.
-2. **Static frames** — the electron crosses the junction fast against the
-   vibration: $\hbar\omega$ small against the resonance's distance from $E_F$, or its
-   width when that is larger. What a static average cannot give — the inelastic
-   steps at $eV = \hbar\omega$, the polaron shift of a strongly coupled level — needs the
-   electron–vibration coupling itself (`vibration.md` § 5.6, level two;
-   [Frederiksen2007]).
-3. **The equilibrium distribution** — each voltage's average is over the
-   frames at that voltage, weighted by the equilibrium thermal distribution;
-   a bias that heats the modes changes it, which is not modelled
-   (`engines/transport.md` § 2a.9, *Both axes*;
-   `science/vibrational-averaging.md` § 7).
-4. **The level alignment is DFT's** — § 4c.6's last paragraph.
-5. **The projection is the free atoms** — the extended molecule the person
+1. **The partial Hessian's clamped gold** stiffens the lowest contact
+   modes; the active-region check of § 4b.6 F bounds that.
+2. **The projection is the free atoms** — the extended molecule the person
    let vibrate; how much of a state or a motion is the molecule's own is its
    weight on the molecule's elements, read, never assumed.
 

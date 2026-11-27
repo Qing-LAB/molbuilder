@@ -12,7 +12,7 @@ at 2.77.23 is [`archive/2026-11-22-plan-consolidation.md`](?doc=archive/2026-11-
 
 ## ▶ Where we are *(2026-11-26)*
 
-**2.85.0.** F0–F11 and F7a are closed (2.56.2–2.77.2). F12, *Proven*,
+**2.85.1.** F0–F11 and F7a are closed (2.56.2–2.77.2). F12, *Proven*,
 walked its three roads in the browser on real runs and ran the full batch
 (6106 fast and 805 e2e tests, none failed, at 2.77.2); its two review rounds
 ([`archive/audits/2026-11-18-f12-review/`](?doc=archive/audits/2026-11-18-f12-review/TRIAGE-round1.md))
@@ -20,7 +20,7 @@ sorted every finding into the releases below. **The finish plan** *(the
 user, 2026-11-19: "a consolidated plan to get things finished, not to drag
 things along")*: five releases, R1–R5, each with its review rounds. R1 and R2
 are done; R3, one home per fact on the server side, grew from one release
-into parts as reviews and the user's decisions added work, nineteen of them
+into parts as reviews and the user's decisions added work, twenty of them
 shipped:
 
 | version | part | what it did | record |
@@ -47,6 +47,7 @@ shipped:
 | 2.83.0 | R3d2b2b2b2 | a mode's frame set in any state from the command line and the spectrum tab, the state asked every time and what it means said before the set is written; many quanta warned of, beyond 1 eV in a mode | `fix25-review.md` |
 | 2.84.0 | R3d2b2b4a | a mode's state built in steps — the generic tools and their manual (each call's equation, pseudocode and a run example), the modes that move chosen in steps; the steady drive, joining snapshot sets and drive groups removed | `fix26-review.md` |
 | 2.85.0 | R3d2b2b4b | one layer: every mode's state a chain or a distribution bound to the mode, a set read back by binding again, every old state type and keyword form removed; transport showing a cited frame set as the set stores it, interpreting none of it | `fix27-review.md` |
+| 2.85.1 | R3d2b2b4b, the clean-up | the baseline review of 2.85.0: transport's assumptions split by owner, the science chapter naming each step's call, the oscillator's mechanics in one home, a chain built by hand checked, a set read back said where its state does not bind; what `level(n)` and `.add_quantum()` are, said plainly | `fix28-review.md` |
 
 Records: `archive/audits/2026-11-18-f12-review/fix<N>-review.md`. Since
 2.77.23 the host env holds `molbuilder-source.pth` on the development machine
@@ -128,8 +129,8 @@ built in R3d with the vibration's data files.
   Raman optical calls (with the run's own copy of their files, 2.77.21), nor
   the data files, nor the ways out (Export, the Python API, a frame set into
   transport); [`engines/vibration-postprocessing.md`](?doc=engines/vibration-postprocessing.md)
-  given a diagram and the sections it lacks (the zero-point fields, frame
-  sets, `reaveraged`, an `outermost_move` example); every quantity's
+  given a diagram and an `outermost_move` example (its zero-point, frame-set
+  and `reaveraged` sections written, 2.81–2.85); every quantity's
   definition in the science chapters
   ([`science/normal-modes.md`](?doc=science/normal-modes.md),
   [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md),
@@ -137,8 +138,11 @@ built in R3d with the vibration's data files.
 
 ### 2. R3d2 — the vibration framework
 
-R3d1 shipped (2.77.25, 2.77.26). R3d2 builds the framework (§ 1) in five
-releases, each read whole. **The design was re-cut on 2026-11-23** *(the
+R3d1 shipped (2.77.25, 2.77.26). R3d2 builds the framework (§ 1) in
+releases, each read whole — nine shipped (2.78.0–2.85.0, the table above);
+the clean-up and the two follow-ups the baseline review of 2.85.0 and the
+user's decisions of 2026-11-26 set (below), the notebook, the probe and the
+data files to come. **The design was re-cut on 2026-11-23** *(the
 user: "vibration calculation is the foundation that exposes the fundamental
 data of all modes"; "transport calculation should not overreach to design
 what the multiframe is"; molbuilder exposes "the correct facility/api/tools
@@ -167,7 +171,7 @@ and an API reviewer** *(the user, 2026-11-23)*.
   `mode` coordinate); an imaginary mode's spread, mean quanta and largest move
   `null` in the JSON (whose writer refuses a number that is not finite) and
   NaN in the data file; its force constant positive, $\mu\lvert\omega\rvert^2$,
-  as Gaussian prints it; `vibration.bose_einstein_mean_quanta` refusing a frequency that is
+  as Gaussian prints it; `oscillator.bose_einstein_mean_quanta` refusing a frequency that is
   not positive; `mdyn/angstrom` a row of the data files'
   units (`model/datafiles.md` § 2c, `units.UNITS`); every value derived by
   the module, written by both engines, checked on read; each atom's element
@@ -255,13 +259,24 @@ and an API reviewer** *(the user, 2026-11-23)*.
   **R3d2b2b4b, the switch-over** — one layer, by the user's decision of
   2026-11-26: every mode's state a chain or a distribution bound to the mode,
   the old state types and keyword forms removed — built in 2.85.0;
+  then, from the baseline review of 2.85.0 *(the user, 2026-11-26: "detection
+  of obsolete design, compatibility that is not necessary anymore, redundant
+  code, dupilcated code, and any inconsistency by checking against contract")*:
+  **2.85.1, the clean-up** — the review's fixes, the science chapter's
+  *Computed by* blocks naming each step's call, transport's assumptions split
+  by owner, frame sets written before 2.81.0 read as any set that records no
+  state — built in 2.85.1; **2.86.0, the weights** — every frame's weight required and its sum
+  1 within the tolerance, else refused by name wherever a set is read or
+  cited, a function to assign weights (equal ones too), snapshot sets and
+  their analyses on the weights the set stores, transport's averaging at a
+  person's own weights handed on by `postprocess` *(the user, 2026-11-26)*;
+  **2.87.0, the older files dropped** — vibration results before schema 15,
+  spectra data files before @11, structure sidecars before v17, transport
+  calculations before 2.10.0 *(the user, 2026-11-26: "Drop all as asked")*;
   then **R3d2b2c, the example notebook**
   and its test, on the toolkit as decided:
   - **`vibration`, carried from § 2d's review**: no test draws snapshots
     with a held atom (`science/vibrational-averaging.md` § 2d.7 item 3).
-  - **`vibration`** (L2, travels; numpy, the constants, the generic tools of 2.84.0 and the frequency-window rule) — R3d2b2a,
-    built in 2.80.0: each piece and each visible change is its changelog
-    row, which the plan does not restate.
   - **`vibration_frames`, carried, still open**: each row's meaning
     for its kind of set (the vocabulary states one meaning a row); `FrameRows`' rows beside
     a recipe's set read back (a `FrameSet` carries them); `frame_rows` the
@@ -280,11 +295,10 @@ and an API reviewer** *(the user, 2026-11-23)*.
 - **R3d2c** — the probe at the frame rule's nodes (§ 6.11 § 4; § 9 items 1,
   5, 6) with the PySCF deck changes below.
 - **R3d2d** — the force constants stored and `with_masses` (§ 9 item 3),
-  SIESTA's Raman step and its verdict (§ 9 item 4), the data files on the
-  shared writers and the diagrams (§ 6.11 § 8).
-
-- **The vibration framework, built** (§ 1, after the user's yes), with the
-  SIESTA vibration's data files on the shared writers
+  SIESTA's Raman step and its verdict (§ 9 item 4), the diagrams (§ 6.11
+  § 8); the imaginary flag and a derivative's projection onto a mode into
+  `vibration`, each one rule where two engines hold it today (§ 6.11 § 2);
+  the SIESTA vibration's data files on the shared writers
   (`ncdata.copy_stated`, `ncdata.json_attrs`, as the transport file and a
   chart's use) — today they copy a record's values by their own `key_of`
   loops and encode their attributes by hand; and the status door's
@@ -416,7 +430,7 @@ and an API reviewer** *(the user, 2026-11-23)*.
 
 ## Waiting on the user
 
-- **Next**: nothing — R3d1b is shipped (2.77.26); R3d2 runs.
+- **Next**: the answers to the questions each release of R3d2 brings (2.86.0, 2.87.0, the notebook).
 - At their releases: R3f's Prep-as-a-process
   design, the side rail's change after measuring, and deletions #6, #26; R4's
   selection-route design and MolView's atom filter; every deletion, listed

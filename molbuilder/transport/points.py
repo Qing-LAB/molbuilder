@@ -85,7 +85,7 @@ def _run_facts(calc, stage: str, *, carried, deck) -> dict:
     each lead as their ``TS.Elecs`` blocks name them, the spin the decks
     state (`conductance.spin_of`) and the frames' weights, where the cited set
     states them (`frameset.read`) -- what a round's outcome reads."""
-    from ..frameset import read as read_frame_set
+    from ..frameset import read as read_frame_rows
     from ..parse.fdf import parse_fdf_params
     from ..jobset.errors import PrepError
     from .compose import recorded_junction
@@ -98,7 +98,7 @@ def _run_facts(calc, stage: str, *, carried, deck) -> dict:
         # A JUNCTION THAT DOES NOT READ, the launch's refusal in its
         # reader's words (`jobset.points.PointsOf.run_facts`).
         raise PrepError(str(exc)) from None
-    rows = (read_frame_set(recorded.structure) if recorded is not None
+    rows = (read_frame_rows(recorded.structure) if recorded is not None
             else None)
     return {"computes": STAGE_FACT[stage], "pair": LEAD_PAIR,
             "leads": list(LEAD_NAMES),

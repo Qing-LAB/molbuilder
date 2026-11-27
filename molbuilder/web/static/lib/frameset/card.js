@@ -74,14 +74,8 @@ export function renderFrameSet(host, frameSet) {
     if (!host) return;
     const doc = host.ownerDocument;
     host.replaceChildren();
-    // A CITATION THAT DOES NOT READ SAYS WHY (`task-setup.md` § 3): the
-    // answer's own sentence, and the folder still opens.
-    if (frameSet && frameSet.why) {
-        host.hidden = false;
-        host.appendChild(_el(doc, "p", "frameset-line",
-                             "The cited frames could not be read: " + frameSet.why));
-        return;
-    }
+    // A CITATION THAT DOES NOT READ draws nothing here: the page that shows
+    // the citation says why, once (`task-setup.md` § 3, its facts' row).
     const n = frameSet && frameSet.n_frames != null ? Number(frameSet.n_frames) : 1;
     host.hidden = !(n > 1);
     if (host.hidden) return;

@@ -138,8 +138,9 @@ def _variables() -> Tuple[Var, ...]:
         # THE JUNCTION WHOLE, in the framework's one structure layout
         # (`model/datafiles.md` § 3a; the user, 2026-11-16: "junction's cell
         # should be saved together with structure"): each atom's element,
-        # every frame's positions, its mass and whether it was held, the
-        # cell and each cell vector's periodicity, the structure whole in
+        # every frame's positions, whether each atom was held -- no masses
+        # (a transport calculation uses none; a frame set's are its maker's,
+        # in ``structure_json``) -- the cell and each cell vector's periodicity, the structure whole in
         # `structure_json` -- its labels among it.
         *structure_vars(frames=True),
         # THE JUNCTION'S BASIS, every orbital in the device run's order --
@@ -521,7 +522,7 @@ RECORD_ATTRS: Tuple[str, ...] = _record_attrs()
 _PREFIX = {"stage": "rung_", "point": "point_", "device": "device_"}
 
 #: THE JUNCTION'S AXES: a variable over these alone -- an atom, an orbital,
-#: the cell, a frame's rows -- is the junction's.
+#: the cell, a frame's weight -- is the junction's.
 _STRUCTURE_AXES = frozenset(("frame", "atom", "xyz", "cell_vector",
                              "orbital"))
 

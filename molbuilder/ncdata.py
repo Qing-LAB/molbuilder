@@ -99,8 +99,7 @@ ATOM_AXIS = "atom"
 class Var:
     """One variable of the file: its ``name``, its dimensions, its ``kind``
     (``coordinate``, ``given``, ``raw`` -- as an engine wrote it --,
-    ``measured`` -- read off the structures, a frame set's rows
-    (`model/structure.md` § 2.2f) --, ``derived``, ``state``), ``units``, ``long_name``, ``definition`` and,
+    ``derived``, ``state``), ``units``, ``long_name``, ``definition`` and,
     for a raw one, ``source`` -- the file it was read from.  A
     ``coordinate`` is a dimension's own values, named as the dimension (a
     NetCDF coordinate variable).  An ``auxiliary`` variable labels the

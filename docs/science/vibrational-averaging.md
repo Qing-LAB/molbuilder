@@ -64,6 +64,31 @@ change (§ 3–4); **how** few frames compute that average and when they cannot
 (§ 5); what each kind of frame set answers (§ 6); what the picture assumes
 (§ 7); where each number is recorded (§ 8).
 
+**Computed by** — `vibration(run_folder)` → the vibration run's modes, each
+by its number; `v.mode(k).bind(chain).frames(nodes)` → one mode's $m$ frames,
+placed and weighted by its state's own rule; `v.motion(chain).sample(N,
+seed=, antithetic=)` → snapshots of every mode, each frame at $1/N$;
+`write_frame_set(path, frames)` → the pair a calculation cites
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 1,
+§ 3.3, § 4, § 5). The average $\sum_f w_f X_f$ is no call of these: it is
+the calculation's own record (§ 3).
+
+```python
+from molbuilder.postprocess import vibration, states, write_frame_set, topic_dir
+v = vibration(run_folder)                    # on a run of your own -- engines/vibration-frames.md § 1
+warm = states.thermal(temperature_k=300.0)
+one_mode = v.mode(7).bind(warm).frames(3)    # frame 0 relaxed and ±q, weights 2/3, 1/6, 1/6
+snaps = v.motion(warm).sample(64, seed=1, antithetic=True)    # every mode at once, each frame 1/64
+write_frame_set(topic_dir("P", "structure") / "m7-300K.xyz", one_mode)
+```
+
+Each section below ends with its **Computed by**: the calls that compute
+its step, each with what it returns, and where its manual is. An example
+that needs a vibration run takes `v` as above, on a run of a person's own,
+and shows no output; an example with `>>>` needs no run, and its output is
+what molbuilder 2.85.1 printed — the chapter's `>>>` examples run in order
+as one session.
+
 ---
 
 ## 1. The quantities
@@ -93,6 +118,24 @@ $$
 
 for a spin-degenerate junction (per spin channel, $e^2/h$ each; `transport.md`
 § 2a.12).
+
+**Computed by** — `m.displacement(q)` → each atom's move $Q\,\mathbf L_A$,
+Å, zero on every held atom; `m.displaced(q)` → the geometry
+$\mathbf R^0 + Q\,\mathbf L$; `v.displaced({k: q, …})` → the geometry of
+several modes at once, $\mathbf R^0 + \sum_k Q_k\mathbf L_k$
+([`engines/vibration.md`](?doc=engines/vibration.md) § 6.11 § 6;
+[`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 3.2).
+$G$ at each frame is the transport calculation's own, `conductance_g0` in
+its data file
+([`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md)
+§ 3).
+
+```python
+m = v.mode(7)                        # on a run of your own -- engines/vibration-frames.md § 3.2
+m.displacement(0.12)                 # (atoms, 3), Å: Q L_A at Q = 0.12 amu½·Å
+m.displaced(0.12)                    # the geometry R⁰ + Q L
+v.displaced({7: 0.12, 9: -0.05})     # two modes at once, R⁰ + Σ_k Q_k L_k
+```
 
 ---
 
@@ -141,6 +184,25 @@ spends as much time pushed one way as pushed the other. This is a property of
 the *distribution* of positions, for a harmonic mode — and it says nothing
 about whether the *transmission* responds symmetrically.
 
+**Computed by** — `Oscillator(ν̃).zero_point_amplitude_amu12_ang` →
+$Q_{\mathrm{zp}}$; `Oscillator(ν̃).bose_einstein_mean_quanta(T)` → $\bar n$;
+`oscillator.thermal_spread_amu12_ang(Q_zp, ν̃, T)` →
+$\sigma = Q_{\mathrm{zp}}\sqrt{\coth(\hbar\omega/2k_BT)}$; for a mode of a
+run, `m.bind(states.thermal(temperature_k=T)).spread_amu12_ang` → its σ, and
+`m.thermal` → its spread and mean quanta at the temperatures the record
+states ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 9.1 `Oscillator`, *The mechanics on a wavenumber*; § 2). The table's
+$\sigma/Q_{\mathrm{zp}}$:
+
+```python
+>>> from molbuilder.postprocess import Oscillator, oscillator
+>>> for nu in (1600.0, 500.0, 50.0):
+...     qzp = Oscillator(nu).zero_point_amplitude_amu12_ang
+...     print(nu, round(oscillator.thermal_spread_amu12_ang(qzp, nu, 298.0) / qzp, 2))
+1600.0 1.0
+500.0 1.09
+50.0 2.89
+```
 
 ## 2a. When light or a current excites the mode — the spread out of equilibrium
 
@@ -213,6 +275,27 @@ $2n+1 = \coth(\hbar\omega/2k_BT_{\mathrm K})$ — § 2's formula again. **The
 spread comes from $n$; the shape comes from the state** — the bell curve
 for any thermal or randomly pumped mode, the oscillator's own standing waves
 for $n$ quanta exactly (§ 2b.3).
+
+**Computed by** — `oscillator.spread_of_quanta(Q_zp, n̄)` →
+$Q_{\mathrm{zp}}\sqrt{2\bar n+1}$, in any state; `chain.on(Oscillator(ν̃))`
+→ the state, `.mean_quanta` its $\bar n$; `dist.of_state(state).moment(k)`
+→ its $\langle x^k\rangle$, $x = Q/Q_{\mathrm{zp}}$; for a mode of a run,
+`m.bind(chain).spread_amu12_ang` → $\sqrt{\langle Q^2\rangle}$
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 9.1
+*The mechanics on a wavenumber*, `.on(oscillator, …)`, `of_state(state)`;
+§ 2). The same mean, two states — one spread, two shapes:
+
+```python
+>>> from molbuilder.postprocess import Oscillator, states, dist, oscillator
+>>> osc = Oscillator(200.0)
+>>> for chain in (states.thermal(mean_quanta=1.0), states.level(1)):
+...     d = dist.of_state(chain.on(osc))
+...     print(chain.on(osc).mean_quanta, round(d.moment(2), 9), round(d.moment(4), 9))
+1.0 3.0 27.0
+1.0 3.0 15.0
+>>> round(oscillator.spread_of_quanta(1.0, 1.0) ** 2, 9)
+3.0
+```
 
 ### 2a.1 Quanta added at random moments — a wider bell curve, an effective temperature
 
@@ -294,6 +377,23 @@ pumping is real, against heating and other readings of the same data
 its effective temperature in place of the junction's: the frame set's
 temperature (§ 5) is that effective temperature.
 
+**Computed by** — `states.thermal(mean_quanta=n)` → a mode pumped at random
+moments, named by its mean; `oscillator.bose_einstein_temperature(ν̃, n)` →
+its effective temperature $T_{\mathrm{eff}}$; the command line's
+`--mean-quanta N` writes a mode's own set in that state
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 9.1
+*The starts*, *The mechanics on a wavenumber*; § 6). The rates — $R$,
+$R_{\mathrm{aS}}$, $\tau$ — and so $n$ are measured; no call computes them.
+§ 5's mode 48, pumped to a half and to one quantum:
+
+```python
+>>> from molbuilder.postprocess import Oscillator, states, oscillator
+>>> [round(oscillator.bose_einstein_temperature(1039.9, n)) for n in (0.5, 1.0)]
+[1362, 2159]
+>>> states.thermal(mean_quanta=0.5).on(Oscillator(1039.9)).words
+'thermal, 0.5 mean quanta'
+```
+
 ### 2a.2 A push in step with the mode — the coherent state, and why molbuilder does not model it
 
 **What it is.** A classical force pushing a harmonic mode in step with its
@@ -352,8 +452,14 @@ whatever the gap is — so they climb every rung, Raman at one laser frequency
 and the electrons at one bias (§ 2a.1), each step's line shifted. The
 vibration's result states no anharmonic constant ($\omega x_e$), so where a
 mode's ladder leaves resonance is the person's to judge, and many quanta are
-where the harmonic picture itself fails (§ 7, item 1): the doors say so
-beyond 1 eV in a mode ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 6).
+where the harmonic picture itself fails (§ 7, item 1): the command line and
+the spectrum tab say so beyond 1 eV in a mode ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 6).
+
+**Computed by** — no call: the coherent state is no state of the toolkit's,
+by the user's decision of 2026-11-25 (above); and no call gives a mode's
+anharmonic shift, which the vibration's result does not state — the note
+beyond 1 eV is the command line's and the spectrum tab's
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 6).
 
 ### 2a.3 What the frames need — the spread to second order, the shape beyond
 
@@ -453,9 +559,9 @@ the Lanczos recurrence of the oscillator's position operator from the state
 $\lvert n\rangle$ (§ 2b.4); for a list over the levels, the Lanczos
 recurrence on every level's own rule, pooled (§ 2e.3) — in exact arithmetic
 Gautschi's discretized Stieltjes procedure [Gautschi1982]
-(`distribution.Level.gauss_rule` for $n$ quanta, which builds three and five
-frames the same way, equal to the hand recipe; `distribution.LevelList.gauss_rule`
-for a list; a mode's own frames, `vibration.ModeDistribution.frames`, take
+(`dist.Level(n).gauss_rule` for $n$ quanta, which builds three and five
+frames the same way, equal to the hand recipe; `dist.LevelList(p).gauss_rule`
+for a list; a mode's own frames, `m.bind(chain).frames(nodes)`, take
 them).
 
 **Worked** — one quantum exactly, in units of $Q_{\mathrm{zp}}$:
@@ -489,6 +595,27 @@ rescales a result already computed,
 $\langle\Delta G\rangle/G\,(\sigma) = (\sigma/\sigma_T)^2 \times \langle\Delta G\rangle/G\,(\sigma_T)$
 — an analysis on the data file (§ 8), never a value of the record.
 
+**Computed by** — `dist.Level(n).moment(k)` → $\langle x^k\rangle$ of $n$
+quanta, $x = Q/Q_{\mathrm{zp}}$; `dist.Level(n).gauss_rule(nodes)`,
+`dist.LevelList(p).gauss_rule(nodes)` → the state's own $m$ frames and weights,
+in $x$; for a mode of a run, `m.bind(chain).frames(nodes)` → its own frames, as
+geometries ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 9.1 `gauss_rule(nodes)`, § 4). The worked one quantum, and its frames on
+the contact bond:
+
+```python
+>>> import numpy as np
+>>> from molbuilder.postprocess import dist
+>>> one = dist.Level(1)
+>>> round(one.moment(2), 9), round(one.moment(4), 9)
+(3.0, 15.0)
+>>> x, w = one.gauss_rule(5)
+>>> np.round(x, 4), np.round(w, 4)
+(array([-3.2774, -1.8051,  0.    ,  1.8051,  3.2774]), array([0.0325, 0.3532, 0.2286, 0.3532, 0.0325]))
+>>> [round(float((w * np.exp(-x)).sum()), 5) for x, w in (one.gauss_rule(m) for m in (3, 5, 7))]
+[3.239, 3.29713, 3.29744]
+```
+
 ---
 
 ## 2b. One mode in any state — its zero-point amplitude, where it sits, and what each atom moves
@@ -498,9 +625,7 @@ zero-point amplitude and different distribution/probability distribution
 function for mode at different excitation state"; "the displacement of atoms
 from a given mode's displacement should be able to be calculated with clear
 theory/document"; "those theory / calculation api should be scientifically
-validated in tests".)* The API that computes each of these is
-`postprocess.vibration` ([`engines/vibration.md`](?doc=engines/vibration.md)
-§ 6.11 § 6), by the module `vibration`; the tests of § 2b.5 are
+validated in tests".)* The tests of § 2b.5 are
 `tests/test_vibration_mechanics.py` and, end to end,
 `tests/test_vibration_mechanics_e2e.py`, and for snapshots (§ 2c) the motion
 toolkit's ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
@@ -515,6 +640,21 @@ toolkit's ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
 > atom moves along its own row of the mode's pattern, $\mathbf u_A = Q\,\mathbf
 > L_A$, so any coordinate — a number, a number of zero-point widths, a state's
 > r.m.s. — gives every atom's move in x, y, z.
+
+**Computed by** — `vibration(run_folder)` → the vibration; `v.mode(k)` → its
+mode $k$, with its $Q_{\mathrm{zp}}$, its pattern $\mathbf L$, each atom's
+move and the coordinate back; `m.bind(chain_or_distribution)` → the mode in
+a state, its distribution of $Q$, draws, frames and each atom's r.m.s. move
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 1, § 2;
+[`engines/vibration.md`](?doc=engines/vibration.md) § 6.11 § 6).
+
+```python
+from molbuilder.postprocess import vibration, states
+v = vibration(run_folder)              # on a run of your own -- engines/vibration-frames.md § 1
+m = v.mode(7)                          # mode 7, as the result numbers it
+d = m.bind(states.level(1))            # the mode with one quantum exactly
+d.distribution.pdf(0.0), d.spread_amu12_ang, d.atom_rms_ang
+```
 
 ### 2b.1 The zero-point amplitude, from any frequency
 
@@ -535,8 +675,23 @@ a scaled frequency (a factor for the harmonic picture's overestimate), a
 measured one — since $\mathbf L$ is unchanged by a scale on $\omega$. **Other
 masses** (an isotope) change both $\omega$ and $\mathbf L$: that needs the
 force constants and a new diagonalisation (`normal-modes.md` § 3), which the
-result stores from the vibration record on (`vibration.md` § 6.11 § 9 item 3;
-not built).
+result is to store (R3d2d; `vibration.md` § 6.11 § 9 item 3).
+
+**Computed by** — `oscillator.zero_point_amplitude_amu12_ang(ν̃)`, or
+`Oscillator(ν̃).zero_point_amplitude_amu12_ang` → $Q_{\mathrm{zp}}$ from any
+wavenumber; `m.with_frequency(ν̃)` → the mode at another frequency, its
+pattern kept; `v.with_frequency_scale(s)` → every mode at $s$ times its
+frequency ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 9.1 *The mechanics on a wavenumber*; § 1). Other masses, `m.with_masses`,
+are *to build (R3d2d)*.
+
+```python
+>>> from molbuilder.postprocess import Oscillator, oscillator
+>>> round(oscillator.zero_point_amplitude_amu12_ang(4400.0), 4)       # H₂, § 2b.2
+0.0619
+>>> round(Oscillator(0.96 * 4400.0).zero_point_amplitude_amu12_ang, 4)    # its frequency scaled by 0.96
+0.0632
+```
 
 ### 2b.2 From the mode's coordinate to each atom's move
 
@@ -570,6 +725,20 @@ $Q_{\mathrm{zp}}$ each atom moves 0.0436 Å and the bond changes by 0.0872 Å �
 $Q_{\mathrm{zp}}/\sqrt\mu$ with $\mu = m_{\mathrm H}/2$, the textbook zero-point
 amplitude (`normal-modes.md` § 4b.5 F).
 
+**Computed by** — `m.displacement(q)`, or
+`m.displacement(zero_point_widths=k)` → each atom's move
+$\mathbf u_A = Q\,\mathbf L_A$, Å; `m.coordinate(u)` →
+$Q = \sum_A m_A\mathbf L_A\cdot\mathbf u_A$; `m.bind(chain).atom_rms_ang` →
+each atom's r.m.s. move in that state
+([`engines/vibration.md`](?doc=engines/vibration.md) § 6.11 § 6;
+[`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 2).
+
+```python
+u = m.displacement(zero_point_widths=1.0)    # on a run of your own -- engines/vibration.md § 6.11 § 6
+m.coordinate(u)                              # Q_zp again, by the mass-weighted projection
+m.bind(states.thermal(temperature_k=300.0)).atom_rms_ang    # each atom's r.m.s. move at 300 K, Å
+```
+
 ### 2b.3 Where the molecule sits — the distribution in each state
 
 **Which state for which experiment.** A conductance is a steady average over
@@ -594,6 +763,25 @@ $n = 0$ (the bell curve at 0 K), 11.2 % for $n = 1$, 9.5 % for $n = 2$. **Therma
 set by the mean number of quanta alone (§ 2a). In every state the spread is set by the mean
 number of quanta, $\langle Q^2\rangle = Q_{\mathrm{zp}}^2(2\langle n\rangle+1)$ (§ 2a),
 and each atom's r.m.s. move is that spread times $\lvert\mathbf L_A\rvert$ (§ 2b.2).
+
+**Computed by** — `states.level(n)`, `states.thermal(temperature_k=T)` or
+`states.thermal(mean_quanta=n̄)`, `states.classical_thermal(temperature_k=T)`
+→ the chain; for a mode of a run, `m.bind(chain).distribution` → its $P(Q)$
+in amu½·Å, `.pdf(q)`, `.cdf(q)`, `.moment(k)`; `dist.Level(n)` → $n$ quanta
+in $x = Q/Q_{\mathrm{zp}}$, and `oscillator.level_density(n, x)` →
+$\lvert\psi_n\rvert^2$ in it
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 9.1
+*The starts*, the families, `level_density`; § 2). The share beyond the
+turning points, and one photon on the warm 50 cm⁻¹ mode:
+
+```python
+>>> from molbuilder.postprocess import Oscillator, states, dist
+>>> [round(2 * float(dist.Level(n).cdf(-(2 * (2 * n + 1)) ** 0.5)), 3) for n in (0, 1, 2)]
+[0.157, 0.112, 0.095]
+>>> photon = states.thermal(temperature_k=300.0).add_quantum().on(Oscillator(50.0))
+>>> round(float(photon.populations[1]), 3), round(photon.mean_quanta, 1)
+(0.045, 8.4)
+```
 
 ### 2b.4 Frames for a state
 
@@ -624,6 +812,25 @@ found. The weights are what make the frames reproduce the state's averages
 (§ 2a.3); a frame's weight says how much its geometry counts in the average,
 not how often the molecule is there.
 
+**Computed by** — `m.bind(chain).frames(nodes)` → the mode's own $m$ frames,
+`.q_amu12_ang`, `.weights`, `.positions_ang`;
+`m.bind(chain).distribution.gauss_rule(nodes)` → the same rule's positions in
+amu½·Å and weights alone; `write_frame_set(path, frames)` → the set, each
+frame's `weight` the one row a calculation reads
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 4,
+§ 5; § 9.1 `gauss_rule(nodes)`). One quantum's three frames, in units of
+$Q_{\mathrm{zp}}$:
+
+```python
+>>> import numpy as np
+>>> from molbuilder.postprocess import dist
+>>> x, w = dist.Level(1).gauss_rule(3)
+>>> round(float(x.max()) ** 2, 9), np.round(w, 4)       # x² = ⟨x⁴⟩/⟨x²⟩ = 5; weight 0.4 in the middle
+(5.0, array([0.3, 0.4, 0.3]))
+>>> float(dist.Level(1).pdf(0.0))                        # where the molecule is never found
+0.0
+```
+
 ### 2b.5 How each is validated
 
 Each test takes its expected numbers from the science below — never from
@@ -645,6 +852,11 @@ is seen failing on the release before:
 | snapshots | each mode's draws follow its state's distribution; the modes' coordinates uncorrelated; each atom's displacement covariance $\sum_k\langle Q_k^2\rangle\,\mathbf L_{k,A}\mathbf L_{k,A}^{\mathsf T}$; an antithetic pair's odd response cancels exactly; the average of $e^{\sum_k a_kQ_k}$ the product above, within its error — for $X = e^{\sum_k a_kQ_k}$, $X(Q)\,X(-Q) = 1$, so a paired set's pair-mean variance is $\tfrac12(\langle X^2\rangle + 1) - \langle X\rangle^2$, its error known before the draw | § 2c, § 5.5 |
 | end to end | a real PySCF H₂ run: the bond's r.m.s. $\sqrt{\hbar/2\mu\omega}$ from CODATA's constants and the file's frequency and masses, each atom moving half of it at $Q_{\mathrm{zp}}$, and the projection giving $Q_{\mathrm{zp}}$ back | CODATA; the two-body problem |
 
+**Computed by** — no call: the expectations are the science's, and the
+tests the § 2b lead names, with
+[`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 8's,
+hold the calls of § 2b.1–§ 2b.4 to them.
+
 ## 2c. The whole molecule — every mode at once
 
 *(The user, 2026-11-23: "(1) correctly generate a full displacement map of
@@ -657,8 +869,22 @@ correct way/api to merge/add the two situation into a combined
 displacement/frame"; "each frame is like a Monte Caro sampling of the
 different combination of the thermal background and selected activation, and
 then the average can be done correctly (in this case then it would be an
-equal weight)".)* The API is
-[`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 3.
+equal weight)".)*
+
+**Computed by** — `v.motion(chain_or_distribution)` → the molecule's
+motion, the one chain or distribution bound to every real mode (§ 2c.1);
+`.with_mode(k, chain)` → mode $k$ set apart (§ 2c.2);
+`.sample(N, seed=, antithetic=)` → $N$ snapshots, each frame at $1/N$
+(§ 2c.3); `write_frame_set(path, snaps)` → their pair
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 3,
+§ 5). The user's three asks, in one chain of calls:
+
+```python
+snaps = (v.motion(states.thermal(temperature_k=300.0))   # on a run of your own -- engines/vibration-frames.md § 3
+         .with_mode(7, states.level(1))                   # mode 7 one quantum exactly
+         .sample(64, seed=20261123, antithetic=True))      # each snapshot every mode at once, weight 1/64
+write_frame_set(topic_dir("P", "structure") / "m7-one-quantum-300K-64.xyz", snaps)
+```
 
 ### 2c.1 The modes move independently
 
@@ -678,6 +904,17 @@ each $P_k$ the bell curve of § 2 at the mode's own spread $\sigma_k(T)$
 ([Feynman1972] § 2.5, one oscillator at a time). A soft mode moves far, a
 stiff one barely beyond its zero-point motion, and no mode's position says
 anything about another's.
+
+**Computed by** — `v.motion(chain)` → every real mode bound to the one
+chain, each its own factor (`motion.distributions`, by mode number), each
+drawn from its own stream — the product above
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 3.1).
+
+```python
+motion = v.motion(states.thermal(temperature_k=300.0))   # on a run of your own -- engines/vibration-frames.md § 3.1
+motion.distributions[7].spread_amu12_ang                  # mode 7's σ_k(T); every other mode its own
+motion.said                                               # what it says: an imaginary mode left out, at Q = 0
+```
 
 ### 2c.2 One mode in another state among thermal ones
 
@@ -726,6 +963,29 @@ written as the person's own set, equal weights. **Two modes of nearby
 frequencies** share the quantum too, but their combination is no stationary
 mode — it beats at $\omega_a - \omega_b$ — and needs a joint state of the
 two modes, outside these tools (§ 2e.5).
+
+**Computed by** — `motion.with_mode(k, chain_or_distribution)` → the motion
+with mode $k$'s factor replaced: `states.level(1)` on a cold mode,
+`states.thermal().add_quantum()` on a warm one,
+`states.thermal(mean_quanta=n)` pumped at random. A degenerate pair, by
+hand: `m.bind(chain).draw(N, seed=)` → each turned mode's coordinates, the
+person's turn back to $Q_a$, $Q_b$; `v.displaced({...})` → each geometry, the
+other modes' coordinates from
+`v.motion(chain, modes=v.mode_selection().drop([a, b])).sample(N, seed=,
+antithetic=)` added in; `write_frame_set(path, positions, weights,
+vibration=v)` → the person's set
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 3.1,
+§ 3.4, § 5). A joint state of two modes of nearby frequencies: no call —
+built when a case needs it, the user's choice of 2026-11-25
+([`archive/2026-11-26-vibration-frames-steps-design.md`](?doc=archive/2026-11-26-vibration-frames-steps-design.md),
+decision 2).
+
+```python
+x = v.mode(a).bind(states.level(1)).draw(64, seed=1)                      # on a run of your own -- engines/vibration-frames.md § 3.4
+y = v.mode(b).bind(states.thermal(temperature_k=300.0)).draw(64, seed=1)  # the combination across it, thermal
+pair = [v.displaced({a: ca * xi - cb * yi, b: cb * xi + ca * yi}) for xi, yi in zip(x, y)]
+write_frame_set(path, pair, [1 / 64] * 64, vibration=v)                   # the other modes at rest, in this short form
+```
 
 ### 2c.3 Snapshots, and why each weighs the same
 
@@ -791,11 +1051,33 @@ amu$^{-1/2}$·Å$^{-1}$). At the four frames it is 0.8956, 2.1265, 0.4889 and
    its mirror — every $Q$ flipped. Four frames again, 0.8956 and 1.1166
    (frame 1 and its mirror), 0.4889 and 2.0452 (frame 3 and its mirror). The
    average is still the plain mean, 1.1366. Its error is the spread of the
-   two **pair means**, 1.0061 and 1.2671 — 0.1846 — over $\sqrt2$: 0.13,
+   two **pair means**, 1.0061 and 1.2671 — 0.1845 — over $\sqrt2$: 0.13,
    here by the luck of two pairs. For this response pairs give on average
    0.61 of the independent set's error — the same error from 2.7 times fewer
    frames — because it is mostly odd in $Q$ (§ 5.5). An error read from two
    pair means is itself rough: a real set takes tens of pairs.
+
+**Computed by** — `motion.sample(N, seed=, antithetic=)` → the snapshots:
+`.q_amu12_ang` each mode's coordinate, `.positions_ang` each geometry,
+`.weights` $1/N$ each, frame 0 the relaxed geometry at 0;
+`snaps.standard_error(values)` → the average, its error and the count, from
+the calculation's values one per frame; on a person's own arrays,
+`sampling.mean_with_error(values)` → the mean and its error,
+`sampling.pair_means(values)` → a paired set's pair means
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 3.3,
+§ 7; § 9.1 `mean_with_error`, `pair_means`). Steps 2 and 3 above, on the
+four frames' values:
+
+```python
+>>> import numpy as np
+>>> from molbuilder.postprocess import sampling
+>>> four = np.array([0.8956, 2.1265, 0.4889, 1.0616])
+>>> [round(float(a), 4) for a in sampling.mean_with_error(four)]
+[1.1432, 0.3492]
+>>> pairs = np.array([0.8956, 1.1166, 0.4889, 2.0452])     # frames 1 and 3, each followed by its mirror
+>>> [round(float(a), 4) for a in sampling.mean_with_error(sampling.pair_means(pairs))]
+[1.1366, 0.1305]
+```
 
 ### 2c.4 What one set of snapshots answers
 
@@ -811,6 +1093,21 @@ is a second set with the same seed — each mode drawn from its own stream of
 the seed, so every other mode's draws are the same in both sets, and their
 share of the spread cancels in the difference: exactly for a response that
 adds the modes' effects, in part where they multiply (§ 5.5).
+
+**Computed by** — the same `seed=` with and without `.with_mode(k, …)` → a
+set and its baseline, every other mode's draws the same; on the two
+calculations' values, `sampling.pair_means(x[1:] - x0[1:])` and
+`sampling.mean_with_error(...)` → the excitation's own effect and its
+error ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 3.3, § 7; § 9.1 `pair_means`).
+
+```python
+warm = states.thermal(temperature_k=300.0)                # on a run of your own -- engines/vibration-frames.md § 3.3
+base = v.motion(warm).sample(64, seed=1, antithetic=True)
+photon = v.motion(warm).with_mode(7, states.thermal().add_quantum()).sample(64, seed=1, antithetic=True)
+# x, x0: the two calculations' values, one per frame, frame 0 first
+sampling.mean_with_error(sampling.pair_means(x[1:] - x0[1:]))   # the photon's own effect, and its error
+```
 
 ### 2c.5 Which modes to include — the soft ones
 
@@ -862,6 +1159,21 @@ states its largest single-atom move beside that atom's bond length. The
 selection then carries out what the person decides, e.g. every mode from
 50 cm⁻¹ up, one torsion added back, and the set records the steps.
 
+**Computed by** — `v.mode_selection()` → every real mode, then
+`.window(low_cm1, high_cm1)`, `.only([...])`, `.add([...])`,
+`.drop([...])`, each acting on what the step before left, `.final()` → the
+list; `v.motion(chain, modes=selection)` → the motion of those modes, the
+steps written with the set
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 3.1).
+Which soft frequencies hold is measured by the displacement sweep
+(`engines/vibration.md` § 5.9), no call of these.
+
+```python
+chosen = v.mode_selection().window(50.0, None).add([3]).drop([12, 13])   # on a run of your own -- engines/vibration-frames.md § 3.1
+chosen.final()                                                           # the modes kept, in the result's order
+motion = v.motion(states.thermal(temperature_k=300.0), modes=chosen)
+```
+
 ## 2d. Drawing a snapshot, justified — every mode thermal, and one mode a photon excited
 
 *(The user, 2026-11-24: "the module/api we designed to generate the correct
@@ -870,12 +1182,10 @@ mode activated by photon. we need a detailed document justify how these
 distribution is calculated, and how each displacement for each snapshot is
 generated with the correct justification and scientific vigor.")* § 2b and
 § 2c say what each state is and how a snapshot is made; this section derives
-why each step gives the right distribution, names the function that takes
-it, and the test that holds it to the science. The API is
-[`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 2, § 3;
-the module `vibration`; the figures are drawn by `scripts/science_figures.py`
-from the closed forms below — but Figure 2d-4, molbuilder's own draws, and
-Figure 2d-6, numpy's normal numbers.
+why each step gives the right distribution, names the call that takes
+it, and the test that holds it to the science. The figures are drawn by
+`scripts/science_figures.py` from the closed forms below — but Figure 2d-4,
+molbuilder's own draws, and Figure 2d-6, numpy's normal numbers.
 
 > **In short.** A property computed at a frozen geometry averages over the
 > molecule's *position* distribution alone — the diagonal of its density
@@ -908,11 +1218,25 @@ flowchart LR
     X --> A["the average: the plain mean<br/>its error: the spread / √N"]
 ```
 
+**Computed by** — `v.motion(chain).with_mode(k, chain).sample(N, seed=,
+antithetic=)` → the snapshots, each mode's coordinate drawn by its bound
+state, `d.draw(N, seed=)` → $Q_{\mathrm{zp}}$ times
+`dist.of_state(state).draw(z)` of the normal numbers
+`sampling.normal_stream((seed, k, 0), N)`, and every atom moved by all of
+them ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 2,
+§ 3.3; § 9.1 `draw(z)`, `normal_stream`).
+
+```python
+d = v.mode(7).bind(states.level(1))   # on a run of your own -- engines/vibration-frames.md § 2
+d.draw(4, seed=7)                     # Q_zp × dist.Level(1).draw(sampling.normal_stream((7, 7, 0), 4))
+snaps = v.motion(states.thermal(temperature_k=300.0)).with_mode(7, states.level(1)).sample(64, seed=7, antithetic=True)
+```
+
 ### 2d.1 What a frame averages: the position distribution alone
 
 A frame is a frozen geometry, and the property computed there — a level, a
 transmission — is a function $X(\mathbf R)$ of the nuclear positions (static
-frames, § 7 item 2). Its quantum average over a nuclear state $\hat\rho$ is
+frames, § 7 items 3 and 5). Its quantum average over a nuclear state $\hat\rho$ is
 
 $$
 \langle X\rangle
@@ -948,7 +1272,13 @@ $$
 a draw of the coordinates $Q_k$ is a draw of a geometry, and equal weights in
 $\mathbf Q$ are equal weights in $\mathbf R$. An imaginary mode — a geometry
 that is no minimum along it — has no harmonic state; it is left out, at
-$Q = 0$, said (`Vibration.motion`).
+$Q = 0$, said (`v.motion`).
+
+**Computed by** — no call: that a frozen geometry's property averages over
+the position distribution alone is physics, the static-frame picture (§ 7,
+items 3 and 5). The one call named here, `v.motion(...)`, leaves an
+imaginary mode out and says so in `motion.said`
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 3.1).
 
 ### 2d.2 The harmonic Hamiltonian is one oscillator per mode
 
@@ -998,6 +1328,26 @@ state of one mean quantum are Gaussians; one quantum exactly,
 $\lvert\psi_1\rvert^2$, vanishes at $Q = 0$; one photon on a warm mode (the
 photon-added thermal state, § 2d.4) dips at $Q = 0$, to about half its
 peak at $\bar n = 1$.*
+
+**Computed by** — `Oscillator(ν̃)` → one mode's oscillator, its
+$Q_{\mathrm{zp}}$ and $\hbar\omega$; `oscillator.level_wavefunction(n, x)`,
+`oscillator.level_density(n, x)` → $\psi_n$ and $\lvert\psi_n\rvert^2$ in
+$x = Q/Q_{\mathrm{zp}}$, normalised in $x$ (so $\lvert\psi_n(Q)\rvert^2$ is
+`level_density(n, Q / Q_zp) / Q_zp`); `oscillator.position_matrix(lo, hi)`
+→ $\hat x = \hat Q/Q_{\mathrm{zp}} = \hat b + \hat b^\dagger$ on the levels
+`lo` … `hi − 1` ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 9.1 module 1).
+
+```python
+>>> import numpy as np
+>>> from molbuilder.postprocess import oscillator
+>>> np.round(oscillator.position_matrix(0, 3), 4)                         # ⟨n+1| x |n⟩ = √(n+1)
+array([[0.    , 1.    , 0.    ],
+       [1.    , 0.    , 1.4142],
+       [0.    , 1.4142, 0.    ]])
+>>> np.round(oscillator.level_density(1, np.array([0.0, 1.0, 2.0])), 4)   # |ψ₁|², zero at rest
+array([0.   , 0.242, 0.216])
+```
 
 ### 2d.3 (1) Every mode thermal: a product of Gaussians
 
@@ -1076,7 +1426,7 @@ Q = \sigma\,z, \qquad z \sim \mathcal N(0,1)
 \Pr(Q \le q) = \Phi(q/\sigma)
 $$
 
-(`distribution.Gaussian.draw`). Each mode's normal numbers come from its own random stream
+(`dist.Gaussian(σ).draw(z)`). Each mode's normal numbers come from its own random stream
 (§ 2d.6), so the draws of different modes are independent: the product above,
 drawn factor by factor. *Held by* `test_each_states_draws_follow_its_own_distribution`
 (a Kolmogorov test of 4000 draws against the state's `cdf`) and
@@ -1101,6 +1451,29 @@ place a 3-dimensional Gaussian cloud around $\mathbf R_A^0$, its axes and
 widths those of $\sum_k\sigma_k^2\,\mathbf L_{k,A}\mathbf L_{k,A}^{\mathsf T}$
 — along the modes' rows where those are orthogonal on that atom (Figure 2d-6,
 left). *Held by* the covariance test above, on one atom's own block.
+
+**Computed by** — `dist.of_state(chain.on(Oscillator(ν̃)))` → a thermal
+state's distribution, the bell curve `dist.Gaussian(σ)`,
+$\sigma^2 = 2\bar n + 1$ in $x = Q/Q_{\mathrm{zp}}$; `dist.Gaussian(σ).draw(z)` → $\sigma z$;
+`dist.LevelList(p)` → the same density summed over the number states; for a
+run, `snaps.atom_moves_ang` → each atom's move in every snapshot, whose
+covariance is the sum above
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 9.1
+`of_state(state)`, the families; § 3.3). Mehler's sum, at one mean quantum:
+
+```python
+>>> import numpy as np
+>>> from molbuilder.postprocess import Oscillator, states, dist
+>>> warm = states.thermal(mean_quanta=1.0).on(Oscillator(200.0))
+>>> g = dist.of_state(warm)
+>>> type(g).__name__, round(g.sigma ** 2, 9)                            # σ² = 2n̄ + 1
+('Gaussian', 3.0)
+>>> xs = np.array([0.0, 1.0, 2.5])
+>>> np.allclose(dist.LevelList(warm.populations).pdf(xs), g.pdf(xs))    # the number states' sum
+True
+>>> np.round(g.draw(np.array([0.31, -1.2])), 4)                         # σ z
+array([ 0.5369, -2.0785])
+```
 
 ### 2d.4 (2) One mode a photon excited: which state it is in
 
@@ -1160,7 +1533,7 @@ flowchart TD
     L["light on mode j"] --> H{"one heralded event,<br/>or a steady source?"}
     H -->|"one photon absorbed or scattered,<br/>within the lifetime τ"| W{"the mode's temperature:<br/>ħω against k_BT"}
     W -->|"cold, n̄ ≪ 1"| N1["one quantum exactly<br/>P'_j = |ψ₁|²<br/>with_mode(j, states.level(1))"]
-    W -->|"warm"| PA["photon-added thermal<br/>p'_n = n n̄^(n−1)/(n̄+1)^(n+1)<br/>states.thermal(…).add_quantum() (§ 2e);<br/>the doors' mean quanta 2n̄+1: its spread, not its shape"]
+    W -->|"warm"| PA["photon-added thermal<br/>p'_n = n n̄^(n−1)/(n̄+1)^(n+1)<br/>states.thermal(…).add_quantum() (§ 2e);<br/>thermal of mean 2n̄+1 (the command line's --mean-quanta):<br/>its spread, not its shape"]
     H -->|"many events at random moments:<br/>a steady laser's Raman, a current"| TE["thermal at an effective temperature<br/>Gaussian, σ² = Q_zp²(2n+1)<br/>n = n_th + Rτ (weak pumping of a cold mode, § 2a.1)<br/>with_mode(j, states.thermal(mean_quanta=n))"]
 ```
 
@@ -1217,8 +1590,9 @@ $\hat b^\dagger\hat\rho_{\mathrm{th}}\hat b$ so [Zavatta2007]; here the quantum
 added is the vibration's. **A mode bound to it holds it**:
 `m.bind(states.thermal(temperature_k=T).add_quantum())` (§ 2e;
 [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 2), its distribution the closed form
-above; the page's and the command line's choices stay thermal and $n$ quanta
-until a person asks for another ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 6). The thermal
+above; the command line's choices stay three — thermal at a temperature,
+thermal of a mean, $n$ quanta — and the spectrum tab's dialog two, thermal
+and $n$ quanta, until a person asks for another ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 6). The thermal
 state of the same mean $2\bar n+1$ has its spread — $\langle Q^2\rangle = Q_{\mathrm{zp}}^2(2\langle n\rangle+1)$ in every
 state (§ 2a) — and, both even, the right cubic moment, but not the right
 shape: its $\langle Q^4\rangle = 3(4\bar n+3)^2Q_{\mathrm{zp}}^4$ against the
@@ -1237,8 +1611,32 @@ with the mode, not photon by photon — leaves the coherent state, which no
 process on molbuilder's road makes (§ 2a.2). **The harmonic ladder**: light
 at one frequency climbs every rung only because the harmonic gaps are
 equal; a real mode's shrink as it climbs (§ 2a.2), and many quanta are where the harmonic picture fails first (§ 7,
-item 1) — the doors say so beyond 1 eV in a mode, far up its ladder: a
-mark, not a bound, which a torsion can leave well below.
+item 1) — the command line and the spectrum tab say so beyond 1 eV in a
+mode, far up its ladder: a mark, not a bound, which a torsion can leave
+well below.
+
+**Computed by** — a cold mode's one quantum,
+`motion.with_mode(j, states.level(1))`; a warm mode's photon,
+`m.bind(states.thermal(temperature_k=T).add_quantum())`, its distribution
+`dist.QuantumAdded(n̄)` in $x = Q/Q_{\mathrm{zp}}$; steady random pumping,
+`states.thermal(mean_quanta=n)`
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 2,
+§ 3.1; § 9.1 the families). A quantum two modes share: no call — a joint
+state, built when a case needs it (the user's choice of 2026-11-25,
+[`archive/2026-11-26-vibration-frames-steps-design.md`](?doc=archive/2026-11-26-vibration-frames-steps-design.md)
+decision 2); a degenerate pair by hand, § 2c.2. One photon on $\bar n = 1$
+against the thermal state of the same mean 3:
+
+```python
+>>> from molbuilder.postprocess import Oscillator, states, dist
+>>> osc = Oscillator(200.0)
+>>> photon = dist.of_state(states.thermal(mean_quanta=1.0).add_quantum().on(osc))
+>>> stand_in = dist.of_state(states.thermal(mean_quanta=3.0).on(osc))
+>>> type(photon).__name__, [round(d.moment(2), 6) for d in (photon, stand_in)]      # the same spread
+('QuantumAdded', [7.0, 7.0])
+>>> [round(d.moment(4), 6) for d in (photon, stand_in)]                              # not the same shape
+[99.0, 147.0]
+```
 
 ### 2d.5 Drawing the one-quantum state — and any $n$
 
@@ -1273,8 +1671,8 @@ worked example's four normal numbers (§ 2d.7). $F_1$ is flat at $Q = 0$, where
 $\lvert\psi_1\rvert^2$ vanishes: $z = -0.05$ lands at $Q = -0.55\,Q_{\mathrm{zp}}$,
 not near zero.*
 
-**The code's variable.** The code works in $\xi = Q/(\sqrt2\,Q_{\mathrm{zp}})$,
-with the forms normalised in it:
+**The tables' variable.** A level's table works in
+$\xi = Q/(\sqrt2\,Q_{\mathrm{zp}})$, with the forms normalised in it:
 
 $$
 \tilde\psi_n(\xi) = h_n(\xi)\,e^{-\xi^2/2} = \big(\sqrt2\,Q_{\mathrm{zp}}\big)^{1/2}\,\psi_n(Q),
@@ -1282,8 +1680,10 @@ $$
 \tilde F_n(\xi) = \int_{-\infty}^{\xi}\tilde\psi_n^2\,d\xi' = F_n\big(\sqrt2\,Q_{\mathrm{zp}}\,\xi\big),
 $$
 
-$h_n$ the normalised Hermite polynomials below; a draw is $\xi$, and
-$Q = \sqrt2\,Q_{\mathrm{zp}}\,\xi$.
+$h_n$ the normalised Hermite polynomials below. The calls answer in the
+oscillator's unit, $x = Q/Q_{\mathrm{zp}} = \sqrt2\,\xi$: `dist.Level(n).cdf(x)`
+is $\tilde F_n(x/\sqrt2)$, and `dist.Level(n).quantile(p)` and `.draw(z)`
+give $x = \sqrt2\,\xi$ — a mode's `d.draw` then $Q = Q_{\mathrm{zp}}\,x$.
 
 **Mirror-exact.** $\tilde\psi_n^2$ is even, so
 
@@ -1293,7 +1693,8 @@ $$
 \tilde F_n^{-1}\big(\Phi(-z)\big) = -\tilde F_n^{-1}\big(\Phi(z)\big).
 $$
 
-The code takes the lower tail always and restores the sign (`Distribution.draw`):
+Every distribution's `draw` — `dist.Level(n).draw(z)` among them — takes the
+lower tail always and restores the sign:
 
 $$
 \xi_- = \tilde F_n^{-1}\!\Big(\tfrac12\operatorname{erfc}\big(\lvert z\rvert/\sqrt2\big)\Big)\le 0,
@@ -1307,9 +1708,10 @@ $-z$ gives exactly $-Q$, a property of the draw; and the tail probability
 $\tfrac12\operatorname{erfc}(\lvert z\rvert/\sqrt2) = \Phi(-\lvert z\rvert)$
 keeps its relative digits where $1-\Phi(z)$ would lose them. A mirrored pair
 is exact by construction: the sampler negates every drawn coordinate
-(`Motion.sample`, § 5.5, Figure 2d-5).
+(`motion.sample(N, seed=, antithetic=True)`, § 5.5, Figure 2d-5).
 
-**The distribution function, tabulated** (`_NumberDistribution`). $\tilde F_n$ is
+**The distribution function, tabulated** — `dist.Level(n).cdf`, its table
+built the first time `cdf`, `quantile` or `draw` asks it. $\tilde F_n$ is
 integrated once per $n$ over
 
 $$
@@ -1338,7 +1740,7 @@ $$
 
 rescaled whenever a value passes $10^{100}$ and the Gaussian applied once at
 the end, so no $n$ overflows or loses the weight near the turning points
-(`_eigenfunction`). The quantile is found from the left, where the running
+(the recurrence `oscillator.level_wavefunction` runs). The quantile is found from the left, where the running
 integral keeps its digits: from the table's panel, a search kept inside a
 bracket that holds the answer. Each pass asks first how far the point
 misses, $\tilde F_n(\xi) - p$: a point that misses by nothing is the answer,
@@ -1353,7 +1755,7 @@ where that stays inside the bracket and is at most half the last step, and
 the bracket's middle otherwise — so a flat start, where the density is 0,
 halves the bracket, and no point bounces between two humps across a flat
 middle. A point stops when its step reaches the last digits a double can
-tell (`oscillator._bracketed_newton`, one search for every distribution
+tell (`dist.Level(n).quantile(p)` — one search for every distribution
 but the bell curve, whose quantile is closed, $\sigma\Phi^{-1}(p)$; its
 numbers § 2e.6's).
 
@@ -1370,6 +1772,28 @@ beyond the turning points, 15.7 %, 11.2 %, 9.5 % for $n$ = 0, 1, 2) and
 `test_each_states_draws_follow_its_own_distribution` (a Kolmogorov test of
 4000 draws of three quanta, and $F_n(Q) = \Phi(z)$ for every draw to $10^{-9}$,
 $z$ the mode's own stream's).
+
+**Computed by** — `dist.Level(n).cdf(x)` → $F_n$ at $x = Q/Q_{\mathrm{zp}}$;
+`.quantile(p)` → the $x$ where $F_n$ reaches $p$; `.draw(z)` →
+$x = F_n^{-1}(\Phi(z))$, one per normal number, $-z$ giving $-x$ exactly;
+for a mode of a run, `d.draw(size, seed=)` → its coordinates
+$Q = Q_{\mathrm{zp}}\,x$ from its own stream
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 9.1
+`quantile(p)` and `draw(z)`; § 2). Figure 2d-3's draw, and $F_1$'s closed
+form:
+
+```python
+>>> import numpy as np
+>>> from statistics import NormalDist
+>>> from molbuilder.postprocess import dist
+>>> one = dist.Level(1)
+>>> x = one.draw(np.array([-0.05, 0.05, 1.2]))
+>>> np.round(x, 4)                                            # z = −0.05 lands at −0.55, not near zero
+array([-0.5473,  0.5473,  2.0754])
+>>> t, N = float(x[2]), NormalDist()
+>>> round(float(one.cdf(t)), 6), round(N.cdf(t) - t * N.pdf(t), 6), round(N.cdf(1.2), 6)   # F₁(x) = Φ(x) − x φ(x) = Φ(z)
+(0.88493, 0.88493, 0.88493)
+```
 
 ### 2d.6 The random streams: independent, reproducible, extendable
 
@@ -1400,9 +1824,26 @@ each mode's key `[seed, mode, 0]` follows
 *Held by* `test_a_draw_continues_its_seed_from_the_modes_own_stream` and
 `test_a_seed_holds_a_set_and_its_continuation`.
 
+**Computed by** — `sampling.normal_stream((seed, k, 0), size, start=)` →
+normal numbers `start` … `start + size − 1` of mode $k$'s stream;
+`motion.sample(N, seed=, antithetic=, start=)` → snapshots `start` … of the
+seed's sequence, a set of their own; the set's `seed`, `start` and `rng`
+rows say which ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 9.1 `normal_stream`; § 3.3, § 5.1).
+
+```python
+>>> import numpy as np
+>>> from molbuilder.postprocess import sampling
+>>> first = sampling.normal_stream((20261123, 7, 0), 6)                              # mode 7's stream
+>>> np.array_equal(first[4:], sampling.normal_stream((20261123, 7, 0), 2, start=4))   # continued: the same numbers
+True
+>>> np.array_equal(sampling.normal_stream((20261123, 7), 6), first)                   # trailing zeros: one key
+True
+```
+
 ### 2d.7 One snapshot, assembled — and what the set's average is
 
-For snapshot $f$ (`Motion.sample`):
+For snapshot $f$ (`motion.sample`):
 
 1. **Each mode's coordinate**, from its own state and stream:
 
@@ -1423,7 +1864,7 @@ $$
    (Figure 2d-5).
 3. **Every atom moved by all modes at once**,
    $\mathbf R_{f,A} = \mathbf R_A^0 + \sum_k Q_{f,k}\,\mathbf L_{k,A}$, in the
-   result's atom order, held atoms still — the rule `Vibration.displaced`
+   result's atom order, held atoms still — the rule `v.displaced`
    (`test_a_vibrations_geometry_and_its_frequencies_scaled`) and held atoms
    in a mode's own frames
    (`test_a_held_atom_stays_still_and_adds_nothing_to_its_elements_share`);
@@ -1452,7 +1893,7 @@ $$
 
    which is zero for the response's odd part — $X^{-} = -X$ there — so the
    error is the spread of the pair means over $\sqrt{N/2}$ (§ 5.5,
-   `Snapshots.standard_error`; `test_mirrored_pairs_cancel_the_odd_part_exactly`).
+   `snaps.standard_error`; `test_mirrored_pairs_cancel_the_odd_part_exactly`).
 5. **Written with what made it**: each frame's coordinate along each mode,
    each mode's state (`info.sampling`), the seed and the first snapshot (the
    `seed` and `start` rows, [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 5), so
@@ -1499,11 +1940,40 @@ Right, the bend after one photon: the cloud splits along the bend's row into
 the two lobes of $\lvert\psi_1\rvert^2$, the stretch's width unchanged — the
 photon changes one mode's factor alone (§ 2d.4).*
 
+**Computed by** — `motion.sample(N, seed=, antithetic=)` → steps 1–4, the
+snapshots; `v.displaced({k: Q_k, …})` → one geometry from coordinates
+given, step 3's rule; `snaps.standard_error(values)` → step 4's average and
+its error; `write_frame_set(path, snaps)` → step 5, the set with what made
+it; `read_frame_set(path)` → the set back, its motion bound again
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 3.2,
+§ 3.3, § 5, § 7).
+
+```python
+snaps = v.motion(states.thermal(temperature_k=300.0)).with_mode(7, states.level(1)).sample(64, seed=1, antithetic=True)   # on a run of your own -- engines/vibration-frames.md § 3.3
+written = write_frame_set(topic_dir("P", "structure") / "m7-one-quantum-300K-64.xyz", snaps)
+read_frame_set(written.path).standard_error(values)      # values: the calculation's, one per frame, frame 0 first
+```
+
+The worked table's coordinates, from its normal numbers and the generic
+tools:
+
+```python
+>>> import numpy as np
+>>> from molbuilder.postprocess import Oscillator, states, dist
+>>> bend, stretch = Oscillator(1600.0), Oscillator(3700.0)
+>>> q1 = dist.Level(1).scaled(bend.zero_point_amplitude_amu12_ang)
+>>> q2 = dist.of_state(states.thermal(temperature_k=300.0).on(stretch)).scaled(stretch.zero_point_amplitude_amu12_ang)
+>>> np.round(q1.draw(np.array([0.31, -1.20, 0.85, -0.05])), 4)        # Q₁, one quantum
+array([ 0.1117, -0.213 ,  0.1771, -0.0562])
+>>> np.round(q2.draw(np.array([-0.75, 0.40, 1.10, -0.20])), 4)        # Q₂, thermal
+array([-0.0506,  0.027 ,  0.0742, -0.0135])
+```
+
 ### 2d.8 What it holds, and what it assumes
 
 | claim | why it holds | where | held by |
 |---|---|---|---|
-| a frame's property averages over the position distribution alone | $X(\hat{\mathbf R})$ is diagonal in position | § 2d.1 | — (the static-frame assumption, § 7 item 2) |
+| a frame's property averages over the position distribution alone | $X(\hat{\mathbf R})$ is diagonal in position | § 2d.1 | — (the static-frame assumption, § 7 items 3 and 5) |
 | the modes are independent, a quantum two modes share aside (§ 2c.2) | the harmonic $\hat H$ separates; the thermal state, and one photon's change of one mode alone within its resolution, keep the product | § 2d.2–§ 2d.4 | the covariance test |
 | a thermal mode's coordinate is Gaussian, $\sigma^2 = Q_{\mathrm{zp}}^2\coth(\hbar\omega/2k_BT)$ | Mehler's formula | § 2d.3 | the Mehler, Bose–Einstein and hot-limit tests |
 | one photon on a cold mode leaves $\lvert\psi_1\rvert^2$, the others thermal | the coupling is linear in $\hat Q_j$ and the identity on the other modes | § 2d.4 | the number state's density test |
@@ -1513,13 +1983,21 @@ photon changes one mode's factor alone (§ 2d.4).*
 | the average is unbiased, its error the spread over $\sqrt N$ | Monte Carlo with draws from $P$ | § 2d.7 | the error tests of § 5.5 |
 
 It assumes harmonic modes — the ladder's equal gaps among them (§ 2a.2,
-§ 7 item 1) — which every set says in its `assumptions` row; and static
-frames (§ 7 item 2), which the calculation over the frames says. For a mode
+§ 7 item 1) — and an electron fast against the vibration (§ 7 item 3),
+which every set says in its `assumptions` row; and static frames (§ 7
+item 5), which the calculation over the frames says. For a mode
 a photon excited (§ 2d.4) the conditions are the person's to judge, and no
 set states them: the one-quantum state only while the mode has not relaxed;
 the photon resonant with that mode alone within its resolution and the
 lines' widths; for a warm mode, the photon-added thermal state from the
-generic tools (§ 2e), the doors' stand-in right up to the cubic term.
+generic tools (§ 2e) — the thermal state of the same mean, the command
+line's `--mean-quanta` (the spectrum tab's dialog offers thermal at a
+temperature and $n$ quanta), is right only up to the cubic term.
+
+**Computed by** — no call: the claims are § 2d.1–§ 2d.7's, each section's
+calls named at its end; what a set assumes it states in its `assumptions`
+row, and what any calculation over frames assumes it states beside its
+average (§ 7).
 
 ## 2e. A mode's state, built in steps — the theory the toolkit's tools follow *(decided 2026-11-25; built in 2.84.0 and 2.85.0)*
 
@@ -1532,15 +2010,14 @@ problem/category of problem such as distribution calculation etc.")* § 2a,
 § 2b and § 2d treat each state of a mode as a case of its own. This section
 describes every state **one way**, and makes each from **a few physical
 steps**, so that every case — the thermal state and $n$ quanta, and those
-no single keyword named, such as one photon on a warm mode (§ 2d.4) — is a
+no single start makes, such as one photon on a warm mode (§ 2d.4) — is a
 short chain of the same steps. The tools that carry the steps are
 [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 9 — one
 oscillator, its state built in steps, one coordinate's distribution, random
-streams, a person's script reaching them through `postprocess` (`Oscillator`,
-`states`, `dist`, `oscillator`, `sampling`) — and a chain bound to a mode
-gives its frames and snapshots (that chapter's § 2); the cases are written as
-chains there and in the example notebook (§ 6.1 there), which a person
-copies and changes. The numbers the
+streams — and a chain bound to a mode gives its frames and snapshots (that
+chapter's § 2); the cases are written as chains there (§ 2's table), and
+are to be in the example notebook, *to build (R3d2b2c)* (§ 6.1 there),
+which a person copies and changes. The numbers the
 tools fix — where a list is cut, when two numbers are one — are § 2e.6's.
 
 > **In short.** As far as a set of frames can see, one mode's state is a
@@ -1574,6 +2051,28 @@ flowchart LR
     L --> P["where the atoms are<br/>P(Q) = Σₙ pₙ |ψₙ(Q)|², symmetric"]
     P --> N["averages · distribution function ·<br/>quantile · frames · draws"]
     N --> R["the molecule<br/>R = R⁰ + Σₖ Qₖ Lₖ → a frame set"]
+```
+
+**Computed by** — `Oscillator(ν̃)` → one mode's oscillator; a start,
+`states.ground()`, `states.level(n)`, `states.thermal(...)` or
+`states.classical_thermal(...)`, and the events, `.add_quantum()`,
+`.remove_quantum()` → a chain, written without a frequency;
+`chain.on(osc)` → the state, its list `.populations` and `.mean_quanta`;
+`dist.of_state(state)` → its distribution — averages, distribution
+function, quantile, frames, draws; `sampling` → the random streams and the
+statistics of results; for a mode of a run, `m.bind(chain)` → the chain on
+the mode ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 9.1; § 2). The example above:
+
+```python
+>>> import numpy as np
+>>> from molbuilder.postprocess import Oscillator, states
+>>> osc = Oscillator(200.0)
+>>> np.round(states.thermal(temperature_k=300.0).on(osc).populations[:4], 3)
+array([0.617, 0.236, 0.091, 0.035])
+>>> photon = states.thermal(temperature_k=300.0).add_quantum().on(osc)
+>>> np.round(photon.populations[:5], 3), round(photon.mean_quanta, 2)
+(array([0.   , 0.38 , 0.292, 0.168, 0.086]), 2.24)
 ```
 
 ### 2e.1 What a state is — a list of chances
@@ -1648,6 +2147,23 @@ coherences; frames drawn at random moments do not represent it.
 | one quantum taken from a warm mode | $\dfrac{(n+1)\,\bar n^{\,n}}{(\bar n+1)^{n+2}}$ — the row above moved down one level | thermal, then a quantum removed |
 | many photons at random, steady (§ 2a.1) | thermal at the effective mean $n$ | thermal at that mean |
 
+**Computed by** — `chain.on(Oscillator(ν̃)).populations` → a state's list
+$p_n$; `dist.LevelList(p)` → the distribution of any list,
+$P(x) = \sum_n p_n\psi_n(x)^2$, $x = Q/Q_{\mathrm{zp}}$ — a person's own
+model among them ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 9.1 `.on(oscillator, …)`, the families). The coherences have no call: a
+snapshot does not see them (above). Half in level 0 and half in level 1, at
+a random moment, and a thermal list:
+
+```python
+>>> import numpy as np
+>>> from molbuilder.postprocess import Oscillator, states, dist
+>>> np.round(dist.LevelList([0.5, 0.5]).pdf(np.array([-1.0, 1.0])), 4)
+array([0.242, 0.242])
+>>> np.round(states.thermal(mean_quanta=1.0).on(Oscillator(200.0)).populations[:4], 4)
+array([0.5   , 0.25  , 0.125 , 0.0625])
+```
+
 ### 2e.2 The steps — what starts a state, and what happens to it
 
 Two kinds of steps make a state. **A start** sets the state afresh: the
@@ -1659,9 +2175,16 @@ apply in the order they happen. Each takes a list to a list.
 
 | the step | kind | what happens physically | on the state | on a list |
 |---|---|---|---|---|
+| **a level** $n$ | start | the mode put directly in its level $n$, nothing before it — on a stiff mode, $n$ quanta absorbed from its ground state | $\hat\rho \to \lvert n\rangle\langle n\rvert$ | $p_n = 1$ |
 | **thermal** at $T$, or at mean $\bar n$ | start | the mode in equilibrium with its surroundings — or, many quanta added at random and relaxed, at an effective mean (§ 2a.1) | $\hat\rho \to e^{-\beta\hbar\omega\hat n}/Z$ | $p_n = \bar n^{\,n}/(\bar n+1)^{n+1}$ |
-| **add a quantum** | event | a photon absorbed, a Stokes photon scattered, an electron losing $\hbar\omega$ — detected, so the event is known to have happened (§ 2d.4) | $\hat\rho \to \hat b^\dagger\hat\rho\,\hat b\,/\,\mathrm{Tr}$ | $p'_n = \dfrac{n\,p_{n-1}}{\langle n\rangle + 1}$ |
-| **remove a quantum** | event | an anti-Stokes photon scattered, an electron gaining $\hbar\omega$ — detected | $\hat\rho \to \hat b\,\hat\rho\,\hat b^\dagger\,/\,\mathrm{Tr}$ | $p'_n = \dfrac{(n+1)\,p_{n+1}}{\langle n\rangle}$ |
+| **add a quantum** | event | a photon absorbed, a Stokes photon scattered, an electron losing $\hbar\omega$ — detected, so the event is known to have happened (§ 2d.4): the molecules it happened to, each one level up | $\hat\rho \to \hat b^\dagger\hat\rho\,\hat b\,/\,\mathrm{Tr}$ | $p'_n = \dfrac{n\,p_{n-1}}{\langle n\rangle + 1}$ |
+| **remove a quantum** | event | an anti-Stokes photon scattered, an electron gaining $\hbar\omega$ — detected: the molecules it happened to, each one level down | $\hat\rho \to \hat b\,\hat\rho\,\hat b^\dagger\,/\,\mathrm{Tr}$ | $p'_n = \dfrac{(n+1)\,p_{n+1}}{\langle n\rangle}$ |
+
+**An event keeps the molecules it happened to.** Of a sample in a state,
+light at the mode's frequency raises some molecules by one level and leaves
+most as they were; an added quantum is the first kind alone — each molecule
+exactly one level up, taken from wherever it was. It is not every level
+shifted by one, and not the whole sample under the light.
 
 **Adding a quantum raises the mean by more than one.** Written out,
 
@@ -1673,10 +2196,22 @@ p'_n = \frac{\langle n\rvert\hat b^\dagger\hat\rho\,\hat b\lvert n\rangle}{\math
 $$
 
 In words: a photon is absorbed, or a Stokes photon scattered, from level
-$m$ with a probability proportional to $m + 1$ — the oscillator's
-$\lvert\langle m+1\rvert\hat b^\dagger\lvert m\rangle\rvert^2$, the same
-$m + 1$ as emission into a light mode holding $m$ photons, stimulated ($m$)
-plus spontaneous (1). Once the event is known to have happened, the
+$m$ with a probability proportional to $m + 1$. The light — or the
+electron — acts on the mode through a quantity linear in its coordinate:
+the dipole for absorption, $\mu(Q) \approx \mu_0 + (\partial\mu/\partial
+Q)\,Q$, the polarizability for Raman scattering, the electron's coupling for
+a tunnelling electron; a jump from level $m$ to $m+1$ goes as
+$\lvert\langle m+1\rvert Q\lvert m\rangle\rvert^2 = (m+1)\,
+\lvert\langle 1\rvert Q\lvert 0\rangle\rvert^2$ on a harmonic oscillator
+— the oscillator's $\lvert\langle m+1\rvert\hat b^\dagger\lvert
+m\rangle\rvert^2$, the same $m + 1$ as emission into a light mode holding
+$m$ photons, stimulated ($m$) plus spontaneous (1). The light drives the
+jump down, $m \to m-1$, as $m$; over a thermal sample, up less down is
+$(m+1) - m = 1$ per molecule whatever the populations, so a harmonic mode's
+integrated absorption does not change with temperature. Both hold while the
+mode is harmonic and the coupling linear in $Q$: an anharmonic mode's
+$1 \to 2$ jump sits at a lower frequency (a hot band), which light tuned to
+$0 \to 1$ drives less. Once the event is known to have happened, the
 higher levels are the likelier places it started from (Bayes' rule), so one
 detected quantum raises the mean by more than one. Removing a quantum goes
 with $m$ — it needs a quantum to take. In general, with
@@ -1693,8 +2228,17 @@ goes to $2\bar n + 1$ and to $2\bar n$:
 | one quantum added | $0, \tfrac14, \tfrac14, \tfrac3{16}, \tfrac18, \dots$ | $2\bar n + 1 = 3$, not 2 |
 | one quantum removed | $\tfrac14, \tfrac14, \tfrac3{16}, \tfrac18, \dots$ | $2\bar n = 2$, not 0 |
 
-A 50 cm⁻¹ mode at 300 K holds 3.69 quanta; one added leaves 8.38, one
-removed 7.38.
+On the modes a frame set is for — stiff against $k_BT$, a soft one left
+out of a motion by its window (§ 2c.5) — nearly every molecule starts in
+level 0, and one quantum added is level 1 within a few percent, the share
+of the molecules that absorbed left in level 1 $1/(1+\bar n)^2$:
+
+| at 300 K | $\bar n$ before | in level 1 after one added | mean after (level 1: 1) |
+|---|---|---|---|
+| 500 cm⁻¹ | 0.100 | 82.6% | 1.200 |
+| 700 cm⁻¹ | 0.0361 | 93.2% | 1.072 |
+| 1000 cm⁻¹ | 0.00833 | 98.4% | 1.017 |
+| 1600 cm⁻¹ | 0.000465 | 99.9% | 1.001 |
 
 ![What adding and removing a quantum does to a warm mode's list](img/vibrational-averaging/a-step-changes-the-list.svg)
 
@@ -1739,6 +2283,37 @@ removed, in either order. Added, then removed: $0.083, 0.167, 0.188, 0.167,
 0.130, \dots$, mean $\tfrac{10}3$. Removed, then added: the same list one
 level up, $0, 0.083, 0.167, 0.188, 0.167, \dots$, mean $\tfrac{13}3$ —
 $p_0 = 0$ exactly.*
+
+**Computed by** — a start, `states.ground()`, `states.level(n)`,
+`states.thermal(temperature_k=T)` or `states.thermal(mean_quanta=n̄)`, and
+the events after it in the order they happen, `.add_quantum()` and
+`.remove_quantum()`; `.reduced()` → the chain in its one form;
+`.on(osc)` → the state, `.populations` its list and `.mean_quanta` its
+mean ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 9.1 module 2). The tables above — the stiff modes' too — and Figure
+2e-3's two orders:
+
+```python
+>>> import numpy as np
+>>> from molbuilder.postprocess import Oscillator, states
+>>> osc, warm = Oscillator(200.0), states.thermal(mean_quanta=1.0)
+>>> for chain in (warm.add_quantum(), warm.remove_quantum(),
+...               warm.add_quantum().remove_quantum(), warm.remove_quantum().add_quantum()):
+...     s = chain.on(osc)
+...     print(np.round(s.populations[:5], 4), round(s.mean_quanta, 4))
+[0.     0.25   0.25   0.1875 0.125 ] 3.0
+[0.25   0.25   0.1875 0.125  0.0781] 2.0
+[0.0833 0.1667 0.1875 0.1667 0.1302] 3.3333
+[0.     0.0833 0.1667 0.1875 0.1667] 4.3333
+>>> for nu in (500.0, 700.0, 1000.0, 1600.0):
+...     o, t = Oscillator(nu), states.thermal(temperature_k=300.0)
+...     a = t.add_quantum().on(o)
+...     print(nu, f"{t.on(o).mean_quanta:.3g}", f"{a.populations[1]:.3f}", f"{a.mean_quanta:.3f}")
+500.0 0.1 0.826 1.200
+700.0 0.0361 0.932 1.072
+1000.0 0.00833 0.984 1.017
+1600.0 0.000465 0.999 1.001
+```
 
 ### 2e.3 From a list to the frames — one route for every state
 
@@ -1818,6 +2393,25 @@ symmetric, $P(-Q) = P(Q)$: each level's density is even, so every list's is,
 and $-z$ gives exactly $-Q$ (§ 2d.5). Where its frame 0 goes is the frame
 set's rule ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 5).
 
+**Computed by** — `dist.of_state(state)` → the state's distribution by its
+route: a family's closed form (`dist.Gaussian`, `dist.QuantumAdded`,
+`dist.Level`), its list (`dist.LevelList`) otherwise; then `.pdf(x)`,
+`.cdf(x)`, `.moment(k)`, `.gauss_rule(nodes)` → its frames, `.draw(z)` → its
+draws ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 9.1 `of_state(state)`, `gauss_rule(nodes)`). The worked chain, by both
+routes:
+
+```python
+>>> import numpy as np
+>>> from molbuilder.postprocess import Oscillator, states, dist
+>>> state = states.thermal(mean_quanta=1.0).add_quantum().on(Oscillator(200.0))
+>>> closed, listed = dist.of_state(state), dist.LevelList(state.populations)
+>>> type(closed).__name__, round(closed.moment(2), 6), round(closed.moment(4), 6)
+('QuantumAdded', 7.0, 99.0)
+>>> [(round(float(x.max()), 3), np.round(w, 4)) for x, w in (closed.gauss_rule(3), listed.gauss_rule(3))]
+[(3.761, array([0.2475, 0.5051, 0.2475])), (3.761, array([0.2475, 0.5051, 0.2475]))]
+```
+
 ### 2e.4 How many levels a list keeps
 
 A list is cut where the levels beyond it no longer change the numbers asked.
@@ -1855,6 +2449,24 @@ one number state, would cost about $N^3$; the closed forms do not grow at
 all. A hot soft mode is where they differ — why the toolkit keeps the closed
 forms beside the list (the user's choice of 2026-11-25, decision 1(b),
 [`archive/2026-11-26-vibration-frames-steps-design.md`](?doc=archive/2026-11-26-vibration-frames-steps-design.md)).
+
+**Computed by** — `chain.on(osc).populations_for(order)` → the list cut for
+the averages up to $\langle x^{\mathrm{order}}\rangle$, `order` 0 for the
+chances alone; `.populations` → the list cut for $\langle x^{12}\rangle$;
+`chain.on(osc, precision=…)` → another precision
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 9.1
+`.on(oscillator, …)`). The levels above:
+
+```python
+>>> from molbuilder.postprocess import Oscillator, states
+>>> warm = states.thermal(temperature_k=300.0)
+>>> [warm.on(Oscillator(nu)).populations_for(0).size for nu in (1600.0, 200.0, 50.0, 10.0)]
+[5, 39, 154, 769]
+>>> [warm.on(Oscillator(50.0)).populations_for(k).size for k in (4, 8, 12)]      # for 3, 5 and 7 frames
+[183, 206, 227]
+>>> warm.on(Oscillator(50.0), precision=1e-8).populations_for(0).size
+77
+```
 
 ### 2e.5 Where one list per mode is not enough
 
@@ -1897,6 +2509,29 @@ forms beside the list (the user's choice of 2026-11-25, decision 1(b),
 - **An anharmonic mode** leaves the oscillator's levels behind (§ 2a.2, § 7
   item 1): another basis, outside these steps.
 
+**Computed by** — a degenerate pair turned to the field's axes: by hand,
+§ 2c.2's steps (`m.bind(chain).draw`, `v.displaced`, `write_frame_set`).
+Two modes of nearby frequencies, or a pair under circularly polarised
+light: no call — a joint state over both modes' levels, built when a case
+needs it (the user's choice of 2026-11-25,
+[`archive/2026-11-26-vibration-frames-steps-design.md`](?doc=archive/2026-11-26-vibration-frames-steps-design.md)
+decision 2). An anharmonic mode: no call — another basis than the
+oscillator's levels. `states.classical_thermal(temperature_k=T)` → the
+classical bell curve, `dist.Gaussian` of variance $2k_BT/\hbar\omega$ in
+$x = Q/Q_{\mathrm{zp}}$ ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 9.1 *The starts*). Its effective mean, and the quantum list there with
+its spread:
+
+```python
+>>> from molbuilder.postprocess import Oscillator, states, dist
+>>> osc = Oscillator(50.0)
+>>> classical = dist.of_state(states.classical_thermal(temperature_k=300.0).on(osc))
+>>> nbar = (classical.moment(2) - 1) / 2                                  # k_BT/ħω − ½
+>>> quantum = dist.of_state(states.thermal(mean_quanta=nbar).on(osc))
+>>> round(nbar, 4), round(quantum.moment(2), 6) == round(classical.moment(2), 6)
+(3.6702, True)
+```
+
 ---
 
 ### 2e.6 The numbers the tools fix
@@ -1910,9 +2545,9 @@ parameter a person sets.
 
 | the number | what it decides | why this value | if changed |
 |---|---|---|---|
-| **the one epsilon**, $10^{-12}$ of the size of what is compared | every "is this zero, are these equal": a typed list's chance just below 0, taken as 0; whether frames reproduce an average — the degree they are exact to — and whether weights are the ones written; a weight below zero | a double rounds each operation to about $10^{-16}$ of its size; a distribution's own rule reproduces its averages to $1.8\times10^{-14}$ of them at worst up to seven frames, the most the doors offer — about 55 times below $10^{-12}$ — and to $10^{-13}$ at nine, ten times below; the first average frames do not reproduce is off by $8\times10^{-5}$ or more (a bell curve, one quantum added to a thermal state of 0 to 20 mean quanta, levels 1 to 40, lists of a thermal state with one or two quanta added or removed on modes of 50 to 1000 cm⁻¹ at 77 and 300 K, one to nine frames; computed 2026-11-25) | $10^{-10}$: the same answers; $10^{-14}$: own rules near the measured rounding read as not reproducing; $10^{-16}$: rounding read as a miss |
+| **the one epsilon**, $10^{-12}$ of the size of what is compared | every "is this zero, are these equal": a typed list's chance just below 0, taken as 0; whether frames reproduce an average — the degree they are exact to — and whether weights are the ones written; a weight below zero | a double rounds each operation to about $10^{-16}$ of its size; a distribution's own rule reproduces its averages to $1.8\times10^{-14}$ of them at worst up to seven frames, the most the command line and the spectrum tab offer — about 55 times below $10^{-12}$ — and to $10^{-13}$ at nine, ten times below; the first average frames do not reproduce is off by $8\times10^{-5}$ or more (a bell curve, one quantum added to a thermal state of 0 to 20 mean quanta, levels 1 to 40, lists of a thermal state with one or two quanta added or removed on modes of 50 to 1000 cm⁻¹ at 77 and 300 K, one to nine frames; computed 2026-11-25) | $10^{-10}$: the same answers; $10^{-14}$: own rules near the measured rounding read as not reproducing; $10^{-16}$: rounding read as a miss |
 | **the precision**, $10^{-16}$ by default — `chain.on(oscillator, precision=…)` | where a list is cut: the levels left out hold less than this share of the averages asked, up to $\langle x^{12}\rangle$ unless more is asked (§ 2e.4) | what a double holds: smaller is below rounding | larger, fewer levels and faster, the averages good to that share: $10^{-8}$ keeps 77 levels for a 50 cm⁻¹ mode's chances at 300 K, $10^{-16}$ 154 |
-| **the averages a cut keeps**, up to $\langle x^{12}\rangle$ | the cut's weighting, $(2n+1)^{6}$ per level | the highest even average the largest rule the doors offer, seven frames, reproduces (degree 13) | `populations_for(order)` asks any other |
+| **the averages a cut keeps**, up to $\langle x^{12}\rangle$ | the cut's weighting, $(2n+1)^{6}$ per level | the highest even average the largest rule the command line and the spectrum tab offer, seven frames, reproduces (degree 13) | `populations_for(order)` asks any other |
 | **how exactly the cut is placed**: a list is built until what lies beyond holds $10^{-4}$ of the precision | that the cut counts what it leaves out | built only to the precision itself, the uncounted part moves the cut early where the list ends near it, and it may leave out up to twice the precision — a 30 cm⁻¹ mode at 300 K with one quantum added, asked to $10^{-8}$, would keep 243 levels and leave out 1.04 of the precision of its averages up to $\langle x^{12}\rangle$; $10^{-4}$ places the cut on its level, 244, leaving out 0.92 | smaller: more levels built, the same cut |
 | **when a search stops**: its step within four units of the last digit of $\max(1, \lvert x\rvert)$ — near 0 within about $9\times10^{-16}$ — and after 200 passes in any case | the point where $F$ reaches $p$ (§ 2d.5) | the last digits a double can tell; each pass at least halves the bracket or takes a step at most half the last, so 200 narrow any bracket a double holds below its spacing | where $F$ is flat at the answer — one quantum's middle, $F - \tfrac12 \approx x^3/3\sqrt{2\pi} = 0.133\,x^3$ — a double holds $F$ at exactly $\tfrac12$ for every $\lvert x\rvert$ below about $7\times10^{-6}$ (measured $7.4\times10^{-6}$), and every such point is an answer to $F$'s last digit; a start already on the answer is kept |
 | **a table of levels**: out to nine past the top level's turning point, $2(n+20)$ panels of 40-point Gauss–Legendre, $n$ the top level | the distribution function of $n$ quanta, of a list — built the first time $F$, a draw or a quantile asks it | beyond, $e^{-81}$ of the density; a panel or more between neighbouring zeros (1.14 at the least, $n = 70$); each panel exact to degree 79 | — |
@@ -1934,6 +2569,22 @@ $\langle x^{12}\rangle$ within 0.8 to 0.96 of the precision, the density to
 $10^{-13}$ of its peak, the seven frames' positions to about four times the
 precision, in units of the spread.
 
+**Computed by** — `chain.on(osc, precision=…)` → the precision, the one of
+these numbers a person sets; `.populations_for(order)` → the cut for other
+averages; the one epsilon, the search's stop and the tables' shape are
+fixed inside the tools, no call
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 9.1
+`.on(oscillator, …)`, `quantile(p)` and `draw(z)`). The cut's row, and a
+search started on its answer:
+
+```python
+>>> from molbuilder.postprocess import Oscillator, states, dist
+>>> states.thermal(temperature_k=300.0).add_quantum().on(Oscillator(30.0), precision=1e-8).populations.size
+244
+>>> float(dist.Level(1).quantile(0.5))                  # one quantum's flat middle
+0.0
+```
+
 ## 3. What a measurement averages
 
 The current at bias $V$ is linear in the transmission (Landauer),
@@ -1954,6 +2605,21 @@ $$
 
 The question the frame set answers is how far $\langle T\rangle$ is from the
 relaxed geometry's $T_0 = T(E;0)$.
+
+**Computed by** — the transport calculation over the frames, not the
+toolkit: its data file's `average_transmission` →
+$\langle T(E)\rangle = \sum_f w_f T_f(E)$ at each voltage, and
+`average_conductance_g0` → $\langle G\rangle/G_0$, read with
+`read_transport_data(data_file)`
+([`engines/transport.md`](?doc=engines/transport.md) § 2a.12;
+[`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md)
+§ 3.2).
+
+```python
+summary = read_transport_data(data_file)["groups"]["summary"]["variables"]   # a calculation of your own -- engines/transport-postprocessing.md § 3.2
+summary["average_transmission"]["data"]       # ⟨T(E)⟩, at each voltage and energy
+summary["average_conductance_g0"]["data"]     # ⟨G⟩/G₀, at each voltage
+```
 
 ---
 
@@ -2033,6 +2699,20 @@ xychart-beta
     bar [0.0044, 0.0175, 0.0540, 0.1295, 0.2420, 0.3521, 0.3989, 0.3521, 0.2420, 0.1295, 0.0540, 0.0175, 0.0044]
 ```
 
+**Computed by** — no call computes $T$: each frame's is the transport
+calculation's. On values at mirrored positions the split is arithmetic:
+`sampling.pair_means(values)` → each pair's mean, the even part; on a
+paired snapshot set, `snaps.parts(values)` → the even and odd shares of
+its spread (§ 5.5; [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 7, § 9.1 `pair_means`). The chart's $T(+u), T(-u)$ at $u = 1, 2, 3$:
+
+```python
+>>> import numpy as np
+>>> from molbuilder.postprocess import sampling
+>>> sampling.pair_means(np.array([0.1149, 0.0918, 0.1364, 0.0902, 0.1646, 0.0954]))   # the bowl
+array([0.10335, 0.1133 , 0.13   ])
+```
+
 ### 4.2 In derivatives
 
 Expanding about equilibrium makes the same statement term by term:
@@ -2061,6 +2741,10 @@ is the transport score of `normal-modes.md` § 4c.4. Its sign is the sign of
 the curvature: a convex response (a level's tail, an exponential contact)
 raises the average conductance, a concave one (sitting on a resonance's peak)
 lowers it.
+
+**Computed by** — no call: no call computes $T''$ — a curvature is the
+person's analysis of the frames' values where the response is smooth,
+never a value of the record (the user's ruling of 2026-10-10; § 5.3, § 8).
 
 ### 4.3 Two examples of a strongly lopsided response
 
@@ -2094,6 +2778,10 @@ With $\Gamma = 0.2$ eV and a thermal level shift $g\sigma = 0.1$ eV:
 
 The same mode raises or lowers the conductance depending on where $E_F$ sits —
 the curvature's sign, read off the frames, not assumed.
+
+**Computed by** — no call: the two responses are models, their averages
+closed forms; a junction's own response is computed frame by frame by the
+calculation (§ 3), and § 5.2–§ 5.3 hold these numbers against a few frames.
 
 ---
 
@@ -2145,9 +2833,9 @@ $$
 
 $x_{\mathrm{out}}$ the rule's outermost node (§ 5.1: $\sqrt{3/2}$ for three
 frames, 2.0202 for five, 2.6520 for seven); $\max_A\lvert\mathbf L_A\rvert$ is
-`vibration.largest_move`, the one a Raman phase's $\pm\delta Q$ rests on too
-(a mode's state's `outermost_move` asks it, for any state:
-`vibration.ModeDistribution.outermost_move`). Each frame states its own largest
+`molbuilder.vibration.largest_move`, the one a Raman phase's $\pm\delta Q$ rests on too
+(a mode's state's outermost move asks it, for any state:
+`d.outermost_move(nodes)`). Each frame states its own largest
 single-atom move beside it — the check a person reads against a bond length.
 
 **An example — mode 48 of the user's AuBDTAu vibration on Sol**
@@ -2166,6 +2854,27 @@ it on 2026-10-28 states them):
 
 A 1040 cm⁻¹ mode holds almost no thermal quanta below about 500 K: its
 motion is its zero-point motion, and only pumping widens it.
+
+**Computed by** — `m.bind(states.thermal(temperature_k=T)).frames(nodes)` → a
+mode's thermal set of 3, 5 or 7 frames, its σ from $T$;
+`d.outermost_move(nodes)` → the outermost move, Å;
+`outermost_move(run_folder, mode=k, chain_or_distribution=chain, nodes=3)`
+→ the same before a set is written; the command line,
+`molbuilder frameset from-mode RUN --mode k --temperature T --nodes 3 --out PAIR.xyz`,
+and the spectrum tab's *Write frame set…* write the set
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 4,
+§ 6). The table's moves at 298 and 1000 K, from the run's two numbers and
+the generic tools:
+
+```python
+>>> from molbuilder.postprocess import Oscillator, states, dist
+>>> osc = Oscillator(1039.9)                     # mode 48; its largest |L_A| is 0.3977 amu^-½
+>>> for t in (298.0, 1000.0):
+...     q = dist.of_state(states.thermal(temperature_k=t).on(osc)).scaled(osc.zero_point_amplitude_amu12_ang)
+...     print(t, [round(float(q.gauss_rule(m)[0].max()) * 0.3977, 3) for m in (3, 5, 7)])
+298.0 [0.088, 0.146, 0.191]
+1000.0 [0.11, 0.182, 0.239]
+```
 
 ### 5.1 The Gauss–Hermite rule
 
@@ -2196,6 +2905,21 @@ junction itself, $Q = 0$ — the frame a transport extension takes over from
 the finished calculation ([`engines/transport.md`](?doc=engines/transport.md)
 § 2a.16).
 
+**Computed by** — `dist.Gaussian(σ).gauss_rule(nodes)` → the Gauss–Hermite
+positions and weights, $W_j$ (σ = 1: positions in units of σ);
+`m.bind(states.thermal(temperature_k=T)).frames(nodes)` → a mode's frames at
+them, its set's `sampling_rule` row `gauss-hermite`
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 9.1
+the families; § 4, § 5.1). The table's five frames:
+
+```python
+>>> import numpy as np
+>>> from molbuilder.postprocess import dist
+>>> x, w = dist.Gaussian(1.0).gauss_rule(5)
+>>> np.round(x, 4), np.round(w, 5)
+(array([-2.857 , -1.3556,  0.    ,  1.3556,  2.857 ]), array([0.01126, 0.22208, 0.53333, 0.22208, 0.01126]))
+```
+
 ### 5.1a Why more frames reach further out
 
 Adding frames does not sample the middle more finely; it reaches into the
@@ -2222,6 +2946,22 @@ outermost frames move out, and their weight falls, as frames are added:
 | 7 | ±3.75 σ | 0.0005 | 0.02 % |
 | 9 | ±4.51 σ | 0.00002 | 0.0006 % |
 
+**Computed by** — `dist.Gaussian(1.0).gauss_rule(nodes)` → the rule in units of
+σ, its averages $\sum_j W_j u_j^k$ the person's sum; `.cdf(u)` → the share
+of the bell curve below $u$, so $2F(-u_{\mathrm{out}})$ beyond the
+outermost frames ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 9.1 *Every distribution answers*). The two tables:
+
+```python
+>>> from molbuilder.postprocess import dist
+>>> g = dist.Gaussian(1.0)
+>>> x, w = g.gauss_rule(3)
+>>> [round(float((w * x**k).sum()), 6) for k in (4, 6, 8)]                       # ⟨u⁴⟩, ⟨u⁶⟩, ⟨u⁸⟩ by three frames
+[3.0, 9.0, 27.0]
+>>> [round(100 * float(2 * g.cdf(-g.gauss_rule(m)[0].max())), 4) for m in (3, 5, 7, 9)]   # % beyond, either side
+[8.3265, 0.4277, 0.0177, 0.0006]
+```
+
 ### 5.2 Three frames give the average and the curvature at once
 
 With three frames,
@@ -2247,6 +2987,10 @@ actually is at that temperature. The bracket is the "same both ways" part of
 On the examples of § 4.3: the contact gives $1.1968$ against the exact
 $1.1972$; the level on its tail $0.0435$ against $0.0436$. Both responses are
 smooth over $\pm3\sigma$, so three frames suffice.
+
+**Computed by** — no call: the second difference is the person's arithmetic
+on the three frames' values — no call computes $T''$ (the user's ruling of
+2026-10-10, § 8) — and the average itself is the calculation's (§ 3).
 
 ### 5.3 When three are not enough — and how to tell
 
@@ -2299,6 +3043,23 @@ A mode's own set is one mode at one rule, its weights summing to 1. So the check
 is a second set of the same mode, at the same temperature and another rule,
 and comparing the two is the person's.
 
+**Computed by** — two sets of the same mode at one temperature,
+`m.bind(states.thermal(temperature_k=T)).frames(3)` and `.frames(5)` — or
+the command line's `--nodes 3` and `--nodes 5` — each written by
+`write_frame_set` and computed by its own calculation; comparing their
+averages is the person's, no call
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 4,
+§ 6). The table's row of the level at $E_F$, $g\sigma = 0.1$ eV, where
+$T = 1/(1 + u^2)$:
+
+```python
+>>> import numpy as np
+>>> from molbuilder.postprocess import dist
+>>> rules = [dist.Gaussian(1.0).gauss_rule(m) for m in (3, 5, 7, 9, 11)]
+>>> [round(float((w / (1 + x**2)).sum()), 3) for x, w in rules]         # the exact average is 0.656
+[0.75, 0.692, 0.672, 0.664, 0.66]
+```
+
 ### 5.4 Re-averaging the frames over another motion *(the user, 2026-10-29)*
 
 *(The user, 2026-10-29: "or this can be a parameter in post-processing?";
@@ -2341,7 +3102,7 @@ motion, the odd average $\langle q^m\rangle$ vanishing on both. Frames placed fo
 motion itself do better — degree $2m-1$ — so at the set's own state the
 set's own weights are the answer, and these reproduce them; the toolkit
 states the degree it checks the weights reproduce
-(`PointWeights.exact_to_degree`).
+(`d.weights_at(q).exact_to_degree`).
 
 **How well — the contact bond of § 4.3**, $T = T_0\,e^{-aq}$ with
 $a\sigma_T = 1$, frames written for a bell curve of spread $\sigma_T$ and
@@ -2385,7 +3146,7 @@ values:
 3. **A weight below zero** — past rounding: a weight that is zero in exact
    arithmetic is none — says the frames do not suit the motion's shape
    well — re-averaging to the thermal state twice as wide, the seven frames
-   weight their middle frame at −2.5 and their nearest pair at −0.73 each,
+   weight their middle frame at −2.5 and their second pair at −0.73 each,
    the frames sitting too close in for that motion. It is said with the
    number, never refused.
 4. **A response not smooth over the motion** — a level crossing $E_F$ — is
@@ -2400,6 +3161,37 @@ where each frame's $q_f$ and $T_f(E)$ sit
 ([`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md)
 § 3.2). It writes nothing: the calculation's record keeps the set's own
 average (§ 8).
+
+**Computed by** — `m.bind(chain).weights_at(q, written=w)` → the weights of
+a mode's frames for another state, a `dist.PointWeights`: `.weights`,
+`.exact_to_degree`, `.beyond` (item 1), `.below_zero` (item 3), and
+`.said`, items 1–3 in words; from a calculation's data file,
+`weights_for_set(frame_rows(data_file), chain)` → the same for the set's
+rows, and `reaveraged(data_file, chain)` → the frames' average at those
+weights, nothing written
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 7;
+§ 9.1 `points_weights`).
+
+```python
+f = v.mode(7).bind(states.thermal(temperature_k=300.0)).frames(5)   # on a run of your own -- engines/vibration-frames.md § 7
+w = v.mode(7).bind(states.level(1)).weights_at(f.q_amu12_ang[:, 0], written=f.weights)   # these frames, for one quantum
+r = reaveraged(data_file, states.level(1))   # their calculation so averaged: r["transmission"], r["said"], r["assumptions"]
+```
+
+The table's first row with the generic tools — frames written at 0 K, in
+units of $Q_{\mathrm{zp}}$, re-averaged to one quantum:
+
+```python
+>>> import numpy as np
+>>> from molbuilder.postprocess import dist
+>>> for m in (3, 5, 7):
+...     q, _ = dist.Gaussian(1.0).gauss_rule(m)
+...     pw = dist.Level(1).weights_at(q)
+...     print(m, round(float((pw.weights * np.exp(-q)).sum()), 4), f"{100 * pw.beyond:.2g} % beyond")
+3 2.9146 39 % beyond
+5 3.2933 4.3 % beyond
+7 3.2974 0.28 % beyond
+```
 
 ### 5.5 Many modes: snapshots, their error, and antithetic pairs
 
@@ -2451,7 +3243,7 @@ once, and whether pairs help the whole set depends on which share dominates,
 the totally symmetric modes (the contact stretches, mostly linear) supplying
 an odd one. **A paired set's own results say which**: the spread of the pair
 means is the even part's, the spread of the pair half-differences
-$\tfrac12(X_{2j-1} - X_{2j})$ the odd part's (`Snapshots.parts`,
+$\tfrac12(X_{2j-1} - X_{2j})$ the odd part's (`snaps.parts`,
 [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 7).
 Whether to pair is the person's (§ 3.3 there).
 
@@ -2533,6 +3325,31 @@ $r = 1.4$ — and none count from $r = \sqrt2$ on, the integral no longer
 finite; every other mode whose state changes multiplies it. Another motion
 is another set.
 
+**Computed by** — `snaps.standard_error(values)` → the average, its error —
+from the pair means where paired — and the count; `snaps.parts(values)` →
+a paired set's even and odd shares of the spread; on a person's own arrays,
+`sampling.mean_with_error`, `sampling.pair_means` and
+`sampling.even_odd_parts`; more frames later,
+`motion.sample(N, seed=, antithetic=, start=N)`
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 3.3,
+§ 7; § 9.1 module 4).
+
+```python
+est = snaps.standard_error(values)    # on a run of your own -- engines/vibration-frames.md § 7; values one per frame, frame 0 first
+est.value, est.error, est.n
+snaps.parts(values)                   # the even and odd shares: whether the pairs helped
+more = motion.sample(64, seed=20261123, antithetic=True, start=64)   # the next 64, a set of their own
+```
+
+§ 2c.3's two pairs, split:
+
+```python
+>>> import numpy as np
+>>> from molbuilder.postprocess import sampling
+>>> [round(float(s), 4) for s in sampling.even_odd_parts(np.array([0.8956, 1.1166, 0.4889, 2.0452]))]
+[0.1845, 0.4721]
+```
+
 ---
 
 ## 6. One mode, or the whole molecule — what each set answers
@@ -2591,16 +3408,57 @@ mode's own set against another's stays the person's, as ruled on 2026-10-09:
 different vibrational mode and decide how they can be weighed to give an
 overall impact"*.
 
+**Computed by** — a mode's own sets, `m.bind(chain).frames(nodes)`, one state
+each — `states.thermal(temperature_k=T)` and
+`states.thermal(temperature_k=T).add_quantum()` for a photon's own effect —
+each written by `write_frame_set` and computed by its own calculation; one
+set's results for the other state, `reaveraged(data_file, chain)`, five
+frames at least; the whole molecule,
+`v.motion(chain).with_mode(k, …).sample(N, seed=, antithetic=)`
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 3,
+§ 4, § 5, § 7).
+
+```python
+warm = states.thermal(temperature_k=300.0)               # on a run of your own -- engines/vibration-frames.md § 4
+for name, chain in (("thermal", warm), ("photon", warm.add_quantum())):
+    write_frame_set(topic_dir("P", "structure") / f"m7-{name}-300K.xyz", v.mode(7).bind(chain).frames(3))
+```
+
+The examples' averages above, each state's own seven frames on the model
+response $e^{-aQ}$, $aQ_{\mathrm{zp}} = 1$ on the stiff mode and 0.3 on the
+warm one:
+
+```python
+>>> import numpy as np
+>>> from molbuilder.postprocess import Oscillator, states, dist
+>>> warm = states.thermal(temperature_k=300.0)
+>>> for nu, a in ((1000.0, 1.0), (50.0, 0.3)):
+...     averages = []
+...     for chain in (warm, states.level(1), warm.add_quantum()):           # thermal, one quantum, a photon
+...         x, w = dist.of_state(chain.on(Oscillator(nu))).gauss_rule(7)
+...         averages.append(round(float((w * np.exp(-a * x)).sum()), 3))
+...     print(nu, averages)
+1000.0 [1.663, 3.297, 3.339]
+50.0 [1.458, 1.14, 2.074]
+```
+
 ---
 
 ## 7. What the picture assumes
 
-Each is stated beside the numbers it limits, never dropped: items 2–6 by
-a calculation over the frames, beside its average
-([`engines/transport.md`](?doc=engines/transport.md) § 2a.12); items 1 and 7
-by the frame set itself, in its maker's `assumptions` row, which every
-calculation carries as written
-([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 5):
+*(Split by owner, the user's decision of 2026-11-26: "transport does
+transport calculation and that's it".)* Each assumption is stated beside
+the numbers it limits, never dropped, by the one that owns it. **What frames
+of a vibration assume** — items 1–4 — the frame set states in its maker's
+`assumptions` row, which every calculation carries as written
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 5): its
+harmonic modes and each mode's state, then one mode alone or the snapshots'
+statistics, then the two sentences items 3 and 4 quote. **What any
+calculation over frames assumes** — items 5–9, whatever made the frames —
+transport states beside every average it takes, its own five, quoted as it
+states them ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12).
+
+**A vibration's frame set, in its `assumptions` row:**
 
 1. **Harmonic modes.** Each mode's $P(Q)$ is its state's (§ 2b.3) — in
    equilibrium § 2's Gaussian, at the temperature the person states: the
@@ -2616,43 +3474,103 @@ calculation carries as written
    matter. A mode holding many quanta is where it fails first: its ladder's
    gaps shrink as it climbs, so light at one frequency is resonant with one
    rung alone once the shift passes the line's width (§ 2a.2), and its
-   positions leave the harmonic shapes. The doors say so beyond 1 eV in a
+   positions leave the harmonic shapes. The command line and the spectrum
+   tab say so beyond 1 eV in a
    mode, $\langle n\rangle h c\tilde\nu$ — far up its ladder
    ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 6);
    a mark, not a bound: a soft stretch climbs several rungs below it, and a
    torsion leaves the harmonic picture near its barrier, which can be well
    below it (§ 2a.2).
-2. **Static frames (the electron is fast).** Each frame is a frozen geometry:
-   the electron crosses the junction quickly against the vibration,
-   $\hbar\omega \ll \max\big(|\varepsilon - E_F|,\ \Gamma\big)$. What a static
-   average cannot give — the inelastic steps at $eV = \hbar\omega$, a strongly
-   coupled level's polaron shift — needs the electron–vibration coupling itself
-   [Frederiksen2007, Galperin2007] (`vibration.md` § 5.6, level two).
-3. **One distribution, one voltage at a time.** The average is taken over
-   the frames at each voltage separately (`transport.md` § 2a.9, *Both
-   axes*), with the same weights at every voltage — the motion the set was
-   made for. A finite bias can
-   heat the modes the current couples to, and light can pump them at random
-   moments (§ 2a.1); their spread is then said by an effective temperature,
-   measured, not computed here, and stated as the set's temperature — one
-   quantum exactly has no effective temperature for its shape (§ 2a.3). At low bias the averaged $T(E_F)$ is the averaged conductance.
-4. **Each frame's electrons in their ground state for that frame** (the
-   Born–Oppenheimer picture): every frame runs its own self-consistent device.
-5. **The level alignment is DFT's**, frame by frame (`normal-modes.md` § 4c.6).
-6. **The electrodes do not move**: the held atoms are the leads, shared by
-   every frame (§ 1); their own vibrations are not among the modes.
-7. **A finite number of snapshots.** A sampled set's average carries a
+2. **One mode alone, or a finite number of snapshots.** A mode's own set
+   moves its one mode, every other at the relaxed geometry, and carries no
+   statistical error — only its rule's degree, exact for a response
+   polynomial up to degree $2m - 1$ (§ 5.3). A snapshot set moves the modes
+   it includes, every mode left out at the relaxed geometry — an imaginary
+   one named, having no harmonic state — and its average carries a
    statistical error (§ 5.5), computed by the analysis that reads the
-   results (`engines/vibration-frames.md` § 7); a mode's own set carries
-   none, only its rule's degree (§ 5.3).
+   results (`engines/vibration-frames.md` § 7).
+3. **The electron fast against the vibration.** *"Frames of a vibration:
+   each is a geometry the electrons cross fast against the vibration, hbar
+   omega << max(|e - E_F|, Gamma); the inelastic steps at eV = hbar omega
+   and a strongly coupled level's polaron shift need the electron-vibration
+   coupling and are not in a frame average."* A frozen geometry stands for
+   the moment an electron crosses only where the electron crosses quickly
+   against the vibration,
+   $\hbar\omega \ll \max\big(|\varepsilon - E_F|,\ \Gamma\big)$. What a
+   frame average cannot give — the inelastic steps at
+   $eV = \hbar\omega$, a strongly coupled level's polaron shift — needs the
+   electron–vibration coupling itself [Frederiksen2007, Galperin2007]
+   (`vibration.md` § 5.6, level two).
+4. **One state at every voltage.** *"The state is the same at every
+   voltage: a bias that heats the modes the current couples to, or light
+   that pumps them, is said by an effective temperature, measured, and
+   stated as the set's."* A set carries one motion, the state it was made
+   for, at every voltage. A finite bias can heat the modes the current
+   couples to, and light can pump them at random moments (§ 2a.1); their
+   spread is then said by an effective temperature, measured, not computed
+   here, and stated as the set's temperature (§ 5) — one quantum exactly has
+   no effective temperature for its shape (§ 2a.3).
+
+**Any calculation over frames, beside its average — transport's own:**
+
+5. **Static frames.** *"Static frames: each frame is a fixed geometry, and
+   the transmission is computed at it with its atoms held still."* Why a
+   fixed geometry stands for a moment of a vibration is item 3.
+6. **One set of weights at every voltage.** *"One set of weights at every
+   voltage: the average is taken over the frames at each voltage
+   separately, each frame's weight the same at every voltage."*
+   (`transport.md` § 2a.9, *Both axes*.) At low bias the averaged
+   $T(E_F)$ is the averaged conductance.
+7. **Each frame's electrons in their ground state for that frame** (the
+   Born–Oppenheimer picture). *"Each frame's electrons in their ground
+   state for that frame: every frame runs its own self-consistent device."*
+8. **The level alignment is DFT's.** *"The level alignment is DFT's, frame
+   by frame."* (`normal-modes.md` § 4c.6.)
+9. **The electrodes do not move.** *"The electrodes do not move: the held
+   atoms are the leads, shared by every frame."* (§ 1.) Their own
+   vibrations are not among the modes.
+
+**Computed by** — a frame set's row, from a calculation's data file,
+`frame_rows(data_file).value("assumptions")`; transport's five beside its
+average, the data file's `average_assumptions`
+(`read_transport_data(data_file)`); and both with an average over another
+state, `reaveraged(data_file, chain)["assumptions"]` — transport's, then
+the set's, for the state it was written for
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 5,
+§ 7; [`engines/transport.md`](?doc=engines/transport.md) § 2a.12).
+
+```python
+frame_rows(data_file).value("assumptions")                       # a calculation of your own -- engines/vibration-frames.md § 7
+read_transport_data(data_file)["attrs"]["average_assumptions"]   # transport's five
+reaveraged(data_file, states.level(1))["assumptions"]            # transport's, then the set's
+```
+
 ---
 
 ## 8. What is recorded where
 
-**The frame set** states what every frame is: its weight — the one row a
-calculation reads — and the maker's rows, the motion and the recipe, each
-with its meaning ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
-§ 5; [`model/structure.md`](?doc=model/structure.md) § 2.2f).
+**The frame set** — one pair, `.xyz` and `.molstruct.json` — states what
+every frame is, each item with its meaning; the one home of each is
+[`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 5's
+table ([`model/structure.md`](?doc=model/structure.md) § 2.2f):
+
+- each frame's `weight`, the one row a calculation reads, beside the
+  frame's measured rows;
+- the maker's rows, the vocabulary of
+  [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 5.1 —
+  the recipe, the state, the mode or the seed, and the maker's
+  `assumptions` (§ 7);
+- where the frames came from: the provenance rows `vibration_run` and
+  `vibration_result_sha256`; every atom's mass, the pair's `mass_amu`
+  channel; and frame 0's `info.calculation`, the record of the relaxation
+  its geometry came from;
+- what made the frames, to make them again: a mode's own set's
+  `info.state` — the chain or distribution it was bound from, the
+  temperature its start took and where that came from — or a snapshot
+  set's `info.sampling` — its `modes`, `background`, `frequency_scale`,
+  each mode's `states`, the modes `set_apart`, the `mode_selection`, those
+  `left_out`, the `notes`, `antithetic`, and each frame's coordinate along
+  each mode, `q_amu12_ang`. `read_frame_set` binds the state again.
 
 **A calculation over the frames** records each frame's result — the family
 of curves — and the average at the stated weights, carrying the set's rows as
@@ -2664,6 +3582,24 @@ set, an average over another motion (§ 5.4), a snapshot set's error (§ 5.5) �
 is the analysis's, made on the calculation's data file, where every frame's
 result sits beside its weight and its rows, and never written into the
 record.
+
+**Computed by** — `write_frame_set(path, frames)` → the pair, every item
+above, and `Written(path, n_frames, said)`; `read_frame_set(path)` → the
+set as written, its state or its motion bound again; `frame_rows(data_file)`
+→ the rows a calculation carried, `.value(name, frame)` and `.weights`; the
+analyses, written nowhere — `weights_for_set(rows, chain)`,
+`reaveraged(data_file, chain)`, `snaps.standard_error(values)`,
+`snaps.parts(values)`
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 5,
+§ 7; [`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md)
+§ 3.2).
+
+```python
+f = v.mode(7).bind(states.thermal(temperature_k=300.0)).frames(3)   # on a run of your own -- engines/vibration-frames.md § 5
+written = write_frame_set(topic_dir("P", "structure") / "m7-300K.xyz", f)
+again = read_frame_set(written.path)       # as written, frame 0 first: again.weights, again.mode_distribution.words
+rows = frame_rows(data_file)               # the calculation's copy: rows.value("vibration_run"), rows.weights
+```
 
 ---
 

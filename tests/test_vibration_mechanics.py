@@ -25,7 +25,7 @@ from scipy import integrate, special
 from molbuilder import vibration as V
 # the generic tools as a person's script reaches them (`engines/vibration-
 # frames.md` § 9): a mode's state is a chain or a distribution bound to it
-from molbuilder.postprocess import Oscillator, dist, states
+from molbuilder.postprocess import Oscillator, dist, oscillator, states
 from molbuilder.spectra.normal_modes import frequencies_cm1, vibrational_modes
 
 AMU_KG = codata.physical_constants["atomic mass constant"][0]
@@ -277,7 +277,7 @@ def test_a_modes_thermal_row_is_its_spread_at_each_temperature():
     assert row["mean_quanta"] == pytest.approx([0.0, 1.0 / math.expm1(x)],
                                                rel=1e-8, abs=1e-15)
     with pytest.raises(ValueError, match="positive frequency"):
-        V.bose_einstein_mean_quanta(-700.0, 298.15)
+        oscillator.bose_einstein_mean_quanta(-700.0, 298.15)
     imaginary = replace(mode, frequency_cm1=-700.0, has_imag=True)
     assert imaginary.thermal == {"temperature_k": [0.0, 298.15],
                                  "thermal_spread_amu12_ang": None,
@@ -851,22 +851,6 @@ def test_frames_re_weighted_to_another_state_reproduce_its_averages(ratio):
     with pytest.raises(ValueError, match="frame 2 of 3 and frame 3 of 3 sit "
                                          "at one position"):
         wide.weights_at([0.0, 1.0, 1.0])
-
-
-def test_a_mean_number_of_quanta_names_its_temperature():
-    """Science § 2a.1, § 2a.3: the temperature whose thermal state holds
-    ``n`` quanta, ``T = h c nu / (k_B ln(1 + 1/n))`` -- one quantum of a
-    1000 cm-1 mode at 2075.7 K by CODATA -- 0 K for none; back through
-    Bose and Einstein it is ``n``.  THE SILENT FAILURE: a pumped mode's set
-    written at a temperature that holds other quanta than it was pumped to."""
-    t = V.bose_einstein_temperature(1000.0, 1.0)
-    assert t == pytest.approx(codata.h * codata.c * 1.0e5
-                              / (codata.k * math.log(2.0)), rel=1e-8)
-    assert V.bose_einstein_mean_quanta(1000.0, t) == pytest.approx(1.0, rel=1e-12)
-    assert V.bose_einstein_temperature(1000.0, 0.4) == pytest.approx(
-        codata.h * codata.c * 1.0e5 / (codata.k * math.log(1.0 + 1.0 / 0.4)),
-        rel=1e-8)
-    assert V.bose_einstein_temperature(1000.0, 0.0) == 0.0
 
 
 def test_snapshots_of_a_thermal_motion_have_the_sciences_covariance():

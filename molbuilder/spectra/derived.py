@@ -3,7 +3,8 @@ file and for the reader's check (`engines/vibration.md` § 6.6, § 6.11 § 3,
 I16).
 
 MODULE  spectra.derived (L2 by the index, `architecture.md`; it imports
-        the activity classes, the mode's mechanics (`vibration`) and the
+        the activity classes, the oscillator's mechanics (`oscillator`), a
+        mode's numbers (`vibration`) and the
         modes' temperatures (`spectra.normal_modes`), numpy -- nothing that
         needs the package installed)
 ROLE    from what a mode STATES -- its frequency, whether it is imaginary, its
@@ -14,8 +15,8 @@ ROLE    from what a mode STATES -- its frequency, whether it is imaginary, its
         displacement at it (v7); each free atom's share of the motion, the
         largest zero-point move, the reduced mass and force constant, and
         the block of each mode's spread and mean quanta at the modes' own
-        temperatures (v15) -- each by the mode's mechanics' one home
-        (`vibration`), composed there; this module states them
+        temperatures (v15) -- each by its one home (`oscillator`, `vibration`),
+        composed there; this module states them
 USED-BY the one writer of a result file, every engine's
         (`sidecars.spectra.write_spectra_payload`); `SpectraResults.to_dict`;
         the reader's check (`SpectraResults.from_dict`)
@@ -45,19 +46,20 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 # TWO WAYS, because this module travels beside the job (see the header).
 try:                                        # inside molbuilder
+    from ..oscillator import zero_point_amplitude_amu12_ang
     from ..vibration import (THERMAL_ROW_KEYS, force_constant_mdyn_per_ang,
                              largest_zero_point_move_ang, motion_shares_of,
                              reduced_mass_amu, thermal_row,
-                             zero_point_amplitude_amu12_ang,
                              zero_point_displacement_ang)
     from .activity import classify_modes
     from .normal_modes import mode_temperatures
 except ImportError:                         # beside a job, in a bundle
+    from oscillator import (  # type: ignore[no-redef]
+        zero_point_amplitude_amu12_ang)
     from vibration import (  # type: ignore[no-redef]
         THERMAL_ROW_KEYS, force_constant_mdyn_per_ang,
         largest_zero_point_move_ang, motion_shares_of, reduced_mass_amu,
-        thermal_row, zero_point_amplitude_amu12_ang,
-        zero_point_displacement_ang)
+        thermal_row, zero_point_displacement_ang)
     from activity import classify_modes  # type: ignore[no-redef]
     from normal_modes import mode_temperatures  # type: ignore[no-redef]
 
@@ -304,5 +306,5 @@ def _same(a: Any, b: Any, rtol: float) -> bool:
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
 #: imports there by their bare names (`runwrap.bundle_members`).
 TRAVELS_WITH = ("molbuilder.spectra.activity",
-                "molbuilder.vibration",
+                "molbuilder.oscillator", "molbuilder.vibration",
                 "molbuilder.spectra.normal_modes")

@@ -233,11 +233,17 @@ folder's own description, so an extension the command line wrote saves; a
 Save of another junction is another calculation, refused by its id (§ 2). *(The user, 2026-10-22, 2026-10-23; built
 2.33.0.)* **A cited frame set shows its rows as it stores them**,
 under them: its count, each row's stored name, value and unit, and a row per
-frame — the frame-set card the Transport tab's junction card draws, from the
-describe door's own door (`frame_average.answer`,
+frame — the frames the calculation composed and ran once its first prep
+has, the cited pair as it is before it — the frame-set card the Transport
+tab's junction card draws, from the describe door's own door
+(`frame_average.answer`,
 [`engines/transport.md`](?doc=engines/transport.md) § 3.8.1), through the
-folder answer's `frame_set`, none of its rows interpreted; a citation that
-does not read says why, and the folder still opens.
+folder answer's `frame_set`, none of its rows interpreted, and in the
+warning tone a cited pair no longer as the calculation's first prep pinned
+it (its `said`, [`engines/transport.md`](?doc=engines/transport.md) § 3.8.1);
+a citation that does not read — or, once composed, a junction that does
+not — says why, once, in the facts' row (*The citation*), and the folder
+still opens.
 
 **Under them, every value shared by every stage** — *Shared by every
 stage*: each item the catalogue marks `shared` for this calculation's kind,

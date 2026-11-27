@@ -16,8 +16,9 @@
     font-size: var(--text-sm);
 }
 
-/* The per-frame table is page-shell's number table: every column a number
- * but the frame's, each kept on one line. */
+/* The per-frame table is page-shell's number table: each column a row the
+ * frames state, as stored -- a number or a person's text -- kept on one
+ * line, the frame's number first. */
 .frameset-table th,
 .frameset-table td {
     text-align: right;
@@ -29,8 +30,8 @@
     color: var(--text-secondary);
 }
 
-/* The set's rows as stored: name, value, unit. A value may be sentences
- * (a maker's assumptions), so it wraps; the name and unit stay on one line. */
+/* The set's rows as stored: name, value, unit. A value may be sentences,
+ * so it wraps; the name and unit stay on one line. */
 .frameset-rows {
     margin-bottom: var(--space-sm);
 }

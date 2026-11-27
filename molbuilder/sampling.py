@@ -96,6 +96,14 @@ def mean_with_error(units) -> Tuple[np.ndarray, np.ndarray]:
     return value, _spread_of(units) / math.sqrt(max(count, 1))
 
 
+def _count_words(v: np.ndarray) -> str:
+    """How many values ``v`` holds, in words: *a single number* for none
+    along an axis, else *1 value*, *3 values*."""
+    if v.ndim == 0:
+        return "a single number"
+    return f"{v.shape[0]} value{'' if v.shape[0] == 1 else 's'}"
+
+
 def _in_pairs(values) -> np.ndarray:
     """THE PAIRS, GROUPED HERE: ``values`` one per snapshot, in the order the
     snapshots were drawn -- each snapshot followed by its mirror, so values
@@ -108,9 +116,7 @@ def _in_pairs(values) -> np.ndarray:
     if v.ndim == 0 or v.shape[0] % 2:
         raise ValueError(
             f"mirrored pairs come two by two -- each snapshot followed by its "
-            f"mirror, frame 0 left out; got "
-            f"{v.shape[0] if v.ndim else 'one'} value"
-            f"{'' if v.ndim and v.shape[0] == 1 else 's'}")
+            f"mirror, frame 0 left out; got {_count_words(v)}")
     return v.reshape((v.shape[0] // 2, 2) + v.shape[1:])
 
 

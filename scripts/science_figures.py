@@ -7,7 +7,7 @@ one figure that sets molbuilder's draws (a state's distribution's ``draw``,
 
 Run from the repository root with the molbuilder env's Python:
 
-    python scripts/science_figures.py
+    "${CONDA_PREFIX:?}/bin/python" scripts/science_figures.py
 
 It writes `docs/img/vibrational-averaging/*.svg`, each white-backed so it
 reads on the Documents tab's light and dark pages alike.

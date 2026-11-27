@@ -472,9 +472,11 @@ Unlike `info` (§ 2.2a) it is **STRUCTURAL**: it describes what the structure is
 for a task — the mode a frame set samples (the structure's rows), each frame's
 displacement and its weight in an average (that frame's rows) — so it is in `METADATA_FIELDS`, carried by every derivation, gated
 like any edit (`web/molview.md` § 9.4), and in the sidecar (schema 11,
-`structure-molstruct.md` § 2). It is never a free-form store: molbuilder
-reads one row, each frame's `weight` (§ 2.2f, `frameset.WEIGHT_ROW`), and
-every other row is the writer's, carried and shown as written.
+`structure-molstruct.md` § 2). It is never a free-form store: a
+calculation over the frames reads one row, each frame's `weight` (§ 2.2f,
+`frameset.WEIGHT_ROW`), and every other row is the writer's, carried and
+shown as written — a set's maker reads its own rows back (the motion
+toolkit its sets', [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 5).
 
 **The one door, each side** — nothing else names a key of the section:
 
@@ -632,8 +634,8 @@ junction, and with it into a calculation's sidecar and data file
 reads what it reads of every structure it cites** — transport frame 0's
 `info.calculation` (required) and a relaxation record of its geometry
 (`info.relaxation`), [`engines/transport.md`](?doc=engines/transport.md)
-§ 3.1 — **and none of a maker's own keys or channels** (`info.sampling`, an
-older set's `info.vibration`, `mass_amu`); its record cites the pair by its
+§ 3.1 — **and none of a maker's own keys or channels** (`info.state`,
+`info.sampling`, `mass_amu`); its record cites the pair by its
 path and sha256. What a maker wants a calculation's record to carry
 it writes as rows — a vibration's run and result as `vibration_run` and
 `vibration_result_sha256`.
@@ -650,9 +652,10 @@ coordinate, measured with which masses. **How the frames were made is stated
 as rows of their own** — the maker's `sampling_rule` and its parameters — and
 which masses a coordinate is measured with, beside the `mass_amu` channel
 that holds them. The one reader (`frameset.read`) carries every row's note
-as written, a frame row read with the first meaning any frame writes — the
-one rule, `FrameRows.meaning(name, of_frames=True)`, which every reader of a
-row's meaning asks. **A citation carries a row whole** — name, value, unit
+as written, a frame row read with the first meaning any frame writes —
+`FrameRows.meaning(name, of_frames=True)`, which a person's script asks of
+the rows `postprocess.frame_rows` gives ([`model/parse.md`](?doc=model/parse.md)
+§ 3). **A citation carries a row whole** — name, value, unit
 and note: a transport calculation's record and its data file
 ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12), so a number
 cited downstream keeps what it means and where it came from.

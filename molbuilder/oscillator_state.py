@@ -113,12 +113,95 @@ def _step(name: str, **values) -> Step:
     return Step(name, tuple(sorted(values.items())))
 
 
+#: EACH START AND THE VALUES IT TAKES (science § 2e.2), in its maker's order.
+_START_KEYS = {"ground": (), "level": ("quanta",),
+               "thermal": ("temperature_k", "mean_quanta"),
+               "classical_thermal": ("temperature_k",)}
+
+#: THE EVENTS a start is followed by; each takes no value.
+_EVENTS = ("add_quantum", "remove_quantum")
+
+
+def _checked_values(name: Any, values: Any) -> Dict[str, Any]:
+    """A START'S VALUES, EACH CHECKED (science § 2e.2): ``name`` a start and
+    ``values`` a mapping of what it takes, each value checked as its maker
+    checks it -- answered in their one form, a value of ``None`` left out.
+    Asked by :func:`_start_step`.  Refused by name: a name that is no start,
+    values that are no mapping, a key the start does not take, and what
+    each value's check refuses."""
+    if name not in _START_KEYS:
+        raise ValueError(f"a chain starts with ground, level, thermal or "
+                         f"classical_thermal; its first step is {name!r}")
+    if not isinstance(values, dict):
+        raise ValueError(f"a start's values are a mapping of what it takes; "
+                         f"{name} got {values!r}")
+    takes = _START_KEYS[name]
+    extra = sorted(set(values) - set(takes))
+    if extra:
+        raise ValueError(f"{name} takes {' or '.join(takes) or 'no value'}; "
+                         f"got {', '.join(map(repr, extra))}")
+    given = {k: v for k, v in values.items() if v is not None}
+    if name == "level":
+        return {"quanta": _whole(values.get("quanta"), "a level", 0)}
+    checked = {}
+    if "temperature_k" in given:
+        checked["temperature_k"] = checked_temperature_k(
+            given["temperature_k"])
+    if "mean_quanta" in given:
+        checked["mean_quanta"] = _checked_quanta(given["mean_quanta"])
+    return checked
+
+
+def _start_step(name: Any, values: Any) -> Step:
+    """THE ONE MAKER OF A START (science § 2e.2): its values checked
+    (:func:`_checked_values`) and a thermal start named one way -- by a
+    temperature or by a mean, not both -- answered as the start's step.
+    Asked by every start's maker, by a chain built by hand
+    (:func:`_checked_steps`) and by a chain made again from its record
+    (:meth:`Chain.from_record`), so a start is made the same whichever way
+    it is written."""
+    checked = _checked_values(name, values)
+    if name == "thermal" and len(checked) == 2:
+        raise ValueError("a thermal state is named by a temperature or by a "
+                         "mean number of quanta, not both")
+    return _step(name, **checked)
+
+
+def _checked_steps(steps: Any) -> None:
+    """A CHAIN'S STEPS, CHECKED (science § 2e.2): a start -- made as
+    :func:`_start_step` makes it, so a thermal start names a temperature or
+    a mean, not both -- and after it only the events, each of no value, a
+    classical start followed by none.  Refused by name, so a chain built by
+    hand is never computed as something else."""
+    if (not isinstance(steps, tuple) or not steps
+            or not all(isinstance(s, Step) for s in steps)):
+        raise ValueError(f"a chain is a start and the events after it, each "
+                         f"a Step; got {steps!r}")
+    start = steps[0]
+    if _start_step(start.name, dict(start.values)) != start:
+        raise ValueError(f"a start's values are in their one form, as its "
+                         f"maker writes them; got {start!r}")
+    for s in steps[1:]:
+        if s.name not in _EVENTS or s.values:
+            raise ValueError(f"after its start a chain holds add_quantum and "
+                             f"remove_quantum, each of no value; got {s!r}")
+    if steps[0].name == "classical_thermal" and len(steps) > 1:
+        raise ValueError(f"{_COUNTS_NO_QUANTA}: a quantum is added or "
+                         f"removed only on a quantum start -- ground, level "
+                         f"or thermal")
+
+
 @dataclass(frozen=True)
 class Chain:
     """A START AND THE STEPS AFTER IT, written without a frequency (science
     § 2e.2): each method returns a new chain.  A chain has no numbers until
-    it is placed: ``.on(oscillator)`` makes it a state that has them."""
+    it is placed: ``.on(oscillator)`` makes it a state that has them.  Built
+    by hand, its steps are checked as the starts and events check them
+    (:func:`_checked_steps`)."""
     steps: Tuple[Step, ...]
+
+    def __post_init__(self) -> None:
+        _checked_steps(self.steps)
 
     @property
     def start(self) -> Step:
@@ -146,6 +229,27 @@ class Chain:
         placed on an oscillator, its state's words add the mean quanta."""
         return _steps_words(self.steps)
 
+    def words_with_source(self, source: Optional[str]) -> str:
+        """Its words, its start's temperature said as ``source``'s -- the
+        holder an open start took it from (*thermal at 300 K, the motion's
+        temperature*); ``None`` says none (:func:`_steps_words`)."""
+        return _steps_words(self.steps, source)
+
+    def with_temperature(self, temperature_k: float) -> "Chain":
+        """The chain, its open start's temperature filled -- the one filling
+        :meth:`on` makes before it places the chain.  Refused by name: a
+        start that takes no temperature (the ground state, a level) and one
+        that names its own temperature or mean."""
+        if self.start.name in ("ground", "level"):
+            raise ValueError(f"{self.start.name} takes no temperature; a "
+                             f"temperature fills only an open thermal start")
+        if not self.temperature_open:
+            raise ValueError(f"{self.start.name} names its own temperature or "
+                             f"mean; a temperature fills only an open one")
+        return Chain((self.start.with_values(
+            temperature_k=checked_temperature_k(temperature_k)),)
+            + self.steps[1:])
+
     def to_record(self) -> List[Dict[str, Any]]:
         """THE CHAIN AS A FRAME SET RECORDS IT (`engines/vibration-frames.md`
         § 5): its steps in order, each ``{"step": name, "values": {...}}``,
@@ -158,32 +262,23 @@ class Chain:
         """A CHAIN MADE AGAIN FROM ITS RECORD (:meth:`to_record`), by the
         starts and the events themselves, so it is checked as they check.
         Refused by name: what is no list of steps, a first step that is no
-        start, a later one that is no event, and what a start refuses."""
+        start, a later one that is no event or holds a value, a start's
+        values that are no mapping or hold a key it does not take, and what a
+        start refuses."""
         steps = list(record) if isinstance(record, (list, tuple)) else []
         if not steps or not all(isinstance(s, dict) for s in steps):
             raise ValueError(f"a chain's record is its steps in order, each "
                              f"{{\"step\", \"values\"}}; got {record!r}")
         first = steps[0]
-        name, values = first.get("step"), dict(first.get("values") or {})
-        starts = {"ground": ground, "thermal": thermal,
-                  "classical_thermal": classical_thermal}
-        if name == "level":
-            chain = level(values.get("quanta"))
-        elif name in starts:
-            chain = starts[name](**values)
-        else:
-            raise ValueError(f"a chain starts with ground, level, thermal or "
-                             f"classical_thermal; its record starts with "
-                             f"{name!r}")
+        chain = Chain((_start_step(first.get("step"),
+                                   first.get("values") or {}),))
         for s in steps[1:]:
-            if s.get("step") == "add_quantum":
-                chain = chain.add_quantum()
-            elif s.get("step") == "remove_quantum":
-                chain = chain.remove_quantum()
-            else:
+            if s.get("step") not in _EVENTS or s.get("values"):
                 raise ValueError(f"after its start a chain holds add_quantum "
-                                 f"and remove_quantum; its record holds "
-                                 f"{s.get('step')!r}")
+                                 f"and remove_quantum, each of no value; its "
+                                 f"record holds {s!r}")
+            chain = (chain.add_quantum() if s["step"] == "add_quantum"
+                     else chain.remove_quantum())
         return chain
 
     def _then(self, step: Step) -> "Chain":
@@ -192,22 +287,16 @@ class Chain:
     def add_quantum(self) -> "Chain":
         """One quantum added, detected -- a photon absorbed, a Stokes photon
         scattered, an electron losing ``hbar omega`` (science § 2e.2):
-        ``p'_n = n p_(n-1) / (<n> + 1)``."""
-        if self.is_classical:
-            raise ValueError(f"{_COUNTS_NO_QUANTA}: a quantum is added or "
-                             f"removed only on a quantum start -- ground, "
-                             f"level or thermal")
+        ``p'_n = n p_(n-1) / (<n> + 1)``; refused on a classical start, as
+        every chain's steps are checked (:func:`_checked_steps`)."""
         return self._then(_step("add_quantum"))
 
     def remove_quantum(self) -> "Chain":
         """One quantum removed, detected -- an anti-Stokes photon scattered,
         an electron gaining ``hbar omega``: ``p'_n = (n + 1) p_(n+1) /
-        <n>``.  Refused by name on a state that holds none."""
-        if self.is_classical:
-            raise ValueError(f"{_COUNTS_NO_QUANTA}: a quantum is added or "
-                             f"removed only on a quantum start -- ground, "
-                             f"level or thermal")
-        if _typed_as_holding_none(self.reduced()):
+        <n>``.  Refused by name on a classical start (:func:`_checked_steps`)
+        and on a state that holds none."""
+        if not self.is_classical and _typed_as_holding_none(self.reduced()):
             raise ValueError(_HOLDS_NONE)
         return self._then(_step("remove_quantum"))
 
@@ -276,18 +365,24 @@ class Chain:
                 raise ValueError(
                     "the chain's thermal start names no temperature: give "
                     "one here, temperature_k")
-            start = start.with_values(
-                temperature_k=checked_temperature_k(temperature_k))
+            start = self.with_temperature(temperature_k).start
+        # A PLACED THERMAL START HOLDS ITS MEAN, resolved from its
+        # temperature where it names one -- a start named one way, as every
+        # chain's is -- the temperature kept on the state beside it.
+        placed_at = start.get("temperature_k")
         if start.name == "thermal":
-            t = start.get("temperature_k")
-            mean = (oscillator.bose_einstein_mean_quanta(t) if t is not None
-                    else start.get("mean_quanta"))
-            start = start.with_values(mean_quanta=float(mean))
-        chain = Chain((start,) + self.steps[1:]).reduced()
-        if (len(chain.steps) > 1 and chain.steps[1].name == "remove_quantum"
-                and _typed_as_holding_none(Chain(chain.steps[:1]))):
+            mean = (oscillator.bose_einstein_mean_quanta(placed_at)
+                    if placed_at is not None else start.get("mean_quanta"))
+            start = _step("thermal", mean_quanta=float(mean))
+        state = OscillatorState(Chain((start,) + self.steps[1:]).reduced(),
+                                oscillator, share, placed_at)
+        # NOTHING TO REMOVE is judged on the start AS TYPED -- a thermal one
+        # at its temperature, never at a mean computed from it, which rounds
+        # to 0 on a mode too cold for a number (:func:`_typed_as_holding_none`).
+        if (len(state.steps) > 1 and state.steps[1].name == "remove_quantum"
+                and _typed_as_holding_none(Chain((state._typed_start,)))):
             raise ValueError(_HOLDS_NONE)
-        return OscillatorState(chain, oscillator, share)
+        return state
 
 
 def _typed_as_holding_none(chain: Chain) -> bool:
@@ -307,13 +402,13 @@ def _typed_as_holding_none(chain: Chain) -> bool:
 
 def ground() -> Chain:
     """The ground state, ``|0>``: the zero-point motion alone."""
-    return Chain((_step("ground"),))
+    return Chain((_start_step("ground", {}),))
 
 
 def level(n: int) -> Chain:
     """The oscillator's level ``n``, ``|n>``: ``n`` quanta exactly -- a
     whole number, 0 or more."""
-    return Chain((_step("level", quanta=_whole(n, "a level", 0)),))
+    return Chain((_start_step("level", {"quanta": n}),))
 
 
 def thermal(temperature_k: Optional[float] = None,
@@ -322,24 +417,16 @@ def thermal(temperature_k: Optional[float] = None,
     quanta on average (many quanta added at random and relaxed, science
     § 2a.1), or neither: the temperature left open, taken where the chain
     is placed.  Both at once are refused by name."""
-    if temperature_k is not None and mean_quanta is not None:
-        raise ValueError("a thermal state is named by a temperature or by a "
-                         "mean number of quanta, not both")
-    values = {}
-    if temperature_k is not None:
-        values["temperature_k"] = checked_temperature_k(temperature_k)
-    if mean_quanta is not None:
-        values["mean_quanta"] = _checked_quanta(mean_quanta)
-    return Chain((_step("thermal", **values),))
+    return Chain((_start_step("thermal", {"temperature_k": temperature_k,
+                                          "mean_quanta": mean_quanta}),))
 
 
 def classical_thermal(temperature_k: Optional[float] = None) -> Chain:
     """The classical bell curve at ``temperature_k`` -- no zero-point motion,
     at 0 K a point at rest (science § 2b.3) -- or its temperature left
     open."""
-    values = ({} if temperature_k is None
-              else {"temperature_k": checked_temperature_k(temperature_k)})
-    return Chain((_step("classical_thermal", **values),))
+    return Chain((_start_step("classical_thermal",
+                              {"temperature_k": temperature_k}),))
 
 
 # --------------------------------------------------------------------- #
@@ -412,20 +499,24 @@ def _levels_kept(p: np.ndarray, order: int, precision: float) -> int:
 
 
 @functools.lru_cache(maxsize=64)
-def _evolve(chain: Chain, order: int, precision: float) -> np.ndarray:
+def _evolve(chain: Chain, order: int, precision: float,
+            typed_start: Step) -> np.ndarray:
     """The list a placed, reduced quantum ``chain`` makes (science § 2e.2):
     a level, ``p_n = 1`` at it; a thermal start and the quanta added and
     removed after it, from one formula (:func:`_heat_list`) -- a thermal
     start typed at exactly 0 K the ground state, its events taken one by
     one (a quantum added ``p'_n = n p_(n-1)``, one removed ``p'_n = (n + 1)
-    p_(n+1)``, each renormalised), a removal it cannot make refused.  Cut
-    where its levels hold less than ``precision`` of ``<x^order>``
-    (:func:`_levels_kept`), read-only."""
+    p_(n+1)``, each renormalised), a removal it cannot make refused --
+    judged on ``typed_start``, the start as the person typed it
+    (:attr:`OscillatorState._typed_start`).  Cut where its levels hold less
+    than ``precision`` of ``<x^order>`` (:func:`_levels_kept`),
+    read-only."""
     start, events = chain.start, tuple(s.name for s in chain.steps[1:])
     if start.name == "level":
         p = np.zeros(start.get("quanta") + 1)
         p[-1] = 1.0
-    elif start.name == "ground" or _typed_as_holding_none(Chain((start,))):
+    elif start.name == "ground" or _typed_as_holding_none(
+            Chain((typed_start,))):
         p = np.array([1.0])                 # exactly 0 K, as typed
         for event in events:
             if event == "add_quantum":
@@ -487,11 +578,15 @@ def _closed_mean(chain: Chain) -> Optional[float]:
 @dataclass(frozen=True)
 class OscillatorState:
     """A CHAIN PLACED ON AN OSCILLATOR (:meth:`Chain.on`) -- its reduced
-    ``chain``, its thermal start's mean quanta and temperature resolved, its
-    ``oscillator``, and the ``precision`` its list is cut to."""
+    ``chain``, a thermal start's mean resolved (the start holds its mean
+    alone, named one way as every chain's start is), its ``oscillator``,
+    the ``precision`` its list is cut to, and ``temperature_k``, the
+    temperature of its start -- a thermal one's it was placed at, a
+    classical one's -- or ``None``."""
     chain: Chain
     oscillator: Oscillator
     precision: float = _PRECISION
+    temperature_k: Optional[float] = None
 
     @property
     def steps(self) -> Tuple[Step, ...]:
@@ -507,7 +602,18 @@ class OscillatorState:
         if self.is_classical:
             raise ValueError(_COUNTS_NO_QUANTA)
         return _evolve(self.chain, _whole(order, "an average's order", 0),
-                        self.precision)
+                       self.precision, self._typed_start)
+
+    @property
+    def _typed_start(self) -> Step:
+        """Its start as the person typed it, temperature filled where it was
+        left open: a thermal start placed at a temperature that temperature
+        (its chain holding the mean resolved from it), else the chain's own
+        start -- what a removal from a state that holds none is judged on,
+        never a mean computed (:func:`_typed_as_holding_none`)."""
+        if self.chain.start.name == "thermal" and self.temperature_k is not None:
+            return _step("thermal", temperature_k=self.temperature_k)
+        return self.chain.start
 
     @property
     def populations(self) -> np.ndarray:
@@ -534,25 +640,30 @@ class OscillatorState:
         return float((np.arange(p.size) * p).sum())
 
     @property
-    def temperature_k(self) -> Optional[float]:
-        """The temperature of its start -- a thermal one's, a classical
-        thermal one's -- or ``None``."""
-        return self.chain.start.get("temperature_k")
-
-    @property
     def words(self) -> str:
         """The state in words, each step saying itself, its thermal start's
         mean resolved (*thermal at 300 K (0.621 mean quanta); one quantum
         added*) -- :func:`_steps_words`."""
-        return _steps_words(self.chain.steps)
+        return _steps_words(self.chain.steps, None, self.temperature_k)
+
+    def words_with_source(self, source: Optional[str]) -> str:
+        """Its words, its start's temperature said as ``source``'s
+        (*thermal at 300 K (0.621 mean quanta), the record's temperature;
+        one quantum added*); ``None`` says none."""
+        return _steps_words(self.chain.steps, source, self.temperature_k)
 
 
-def _steps_words(steps: Tuple[Step, ...]) -> str:
+def _steps_words(steps: Tuple[Step, ...], source: Optional[str] = None,
+                 placed_at: Optional[float] = None) -> str:
     """A CHAIN'S STEPS IN WORDS, the one wording of a state's steps -- a
     chain's (:attr:`Chain.words`) and a placed state's
     (:attr:`OscillatorState.words`), each step saying what it states: a
     thermal start its temperature and, placed, its mean quanta; a start
-    left open says so."""
+    left open says so; ``source``, where an open start's temperature was
+    taken from, said right after that temperature (*…, the record's
+    temperature*); ``placed_at``, the temperature a placed thermal start
+    was placed at, its step holding the mean resolved from it."""
+    taken = f", {source} temperature" if source else ""
     out = []
     for s in steps:
         if s.name == "ground":
@@ -561,18 +672,20 @@ def _steps_words(steps: Tuple[Step, ...]) -> str:
             out.append(f"{_quanta_words(s.get('quanta'))} exactly")
         elif s.name == "thermal":
             t, n = s.get("temperature_k"), s.get("mean_quanta")
+            t = placed_at if t is None else t
             mean = (None if n is None else
                     _quanta_words(n, kind="mean ", spec=".3g"))
             if t is not None:
                 out.append(f"thermal at {t:g} K"
-                           + (f" ({mean})" if mean is not None else ""))
+                           + (f" ({mean})" if mean is not None else "")
+                           + taken)
             else:
                 out.append(f"thermal, {mean}" if mean is not None
                            else "thermal, its temperature open")
         elif s.name == "classical_thermal":
             t = s.get("temperature_k")
             out.append("the classical bell curve "
-                       + (f"at {t:g} K" if t is not None
+                       + (f"at {t:g} K{taken}" if t is not None
                           else "at a temperature left open")
                        + ", no zero-point motion")
         elif s.name == "add_quantum":

@@ -46,61 +46,6 @@ def _pair(tmp_path, rows=(), frame_rows=(), info=None, n=2, name="set.xyz"):
     return StructureCodec().write(s, tmp_path / name)
 
 
-@pytest.mark.parametrize("written", ["before 2.81.0, its spread's name",
-                                     "before 2.81.0, its frequency stated",
-                                     "before 2.81.0, its info.vibration",
-                                     "by a person, no assumptions",
-                                     "now"])
-def test_a_mode_sets_assumptions_are_its_own_or_said_for_an_older_one(
-        tmp_path, written):
-    """Science § 7 ("never dropped"), § 5.1, § 7's ``reaveraged``: a mode's
-    own set states its harmonic assumptions as its ``assumptions`` row,
-    read as written; a set written before 2.81.0 -- told by its own marks,
-    the spread's older name or ``info.vibration``, every one a thermal set
-    -- states none, and the toolkit says them for it
-    (`assumptions_of_set`), in the words a set states them now, at its
-    temperature; a person's set that states none is said nothing of, its
-    state not known.  The silent failures: an older set's re-average
-    returned with its harmonic picture nowhere beside it; a person's own
-    set said to be thermal."""
-    from molbuilder.frameset import read
-    from molbuilder.vibration_frames import (assumptions_of_a_mode,
-                                             assumptions_of_set)
-    from molbuilder.workingcopy_structure import StructureCodec
-    rows = [("mode_index_1based", 6, "1", None),
-            ("temperature_k", 300.0, "K", None)]
-    info = None
-    if written == "before 2.81.0, its frequency stated":
-        rows += [("frequency_cm1", 120.0, "cm-1", None),
-                 ("sigma_amu12_ang", 0.12, "amu^1/2 angstrom", None)]
-    if written == "before 2.81.0, its spread's name":
-        rows.append(("sigma_amu12_ang", 0.12, "amu^1/2 angstrom", None))
-    elif written == "before 2.81.0, its info.vibration":
-        info = {"vibration": {"run": "P/vib/old", "result_sha256": "cd" * 32}}
-    elif written == "now":
-        rows.append(("assumptions", "the maker's own words", None, None))
-    s = StructureCodec().load(_pair(tmp_path, rows=rows, info=info),
-                              frames=True)
-    got = assumptions_of_set(read(s), s.info)
-    if written == "before 2.81.0, its frequency stated":
-        # ITS MEAN COUNTED AT THE FREQUENCY IT STATES -- Bose and Einstein
-        # by CODATA (§ 7: in the words a set states them now).
-        assert (f"thermal at 300 K ({_n_th(120.0, 300.0):.3g} mean quanta)"
-                in got), got
-        return
-    if written.startswith("before"):
-        # THE WORDS A SET WRITTEN NOW STATES -- a mode's own set's row of
-        # its state, here the thermal chain at the set's temperature, in
-        # its words (*thermal at 300 K*; the set states no frequency to
-        # count its quanta at).
-        assert got == assumptions_of_a_mode(
-            states.thermal(temperature_k=300.0).words), got
-        assert "thermal at 300 K" in got, got
-        return
-    assert got == (None if written == "by a person, no assumptions"
-                   else "the maker's own words"), got
-
-
 # ----------------------------------------------------------------------- #
 #  The weights for a set's rows at a state (§ 7)                           #
 # ----------------------------------------------------------------------- #
@@ -119,7 +64,7 @@ def _mode_set(m=3, temperature_k=300.0, with_temperature=True, *,
     left out, frame ``no_q_at`` stating none."""
     from molbuilder.frameset import read
     from molbuilder.structure import Structure
-    from molbuilder.vibration import thermal_spread_amu12_ang
+    from molbuilder.oscillator import thermal_spread_amu12_ang
     sigma = thermal_spread_amu12_ang(_QZP, _NU, temperature_k)
     x, w = np.polynomial.hermite.hermgauss(m)
     # THE ROAD'S ORDER (`engines/vibration-frames.md` § 4): frame 0 at the
@@ -509,6 +454,15 @@ def test_a_recipes_set_is_written_with_the_rows_of_its_kind(tmp_path, kind):
     for name in absent:
         assert rows.value(name) is None, name
     assert rows.value("assumptions") and rows.value("mass_source")
+    # WHAT FRAMES OF A VIBRATION ASSUME is the set's own to say, beside the
+    # harmonic picture (science § 7; the user, 2026-11-26: transport does
+    # the transport calculation and that's it): the electron fast against
+    # the vibration, no inelastic step in a frame average, the same state at
+    # every voltage.
+    for said in ("the electrons cross fast against the vibration",
+                 "inelastic steps at eV = hbar omega",
+                 "The state is the same at every voltage"):
+        assert said in rows.value("assumptions"), (said, kind)
     vocabulary = {r.name: r for r in ROWS}
     for r in (*rows.structure, *rows.frames[0]):
         if r["name"] in vocabulary:
@@ -721,12 +675,15 @@ def test_a_mode_set_records_the_state_it_was_bound_from(tmp_path, case):
 
 def test_a_mode_set_that_records_no_state_is_read_without_it(tmp_path):
     """§ 5 (the user's choice of 2026-11-26): a mode's own set that records
-    no ``info.state`` -- as 2.81-2.84 wrote one, or a person's frames
-    written in the toolkit's rule's rows -- reads back as its frames,
-    weights and coordinates whole, said once that it records no state, its
-    state none: no reader of its rows as a state.  THE SILENT FAILURE: a
-    state guessed from a set's rows -- a thermal state read for frames
-    placed for another."""
+    no ``info.state`` -- as molbuilder before 2.85.0 wrote one, or a
+    person's frames written in the toolkit's rule's rows -- reads back as
+    its frames, weights, coordinates and moves whole (each atom's from the
+    geometries as written, frame 0 the reference), said once that it
+    records no state, its state none, its run not reopened and no
+    vibration asked for: no reader of its rows as a state.  THE SILENT
+    FAILURES: a state guessed from a set's rows -- a thermal state read for
+    frames placed for another; a script told to give a vibration that
+    could bind nothing; no moves for a set whose geometries hold them."""
     from molbuilder.postprocess import read_frame_set, write_frame_set
     from molbuilder.vibration import Frames
     v = _model()
@@ -748,6 +705,62 @@ def test_a_mode_set_that_records_no_state_is_read_without_it(tmp_path):
         assert np.array_equal(back.q_amu12_ang[:, 0], q)
         assert np.array_equal(back.weights, f.weights)
         assert back.exact_to_degree == 5
+        assert not any("give one" in w or "vibration run" in w
+                       for w in back.said), back.said
+        # ITS MOVES, FROM THE GEOMETRIES AS WRITTEN: the .xyz's six decimals.
+        assert back.atom_moves_ang is not None
+        assert np.allclose(back.atom_moves_ang,
+                           f.positions_ang - f.positions_ang[:1], atol=2e-6)
+
+
+#: A RECORD THAT DOES NOT BIND AGAIN, one row per kind of set: the frames, the
+#: sidecar's record its start's key misspelled (as a person's edit leaves
+#: it), and what the set is said to be read without.
+_UNBOUND = [
+    ("a mode's set",
+     lambda v: v.mode(1).bind(_WARM).frames(3),
+     lambda info: info["state"]["chain"][0],
+     "its recorded state does not bind again", "mode_distribution"),
+    ("a snapshot set",
+     lambda v: v.motion(_WARM).sample(4, seed=7, antithetic=False),
+     lambda info: info["sampling"]["background"]["chain"][0],
+     "its recorded motion does not bind again", "motion"),
+]
+
+
+@pytest.mark.parametrize("case, frames_of, start_of, words, held_as",
+                         _UNBOUND, ids=[row[0] for row in _UNBOUND])
+def test_a_recorded_state_that_does_not_bind_again_is_said(
+        tmp_path, case, frames_of, start_of, words, held_as):
+    """§ 5: a set whose recorded state or motion does not bind again to its
+    vibration -- its start's ``temperature_k`` spelled ``temperatur_k`` in
+    the sidecar -- is read without it, said once with the start's own
+    refusal, its frames, weights and geometries whole.  THE SILENT
+    FAILURES: a read that stops on a set whose frames are all there; a
+    state bound with the misspelled value dropped -- a thermal start left
+    open, bound at another temperature than the set's."""
+    import json
+    from molbuilder.postprocess import read_frame_set, write_frame_set
+    from molbuilder.sidecars.molstruct import sidecar_path_for
+    v = _model()
+    f = frames_of(v)
+    path = write_frame_set(tmp_path / "set.xyz", f).path
+    side = sidecar_path_for(path)
+    payload = json.loads(side.read_text())
+    start = start_of(payload["info"])
+    start["values"] = {"temperatur_k": start["values"]["temperature_k"]}
+    side.write_text(json.dumps(payload))
+    back = read_frame_set(path, vibration=v)
+    assert getattr(back, held_as) is None
+    assert [w for w in back.said if words in w] == [
+        f"{words} (thermal takes temperature_k or mean_quanta; got "
+        f"'temperatur_k'): it is read without its "
+        f"{'state' if held_as == 'mode_distribution' else 'motion'}"], \
+        back.said
+    # READ WITH ITS VIBRATION, never said to be read without it.
+    assert not any("without its vibration" in w for w in back.said), back.said
+    assert np.array_equal(back.weights, f.weights)
+    assert np.allclose(back.positions_ang, f.positions_ang, atol=1e-6)
 
 
 def test_a_persons_frames_are_written_with_what_every_set_needs(tmp_path):
@@ -1088,6 +1101,8 @@ def test_a_set_at_the_results_own_frequency_states_no_scale(tmp_path, scaled):
      "the vibration given is not"),
     ("no vibration", "FrameSetError", "vibration is a vibration"),
     ("no rows", "FrameSetError", "states no frame set's rows"),
+    ("one structure stating a row", "FrameSetError",
+     "a frame set holds two frames or more"),
     ("no run", "FrameSetError",
      "no run of ours -- a vibration is read from its run's folder"),
     ("no run, at the run door", "FrameSetError",
@@ -1102,8 +1117,9 @@ def test_the_reader_and_the_run_door_refuse_by_name(tmp_path, call, cls,
                                                     refused):
     """§ 1, § 3.3, § 5: refused by name, each in its door's own class -- a
     vibration given that is not the set's (its result's sha256 not the
-    set's), a person's set too, or that is no vibration; a structure that
-    states no frame set's rows; a folder that holds no run of ours, a path
+    set's), a person's set too, or that is no vibration; frames that state
+    no frame set's rows, and one structure, whatever rows it states (a frame
+    set holds two frames or more); a folder that holds no run of ours, a path
     that is not there and a file of another name, each naming the two forms
     a vibration is read from where both are taken, the run door naming the
     run's folder alone (the command line and the page ask it).  The model
@@ -1137,9 +1153,13 @@ def test_the_reader_and_the_run_door_refuse_by_name(tmp_path, call, cls,
             (tmp_path / "notes.txt").write_text("mine")
             vibration(tmp_path / "notes.txt")
         elif call == "no rows":
-            lone = StructureCodec().write(Structure.from_xyz(
-                "2\nH2\nH 0 0 0\nH 0 0 0.74\n"), tmp_path / "lone.xyz")
-            read_frame_set(lone)
+            h2 = Structure.from_xyz("2\nH2\nH 0 0 0\nH 0 0 0.74\n")
+            read_frame_set(StructureCodec().write(
+                h2.with_frames([h2.positions] * 2), tmp_path / "bare.xyz"))
+        elif call == "one structure stating a row":
+            lone = Structure.from_xyz("2\nH2\nH 0 0 0\nH 0 0 0.74\n")
+            lone.set_customized("bond", "H-H")
+            read_frame_set(StructureCodec().write(lone, tmp_path / "lone.xyz"))
         elif call == "no run":
             vibration(tmp_path)
         elif call == "no run, at the run door":

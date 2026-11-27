@@ -22,8 +22,8 @@ from ``mb_pyscf.pyz`` and runs the projection inside its run
 (`runwrap.members`, `engines/pyscf.md` § 3), and a SIESTA
 vibration's `fc` record step runs it from ``mb_vibration.pyz``
 (`runwrap.members`, `engines/vibration.md` § 5.11 § 3) -- both where
-this package is not installed, so it imports only the ``constants`` and a
-mode's mechanics (`vibration`) that travel beside it.
+this package is not installed, so it imports only the ``constants`` and the
+oscillator's mechanics (`oscillator`) that travel beside it.
 
 THE MODES' TEMPERATURES live here too, beside the thermochemistry's grid
 they extend (:func:`mode_temperatures`, `engines/vibration.md` § 6.6,
@@ -37,11 +37,12 @@ from __future__ import annotations
 try:                                        # inside molbuilder
     from ..constants import (BOLTZMANN_HARTREE_K, CM1_KELVIN,
                              CM1_PER_SQRT_HARTREE_BOHR2_AMU, HARTREE_CM1)
-    from ..vibration import bose_einstein_mean_quanta
+    from ..oscillator import bose_einstein_mean_quanta
 except ImportError:                         # beside a job, in either bundle
     from constants import (BOLTZMANN_HARTREE_K, CM1_KELVIN,
                            CM1_PER_SQRT_HARTREE_BOHR2_AMU, HARTREE_CM1)
-    from vibration import bose_einstein_mean_quanta  # type: ignore[no-redef]
+    from oscillator import (  # type: ignore[no-redef]
+        bose_einstein_mean_quanta)
 
 
 def rigid_motions(positions, held, axis_kind, cell=None, tol_ang=1e-3):
@@ -296,7 +297,7 @@ def vibrational_thermo(freqs_cm1, temperature_K):
     zpe = float(0.5 * w.sum())
     if T <= 0.0:
         return zpe, 0.0, 0.0
-    # EACH MODE'S MEAN QUANTA, the one occupation rule (`vibration`), and
+    # EACH MODE'S MEAN QUANTA, the one occupation rule (`oscillator`), and
     # hbar omega / k_B T by the same constant it reads.
     n = bose_einstein_mean_quanta(nu, T)
     x = nu * CM1_KELVIN / T
@@ -426,5 +427,4 @@ __all__ = ["rigid_motions", "mode_count", "vibrational_modes", "signed_omega",
 
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
 #: imports there by their bare names (`runwrap.bundle_members`).
-TRAVELS_WITH = ("molbuilder.constants",
-                "molbuilder.vibration")
+TRAVELS_WITH = ("molbuilder.constants", "molbuilder.oscillator")

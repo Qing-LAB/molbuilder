@@ -971,6 +971,11 @@ def test_what_a_frame_sets_state_means_is_served_as_the_script_says_it(
         assert said["spread_amu12_ang"] == pytest.approx(
             said["spread_over_zero_point"]
             * mode["zero_point_amplitude_amu12_ang"], rel=1e-12)
+        # WHAT IT HOLDS IN THE ONE WORDING the command line prints too
+        # (§ 4.3): its spread against its zero-point amplitude, four figures.
+        assert said["holds"].endswith(
+            f"its spread is {said['spread_over_zero_point']:.4g} times its "
+            f"zero-point amplitude"), said["holds"]
         for nodes in OFFERED_NODES:
             assert said["outermost_move_ang"][str(nodes)] == outermost_move(
                 path, mode=mode["index_1based"], chain_or_distribution=chain,
@@ -989,7 +994,10 @@ def test_write_frame_set_asks_the_state_and_writes_it(
     silent failures: a field another state needs left asking, a note of a
     state no longer in the fields, a note that shrinks and lifts *Next*
     under the pointer, a set far outside the harmonic picture written
-    unsaid, or one written at the temperature the box still held."""
+    unsaid, or one written at the temperature the box still held; the
+    folder written into announced in a spelling no subscriber compares
+    (`projects/state.js` folderKey, an absolute path), so the sidebar never
+    shows the pair just written."""
     from playwright.sync_api import expect
     from molbuilder.frameset import read
     from molbuilder.workingcopy_structure import StructureCodec
@@ -1052,7 +1060,13 @@ def test_write_frame_set_asks_the_state_and_writes_it(
         expect(modal).to_contain_text("holds many quanta")
         modal.locator("[data-action='cancel']").click()
         expect(page.locator("#frameset-status")).to_have_text("not written")
-        # TWO QUANTA, written.
+        # TWO QUANTA, written -- the folder announced as every subscriber
+        # compares it, its absolute path (`web/projects.md` § 2).
+        # A FUNCTION, so Playwright runs its body whole (a string of two
+        # statements left the listener unattached).
+        page.evaluate("() => { window.__announced = []; "
+                      "window.molbuilder.projects.onFolderChanged("
+                      "  (e) => window.__announced.push(e.dir)); }")
         dialog = opened()
         dialog.locator("[data-role='state']").select_option("quanta")
         dialog.locator("[data-role='quanta']").fill("2")
@@ -1062,6 +1076,8 @@ def test_write_frame_set_asks_the_state_and_writes_it(
         where_and_name_answered(page, project, project / "structure", "q2")
         expect(page.locator("#frameset-status")).to_contain_text(
             "frame 1 of 3:", timeout=60000)
+        assert str(project / "structure") in page.evaluate(
+            "window.__announced"), page.evaluate("window.__announced")
     rows = read(StructureCodec().load(project / "structure" / "q2.xyz",
                                       frames=True))
     assert rows.value("quanta") == 2

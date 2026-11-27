@@ -8,7 +8,8 @@ This module is the SINGLE source of truth for:
 * JSON -> dataclass coercion (used by Build for SiestaConfig /
   PySCFConfig form values)
 * a calculation's cited pair against its record (``cited_pair_said``:
-  the transport blueprint's record and reuse answers)
+  the transport blueprint's record and reuse answers, Task setup's folder
+  answer)
 
 If a helper is genuinely blueprint-specific (e.g. Build's
 ``/api/build/load`` accepts both multipart and JSON, Modify's body
@@ -54,8 +55,9 @@ def cited_pair_said(citation, tree_root, files) -> List[str]:
     as pinned (`compose.pair_changed_said`); nothing for a run's folder, a
     citation outside the tree or a record that pinned nothing.  The frames
     the page draws are the calculation's own, whatever became of the pair.
-    The transport blueprint's record and reuse answers carry it as their
-    ``frame_set``'s ``said``."""
+    The transport blueprint's record and reuse answers and the build
+    blueprint's folder answer (Task setup) carry it as their ``frame_set``'s
+    ``said``."""
     if not citation or files is None:
         return []
     from molbuilder.projects import OutsideRoot, at

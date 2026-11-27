@@ -185,8 +185,7 @@ def test_a_thermal_state_of_no_quanta_is_the_ground_states_curve(start):
     lost."""
     state = start.on(_ANY)
     assert state.steps[0].name == "thermal"
-    assert state.steps[0].get("temperature_k") == start.start.get(
-        "temperature_k")
+    assert state.temperature_k == start.start.get("temperature_k")
     curve = dist.of_state(state)
     x = np.linspace(-4.0, 4.0, 9)
     assert curve.pdf(x) == pytest.approx(
@@ -255,6 +254,19 @@ def test_a_list_is_cut_where_the_averages_asked_of_it_stop_changing():
     s = states.thermal(temperature_k=300.0).on(Oscillator(50.0))
     assert [s.populations_for(k).size for k in (0, 4, 8, 12)] == [
         154, 183, 206, 227]
+
+
+def test_a_states_list_is_cut_for_the_largest_rule_the_doors_offer():
+    """Science § 2e.4, § 2e.6: a state's list as it is placed (its
+    ``populations``) is cut for the highest average the largest rule the
+    doors offer reproduces -- seven frames, ``<x^12>`` -- so that rule's
+    frames from the list are the state's.  THE SILENT FAILURE: the doors
+    offering more frames than the list was cut for, the outermost frames'
+    averages off."""
+    from molbuilder.vibration_frames import OFFERED_NODES
+    order = 2 * max(OFFERED_NODES) - 2
+    s = states.thermal(temperature_k=300.0).on(Oscillator(50.0))
+    assert s.populations.size >= s.populations_for(order).size
 
 
 @pytest.mark.parametrize("route", ["closed form", "the list's route"])
@@ -395,8 +407,12 @@ def test_a_paired_sets_even_and_odd_parts_are_their_spreads():
     per_energy = np.array([[1.0, 10.0], [3.0, 30.0], [5.0, 50.0], [7.0, 70.0]])
     assert sampling.pair_means(per_energy) == pytest.approx(
         np.array([[2.0, 20.0], [6.0, 60.0]]), abs=1e-15)
-    with pytest.raises(ValueError, match="two by two"):
+    with pytest.raises(ValueError, match="two by two.*got 3 values$"):
         sampling.pair_means([0.0, 1.0, 3.0])
+    with pytest.raises(ValueError, match="got 1 value$"):
+        sampling.pair_means([0.0])
+    with pytest.raises(ValueError, match="got a single number$"):
+        sampling.pair_means(3.0)
 
 
 def test_a_states_list_cannot_be_edited():
@@ -552,6 +568,22 @@ def test_the_oscillators_own_numbers_are_the_constants():
     assert o.bose_einstein_temperature(0.5) == pytest.approx(
         codata.h * codata.c * 100.0 * 1000.0 / (codata.k * math.log(3.0)),
         rel=1e-9)
+
+
+def test_a_mean_number_of_quanta_names_its_temperature():
+    """Science § 2a.1, `engines/vibration-frames.md` § 9.1: the temperature
+    whose thermal state holds ``n`` quanta, ``T = h c nu / (k_B ln(1 +
+    1/n))`` -- one quantum of a 1000 cm-1 mode at ``h c nu / (k_B ln 2)``,
+    2075.7 K by CODATA -- 0 K for none; back through Bose and Einstein it is
+    ``n``.  THE SILENT FAILURE: a pumped mode's set written at a temperature
+    that holds other quanta than it was pumped to."""
+    from scipy import constants as codata
+    hc_nu = codata.h * codata.c * 100.0 * 1000.0
+    t = oscillator.bose_einstein_temperature(1000.0, 1.0)
+    assert t == pytest.approx(hc_nu / (codata.k * math.log(2.0)), rel=1e-8)
+    assert oscillator.bose_einstein_mean_quanta(1000.0, t) == pytest.approx(
+        1.0, rel=1e-12)
+    assert oscillator.bose_einstein_temperature(1000.0, 0.0) == 0.0
 
 
 def test_the_ladder_operators_are_the_sciences():
@@ -801,6 +833,30 @@ def test_a_scale_that_is_none_is_refused_by_name(scale):
         dist.Level(2).scaled(scale)
 
 
+@pytest.mark.parametrize("distribution, words", [
+    (lambda: dist.Gaussian(1.3), "a bell curve of spread 1.3"),
+    (lambda: dist.Gaussian(0.0), "a point at rest at 0"),
+    (lambda: dist.Level(1), "1 quantum exactly"),
+    (lambda: dist.Level(3), "3 quanta exactly"),
+    (lambda: dist.QuantumAdded(0.62),
+     "one quantum added to a thermal state of 0.62 mean quanta"),
+    (lambda: dist.LevelList([0.25, 0.5, 0.25]),
+     "a list over 3 levels, 1 mean quantum"),
+    (lambda: dist.LevelList([1.0]), "a list over 1 level, 0 mean quanta"),
+    (lambda: dist.Gaussian(1.0).scaled(1.3),
+     "a bell curve of spread 1, scaled by 1.3"),
+], ids=["a bell curve", "a point at rest", "1 quantum", "3 quanta",
+        "one quantum on a warm mode", "a list over 3 levels",
+        "a list over 1 level", "scaled"])
+def test_a_distributions_words_say_its_family(distribution, words):
+    """`engines/vibration-frames.md` § 9.1's ``words``: a family says what it
+    is, its count's noun chosen on the figure written -- *1 quantum*, *1
+    level*, *3 levels*, *0 mean quanta* -- a ``Scaled`` its base's and its
+    scale.  The silent failure: a set's assumptions row naming another
+    distribution than its frames were placed for."""
+    assert distribution().words == words
+
+
 #: ONE OF EACH FAMILY A SET RECORDS (`engines/vibration-frames.md` § 5's
 #: ``info.state``, § 9.1): the four families, a list given unnormalised,
 #: and one in another unit.
@@ -923,17 +979,83 @@ def test_a_chains_record_makes_it_again_as_given(name):
       {"step": "add_quantum", "values": {}}], "counts no quanta"),
     ([{"step": "ground", "values": {}},
       {"step": "remove_quantum", "values": {}}], "holds none"),
+    ([{"step": "thermal", "values": {"temperatur_k": 300.0}}],
+     "thermal takes temperature_k or mean_quanta; got 'temperatur_k'"),
+    ([{"step": "thermal", "values": [300.0]}],
+     "a start's values are a mapping"),
+    ([{"step": "level", "values": {"quanta": 2, "spin": 1}}],
+     "level takes quanta; got 'spin'"),
+    ([{"step": "ground", "values": {}},
+      {"step": "add_quantum", "values": {"n": 2}}], "each of no value"),
 ], ids=["no steps", "no list", "an event first", "a second start",
         "a temperature below zero", "half a level", "a quantum on a "
-        "classical start", "a quantum from the ground state"])
+        "classical start", "a quantum from the ground state",
+        "a key the start does not take", "values that are no mapping",
+        "a level's extra key", "an event holding a value"])
 def test_a_record_that_makes_no_chain_is_refused_by_name(record, refused):
     """`engines/vibration-frames.md` § 9.1: a chain's record is made again
     by the starts and events themselves -- what is no list of steps, a
-    first step that is no start, a later one that is no event, and what a
-    start or an event refuses, each refused by name.  THE SILENT FAILURE: a
-    set's state read back as a chain no person could have written."""
+    first step that is no start, a later one that is no event or holds a
+    value, a start's values that are no mapping or hold a key it does not
+    take, and what a start or an event refuses, each refused by name.  THE
+    SILENT FAILURE: a set's state read back as a chain no person could have
+    written, or a misspelled key dropped and the start read as open."""
     with pytest.raises(ValueError, match=refused):
         states.Chain.from_record(record)
+
+
+@pytest.mark.parametrize("steps, refused", [
+    ((states.Step("thermal", (("mean_quanta", 1.0),)),
+      states.Step("add_quantm")), "after its start a chain holds add_quantum"),
+    ((states.Step("ground"), states.Step("add_quantum"),
+      states.Step("thermal", (("temperature_k", 300.0),))),
+     "after its start a chain holds add_quantum"),
+    ((states.Step("classical_thermal"), states.Step("add_quantum")),
+     "counts no quanta"),
+    ((states.Step("warm"),), "a chain starts with ground, level, thermal"),
+    ((states.Step("thermal", (("temperatur_k", 300.0),)),),
+     "thermal takes temperature_k or mean_quanta"),
+    ((states.Step("level", (("quanta", -1),)),), "a level is a whole number"),
+    ((), "a chain is a start and the events after it"),
+    ((states.Step("ground"), states.Step("add_quantum", (("n", 2),))),
+     "each of no value"),
+    ((states.Step("thermal", (("mean_quanta", 5.0), ("temperature_k", 300.0))),),
+     "named by a temperature or by a mean number of quanta, not both"),
+], ids=["a misspelled event", "a start after an event",
+        "a quantum on a classical start", "no start", "a misspelled key",
+        "a level below zero", "no steps", "an event holding a value",
+        "a thermal start naming both"])
+def test_a_chain_built_by_hand_is_checked_as_its_steps_check(steps, refused):
+    """`engines/vibration-frames.md` § 9.1 (`Step`, `Chain`), science
+    § 2e.2: a chain built by hand from `Step`s is checked as the starts and
+    the events check them -- a first step that is no start, a key it does
+    not take or a value it refuses, a thermal start naming both a
+    temperature and a mean, a later step that is no event or holds a value,
+    a quantum on a classical start -- refused by name.  THE SILENT FAILURES:
+    a misspelled event computed and said as a quantum removed; a start
+    after an event said in the words but ignored in the numbers; a mean
+    said in the words and another placed."""
+    with pytest.raises(ValueError, match=refused):
+        states.Chain(steps)
+
+
+@pytest.mark.parametrize("chain, refused", [
+    (states.thermal(temperature_k=300.0), "names its own temperature or mean"),
+    (states.thermal(mean_quanta=2.0), "names its own temperature or mean"),
+    (states.ground(), "ground takes no temperature"),
+    (states.level(2), "level takes no temperature"),
+], ids=["a start at its own temperature", "a start of its own mean",
+        "the ground state", "a level"])
+def test_a_temperature_fills_only_an_open_start(chain, refused):
+    """`engines/vibration-frames.md` § 9.1 (`with_temperature`): a
+    temperature fills an open start -- *thermal at 77 K; one quantum added*
+    -- and is refused by name for a start that names its own or takes none.
+    THE SILENT FAILURE: a set's 300 K start quietly moved to another
+    temperature, or a level given one it has no use for."""
+    assert states.thermal().add_quantum().with_temperature(77.0).words == \
+        "thermal at 77 K; one quantum added"
+    with pytest.raises(ValueError, match=refused):
+        chain.with_temperature(77.0)
 
 
 @pytest.mark.parametrize("chain, says, open_", [

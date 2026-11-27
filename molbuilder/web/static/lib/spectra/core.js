@@ -1237,12 +1237,6 @@
      *  and for a tick alike. */
     function _refusedWords(a, path) {
         const refused = a.body || {};
-        if (refused.kind === "schema_mismatch") {
-            return "Schema version mismatch (expected "
-                + refused.expected_version + ", got "
-                + refused.actual_version + "). "
-                + "Update molbuilder or use a matching script version.";
-        }
         if (refused.kind === "not_found") {
             // The dropdown lists files that exist, so this one went
             // between the listing and the read.
@@ -3747,24 +3741,17 @@
                                    : null;
         };
         // WHAT THE STATE MEANS FOR THIS MODE, the door's (§ 4.3's table):
-        // the state in the set's words (``state``), its quanta and its
-        // spread against its zero-point one, and the outermost move for the
-        // rule chosen.  A count said as the command
-        // line says it: four figures, the noun the figure's -- "1 quantum"
-        // for a mean of 1.0004, "2 quanta".
-        const figures = (x) => String(Number(Number(x).toPrecision(4)));
-        const quanta = (x) => figures(x) + (figures(x) === "1" ? " quantum"
-                                                               : " quanta");
+        // the state in the set's words (``state``), what it holds -- its
+        // quanta and its spread against its zero-point amplitude, in the
+        // words the command line prints (``holds``, the server's one
+        // wording) -- and the outermost move for the rule chosen.
+        const sentence = (s) => s.charAt(0).toUpperCase() + s.slice(1);
         const meaning = (said, nodes) => {
             const f = said && said.f;
             const move = f && f.outermost_move_ang
                 ? f.outermost_move_ang[nodes] : null;
             if (!f || !f.state || move == null) return "";
-            const head = f.state.charAt(0).toUpperCase() + f.state.slice(1)
-                + ".  The mode holds " + quanta(f.mean_quanta)
-                + " on average; its spread is "
-                + figures(f.spread_over_zero_point)
-                + " times its zero-point spread.";
+            const head = sentence(f.state) + ".  " + sentence(f.holds) + ".";
             return head + "  With " + nodes + " frames the outermost frames "
                 + "move the atom that moves most by " + move.toFixed(4) + " Å"
                 + (zp !== null ? " (its largest zero-point move: "
@@ -3786,7 +3773,6 @@
         const { askFields } = await import("/static/lib/dialog.js");
         const { chooseSavePath } = await import(
             "/static/lib/projects/dialogs.js");
-        const { toDisplay } = await import("/static/lib/molview/index.js");
         let timer = null, inBox = start, nodesNow = RULES[0];
         // EACH STATE'S FIELDS SHOWN FOR IT ALONE (`_DIALOG_STATES`), from the
         // first: the dialog opens thermal.
@@ -3896,22 +3882,20 @@
             return;
         }
         const body = a.body;
-        /* THE FOLDER WRITTEN INTO, ANNOUNCED (web/projects.md § 2): whoever
-         * shows it -- the sidebar, the run history -- follows it. */
+        /* THE FOLDER WRITTEN INTO, ANNOUNCED (web/projects.md § 2) by its
+         * absolute path, the one spelling every subscriber compares
+         * (`projects/state.js` folderKey): whoever shows it -- the sidebar,
+         * the run history -- follows it. */
         const projects = window.molbuilder && window.molbuilder.projects;
         if (projects && typeof projects.publishFolderChanged === "function") {
             projects.publishFolderChanged(
-                root.molbuilder.path.dirname(body.path));
+                root.molbuilder.path.dirname(body.written));
         }
-        const lines = ["wrote " + body.path].concat(
-            // NAMED AS THE FRAME-SET CARD NAMES THEM: the display's count
-            // from 1 (`model/structure.md` § 2.2e).
-            body.frames.map((f, i) => "frame " + toDisplay(i) + " of "
-                + body.frames.length + ": q/σ "
-                + f.q_sigma.toFixed(4) + ", largest atom move "
-                + f.max_atom_displacement_ang.toFixed(4) + " Å, weight "
-                + f.weight.toFixed(6)),
-            body.said);
+        // IN THE WORDS THE COMMAND LINE PRINTS, the server's one wording
+        // (`vibration_frames.ModeFrames.frame_lines`): each frame named as
+        // every message names one.
+        const lines = ["wrote " + body.path, sentence(body.holds) + "."]
+            .concat(body.lines, body.said);
         setStatus(els.framesetStatus, lines.join("\n"),
                   body.said.length ? "warn" : "muted");
     }
@@ -4140,7 +4124,7 @@
     let _thermalTimer = null, _thermalAbort = null;
     function onTemperatureChange() {
         const t = parseFloat(els.animTemperature.value);
-        // The door's rule (vibration.checked_temperature_k): kelvin,
+        // The door's rule (oscillator.checked_temperature_k): kelvin,
         // 0 or more -- 0 K the zero-point motion alone.
         if (!Number.isFinite(t) || t < 0) return;
         state.animTemperature = t;

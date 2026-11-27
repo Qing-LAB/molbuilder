@@ -686,7 +686,7 @@ and why — *&lt;words&gt;: failed -- &lt;why&gt;*, *&lt;words&gt;: not done -- 
   done -- finished, not converged (SCF NO); frame 3 of 3: converged in 44 NEGF iterations*. A run of one
   frame says the voltage and its point alone.
 - **A transmission round**: *0.2 V -- G/G0: frame 1 of 3 0.02134, frame 2 of 3 0.01987, frame
-  index 2 (of 3) 0.02311; the frames' average 0.02145*. The conductance is the record's own rule
+  3 of 3 0.02311; the frames' average 0.02145*. The conductance is the record's own rule
   (`transport.conductance.at_fermi`) on the point's k-averaged transmission per spin channel, a polarized point's
   two channels averaged, (T↑ + T↓)/2 ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12). It is read from
   TBtrans's k-averaged text files (`tbtrans.averaged_files`, `read_averaged`, which travel) — the point's own and,

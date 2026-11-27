@@ -1282,12 +1282,12 @@ def _the_card_says_the_set(card, junction):
              .all_inner_texts()]
     assert heads == ["Frame"] + [n if u in (None, "1") else f"{n} ({u})"
                                  for n, u in _FRAME_ROWS], heads
-    # ...NOTHING OF TRANSPORT'S OWN about the set: no line saying what it
-    # is or where it came from, and no row's meaning -- the notes its maker
-    # wrote stay in its file.
-    for said in ("frames of one mode", "From the vibration run",
-                 "Sampling rule", "Assumptions:"):
-        assert said not in text, (said, text)
+    # ...NOTHING OF TRANSPORT'S OWN about the set (§ 3.8.1): its one line
+    # the count -- no line saying what it is or where it came from -- and
+    # no row's meaning, the notes its maker wrote staying in its file.
+    lines = [x.strip() for x in card.locator(".frameset-line")
+             .all_inner_texts()]
+    assert lines == [f"{_N_FRAMES} frames"], lines
     for r in ROWS:
         assert r.means not in text and r.means not in card.inner_html(), \
             r.name
@@ -3754,8 +3754,8 @@ def test_the_command_line_says_what_the_temperature_means(junction):
     assert f"thermal at {_TEMPERATURE_K:g} K (" in said, said
     assert (f"it holds "
             f"{rows['mean_quanta']:.4g} quanta on average; its spread is "
-            f"{rows['spread_amu12_ang'] / rows['zero_point_amplitude_amu12_ang']:.4f}"
-            f" x its zero-point amplitude") in said, said
+            f"{rows['spread_amu12_ang'] / rows['zero_point_amplitude_amu12_ang']:.4g}"
+            f" times its zero-point amplitude") in said, said
     assert f"wrote {junction.tree / junction.frame_set}" in said, said
 
 
@@ -3883,9 +3883,6 @@ def test_the_tab_cites_a_frame_set_and_answers_its_rows_as_stored(junction):
         "n_frames": _N_FRAMES, "definition": None, "said": []}
     assert junction.tab_said["run"][0]["frame_set"] == {
         "n_frames": 1, "definition": None, "said": []}
-    # ...AND NOTHING BESIDE THEM: no answer carries the maker's words.
-    for kind, (described, _schema) in junction.tab_said.items():
-        assert "frame_set_said" not in described, kind
     assert "psml_lib" in fields["mode's set"] and "psml_lib" in fields["family"]
     assert "psml_lib" not in fields["run"]
     # TASK SETUP, THE RESULTS TAB AND THE TAB'S REUSE ANSWER ECHO THE SAME
@@ -3897,20 +3894,23 @@ def test_the_tab_cites_a_frame_set_and_answers_its_rows_as_stored(junction):
                    junction.reuse_said):
         assert answer["frame_set"] \
             == junction.tab_said["mode's set"][0]["frame_set"]
-        assert "frame_set_said" not in answer
 
 
 def test_a_cited_pair_edited_after_the_calculation_is_said_until_put_back(
         junction, monkeypatch):
-    """`engines/transport.md` § 3.8.1, § 3.1: the person edits the frame set
-    a calculation cited, after it ran; the Results tab's record answer and
-    the Transport tab's reuse answer say, beside the frames the calculation
-    ran, that the pair is not as its record pinned -- naming the file
+    """`engines/transport.md` § 3.8.1, § 3.1, `web/task-setup.md` § 3: the
+    person edits the frame set a calculation cited, after it ran; the
+    Results tab's record answer, the Transport tab's reuse answer and Task
+    setup's folder answer say, beside the frames the calculation ran, that the pair is not as its record pinned -- naming the file
     edited, not the other, and the way on; put back as it was, nothing is
     said.  Transport's own word of its citation, the one thing its card
-    adds to the set's rows.  THE SILENT FAILURE: a report showing frames
-    as the ones the calculation ran while the pair beside them says
-    otherwise, unsaid."""
+    adds to the set's rows.  Then the person changes a frame's weight
+    through the structure's own writer: Task setup still draws the frames
+    the calculation composed and ran, as the Results tab does, its weights
+    the ones it ran.  THE SILENT FAILURES: a report showing frames as the
+    ones the calculation ran while the pair beside them says otherwise,
+    unsaid; Task setup drawing the edited pair under words that call it the
+    calculation's."""
     from conftest import point_the_one_door_at
     from molbuilder.web.app import create_app
     point_the_one_door_at(junction.tree.parent, monkeypatch.setenv)
@@ -3922,7 +3922,10 @@ def test_a_cited_pair_edited_after_the_calculation_is_said_until_put_back(
                             f"{junction.from_pair.bundle}").get_json()
         reuse = client.get("/api/transport/describe_attempt?path="
                            "P/transport/F&engine=siesta").get_json()
-        return record["frame_set"]["said"], reuse["frame_set"]["said"]
+        folder = client.get("/api/task-setup/folder?dir="
+                            f"{junction.from_pair.bundle}").get_json()
+        return (record["frame_set"]["said"], reuse["frame_set"]["said"],
+                folder["frame_set"]["said"])
     as_it_was = pair.read_bytes()
     try:
         # THE PERSON EDITS IT, as an editor saves it: its bytes another.
@@ -3934,7 +3937,26 @@ def test_a_cited_pair_edited_after_the_calculation_is_said_until_put_back(
                                    "calculation, or put it back"), got
     finally:
         pair.write_bytes(as_it_was)
-    assert said() == ([], []), said()
+    assert said() == ([], [], []), said()
+    # A FRAME'S WEIGHT CHANGED by the structure's own writer, both files
+    # rewritten: Task setup draws the weights the calculation ran.
+    from molbuilder.workingcopy_structure import StructureCodec
+    from molbuilder.sidecars.molstruct import sidecar_path_for
+    sidecar = sidecar_path_for(pair)
+    both = (pair.read_bytes(), sidecar.read_bytes())
+    ran = client.get("/api/transport/record?path="
+                     f"{junction.from_pair.bundle}").get_json()["frame_set"]
+    try:
+        edited = StructureCodec().load(pair, frames=True)
+        edited.set_customized("weight", 0.5, unit="1", frame=0)
+        StructureCodec().write(edited, pair)
+        folder = client.get("/api/task-setup/folder?dir="
+                            f"{junction.from_pair.bundle}").get_json()
+        assert folder["frame_set"]["definition"] == ran["definition"]
+        assert folder["frame_set"]["said"], folder["frame_set"]
+    finally:
+        pair.write_bytes(both[0])
+        sidecar.write_bytes(both[1])
 
 
 #: Two roundings stand between a point's total DOS as TBtrans printed it

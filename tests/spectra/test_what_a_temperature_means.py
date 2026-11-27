@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 from molbuilder.postprocess import states
-from molbuilder.vibration import thermal_spread_amu12_ang
+from molbuilder.oscillator import thermal_spread_amu12_ang
 from molbuilder.vibration_frames import readout
 
 

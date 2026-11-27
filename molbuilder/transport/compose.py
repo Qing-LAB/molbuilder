@@ -1,4 +1,4 @@
-"""P4a — prep COMPOSES the transport calculation from its one citation.
+"""Prep COMPOSES the transport calculation from its one citation.
 
 `engines/transport.md` § 3.1 and § 6.2: resolve the junction citation on
 the machine where prep runs (strict composition, a missing
@@ -7,7 +7,7 @@ trigger to run it); read the junction it holds — a cited run's folder
 through the run door, as the Results tab reads a run (`runs.run_of`,
 `runs.openable`, and the one read of a run's geometry, `runs.steps_of`, in
 the user order), or a cited pair through the codec, in the user order; sort it for
-TranSIESTA (`sort.sort_by`, P2); apply the lead gate;
+TranSIESTA (`sort.sort_by`); apply the lead gate;
 extract the two electrode models from the sorted blocks (the wizard's
 move, § 3); and record the provenance — the citation, its kind, and the
 content hashes of the files it was composed from, a cited run's **own
@@ -85,7 +85,8 @@ def _unusable_cell(struct) -> Optional[str]:
     """Why this structure's cell cannot carry a junction — or ``None``.
 
     ONE QUESTION, BOTH KINDS.  ``Structure`` reads a zero-volume lattice
-    without refusing it (§ 8.2, *"reading does not judge"*), so a pair's
+    without refusing it (`model/structure-periodicity.md` § 8.2, *"reading
+    does not judge"*), so a pair's
     sidecar whose ``cell`` is a row of zeros loads and passes an ``is None``
     guard.
 
@@ -363,7 +364,6 @@ def frames_moving_the_leads(struct: Structure, path: Path) -> Optional[str]:
     calculation citing the set (:func:`junction_said`) -- the one place:
     which atoms are the leads is transport's to know, and a frame set's
     writer checks only its held atoms (`engines/vibration-frames.md` § 5)."""
-    from ..structure import frame_words
     from .wizard import FROZEN_TOL_ANG
     regions = struct.regions or {}
     leads = sorted(set(regions.get(REGION_LEFT_ELECTRODE, ()))
@@ -395,13 +395,26 @@ def frames_moving_the_leads(struct: Structure, path: Path) -> Optional[str]:
             f"frames with the lead atoms frozen.")
 
 
-def cited_frames(citation: str, tree_root: Path) -> dict:
+def cited_frames(citation: str, tree_root: Path, folder=None) -> dict:
     """THE FRAMES A JUNCTION CITATION HOLDS, as the describe door answers
     them (`frame_average.answer`) -- the transport kind's
     ``cited_frames`` part, Task setup's folder answer's frame set: a cited
-    pair's frames, a cited run's none; a citation that does not resolve
+    pair's frames, a cited run's none; given the calculation's ``folder``
+    once its first prep composed the junction, the frames it composed and
+    ran (:func:`recorded_junction`, as the Results tab draws them,
+    `engines/transport.md` § 3.8.1), so a pair edited since is not shown as
+    the calculation's; a citation or a composed junction that does not read
     answers why, in its words, so the folder still opens."""
     from ..frame_average import answer
+    if folder is not None:
+        from .rung import compose_refusals
+        try:
+            recorded = recorded_junction(folder)
+        except compose_refusals() as exc:
+            return {"n_frames": None, "definition": None, "why": str(exc)}
+        if recorded is not None:
+            junction = recorded.structure
+            return answer(junction if junction.n_frames > 1 else None)
     try:
         _, cited = resolve_citation(str(citation), tree_root)
     except ComposeError as exc:
@@ -672,7 +685,7 @@ def with_swapped_leads(struct, source_name: str):
 
 #: THE TRANSPORT AXIS, lattice vector ``c`` -- z, as every junction states
 #: its axis kinds (:func:`junction_axis_kind`): `kmesh.TRANSPORT_AXIS`, the
-#: one home (a third copy stood here until 2026-10-18, K3).
+#: one home.
 from ..kmesh import TRANSPORT_AXIS as _TRANSPORT_AXIS  # noqa: E402
 
 

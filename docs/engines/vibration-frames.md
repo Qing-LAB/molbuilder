@@ -56,8 +56,8 @@ record, its data file, its composition — imports nothing of the toolkit.
 takes its own from, required) and a relaxation record of its geometry
 (`info.relaxation`) ([`engines/transport.md`](?doc=engines/transport.md)
 § 3.1) — and **none of the maker's own rows or `info` keys**: not
-`vibration_run`, not `info.sampling`, not an older set's `info.vibration`,
-nothing of § 5.1 but each frame's `weight`. The one check of the frames that
+`vibration_run`, not `info.state` or `info.sampling`, nothing of § 5.1 but
+each frame's `weight`. The one check of the frames that
 needs transport's own knowledge — that no electrode atom moves beyond the
 leads' tolerance — stays transport's, asked when a calculation cites the set
 ([`engines/transport.md`](?doc=engines/transport.md) § 2a.9); the toolkit's
@@ -77,12 +77,12 @@ the frames are.
 
 | module | layer | holds |
 |---|---|---|
-| `vibration` | L2, **travels** beside a job in both vibration bundles — numpy, the constants, the generic tools and the frequency-window rule it imports two ways (`oscillator`, `oscillator_state`, `sampling`, `distribution`, `spectra.selection` — beside a job, the file `mode_selection.py` — its `TRAVELS_WITH`) | the molecule, on the generic tools: `Mode` — its oscillator `m.oscillator` and `m.bind(chain_or_distribution)` → a `ModeDistribution` (§ 2), its draws, frames, weights and moves — `Frames`, `Vibration` — its `displaced({...})`, the one rule $\mathbf R^0 + \sum_k Q_k\mathbf L_k$ ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.11 § 2), and its `motion(chain_or_distribution)` — the molecule's motion and its snapshots (`Motion`, `Snapshots`), the modes that move chosen in steps (`ModeSelection`, `v.mode_selection()`), the analyses of a snapshot set's results (§ 7); the oscillator's mechanics handed on under their names, `bose_einstein_temperature` among them |
-| `oscillator` | L2, travels with `vibration` — numpy, `math` and the constants, imported two ways | **one harmonic oscillator of a frequency** in its own unit $x = Q/Q_{\mathrm{zp}}$ (§ 9.1 module 1): `Oscillator(frequency_cm1)` — `zero_point_amplitude_amu12_ang`, `quantum_ev` ($\hbar\omega$), `bose_einstein_mean_quanta(T)` and `bose_einstein_temperature(mean_quanta)` (Bose–Einstein), `classical_spread(T)` in $x$ — the levels' wavefunctions, densities and averages (a level's distribution function is `distribution.Level`'s), the ladder and position operators on a window of levels; the mechanics every mode's numbers take, `zero_point_amplitude_amu12_ang`, `bose_einstein_mean_quanta`, `bose_einstein_temperature`, `spread_of_quanta`, `thermal_spread_amu12_ang`, `classical_spread_amu12_ang`, `checked_temperature_k`, which `vibration` hands on under their names, read there by the record's writers (`spectra.derived`, `spectra.normal_modes`) and the spectrum tab's door (`web.blueprints.spectra`) |
+| `vibration` | L2, **travels** beside a job in both vibration bundles — numpy, the constants, the generic tools and the frequency-window rule it imports two ways (`oscillator`, `oscillator_state`, `sampling`, `distribution`, `spectra.selection` — beside a job, the file `mode_selection.py` — its `TRAVELS_WITH`) | the molecule, on the generic tools: `Mode` — its oscillator `m.oscillator` and `m.bind(chain_or_distribution)` → a `ModeDistribution` (§ 2), its draws, frames, weights and moves — `Frames`, `Vibration` — its `displaced({...})`, the one rule $\mathbf R^0 + \sum_k Q_k\mathbf L_k$ ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.11 § 2), and its `motion(chain_or_distribution)` — the molecule's motion and its snapshots (`Motion`, `Snapshots`), the modes that move chosen in steps (`ModeSelection`, `v.mode_selection()`), the analyses of a snapshot set's results (§ 7); the oscillator's mechanics asked of `oscillator` |
+| `oscillator` | L2, travels with `vibration` — numpy, `math` and the constants, imported two ways | **one harmonic oscillator of a frequency** in its own unit $x = Q/Q_{\mathrm{zp}}$ (§ 9.1 module 1): `Oscillator(frequency_cm1)` — `zero_point_amplitude_amu12_ang`, `quantum_ev` ($\hbar\omega$), `bose_einstein_mean_quanta(T)` and `bose_einstein_temperature(mean_quanta)` (Bose–Einstein), `classical_spread(T)` in $x$ — the levels' wavefunctions, densities and averages (a level's distribution function is `distribution.Level`'s), the ladder and position operators on a window of levels; the mechanics every mode's numbers take, `zero_point_amplitude_amu12_ang`, `bose_einstein_mean_quanta`, `bose_einstein_temperature`, `spread_of_quanta`, `thermal_spread_amu12_ang`, `classical_spread_amu12_ang`, `checked_temperature_k` — each with one home, here: read by `vibration`, the record's writers (`spectra.derived`, `spectra.normal_modes`), the spectrum tab's door (`web.blueprints.spectra`) and `vibration_frames`, and handed on to a person's script by `postprocess` as `oscillator` |
 | `oscillator_state` | L2, travels with `vibration` — numpy, `math` and `oscillator`, imported two ways | **chains of steps, and states** (§ 9.1 module 2; [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 2e): the starts `ground`, `level`, `thermal`, `classical_thermal`; the events `add_quantum`, `remove_quantum`; `Chain.reduced()`, `Chain.on(oscillator)` → an `OscillatorState` — its list, its mean quanta and words; a chain's record, `to_record()` and `Chain.from_record` |
 | `distribution` | L2, travels with `vibration` — numpy, `math` and `oscillator`, imported two ways | **one coordinate's distribution** in the unit it is given (§ 9.1 module 3): `of_state(state)` by the routes of § 9.1, or a person's own (`Gaussian`, `QuantumAdded`, `Level`, `LevelList`), one in another unit (`d.scaled(s)` → `Scaled`); its density, distribution function, averages, quantile, Gauss rule, draws, words, record (`to_record`, `from_record`) and weights for points placed elsewhere (`points_weights` → `PointWeights`, the one weights result) |
 | `sampling` | L2, travels with `vibration` — numpy, `math` and `oscillator`'s whole-number rule, imported two ways | **the seed's keyed streams and the statistics of arrays** (§ 9.1 module 4): `normal_stream`, the snapshots' streams' one home (§ 3.3), which `vibration` draws through; a mean and its error (`mean_with_error`), independent or in pairs (`pair_means`), a paired set's even and odd parts (`even_odd_parts`) |
-| `vibration_frames` | L2, the **host's** — it imports `vibration`, the generic tools, the structure, `frameset`, the result's reader and the run door, never transport; it imports with `molbuilder-jupyternb`'s packages, numpy beside molbuilder's own modules, so the example notebook runs it there ([`web/jupyter.md`](?doc=web/jupyter.md) § 7) | the rows' vocabulary (`ROWS`, § 5.1), a mode's own set's `assumptions` row (`assumptions_of_a_mode`) and a set's own assumptions as its maker states them, an older set's said for it (`assumptions_of_set`, § 7's `reaveraged`), the weights of a set's rows for a state (`weights_for_set`, § 7), **a run's folder read as a `Vibration`** (`vibration_of_run`, below), the one frame-set writer and its reader (`write_frame_set` → `Written`, `read_frame_set` → `Frames`, `Snapshots` or `FrameSet`, § 5), a mode's outermost move for any state by its number (`outermost_move_of`) — asked by the web layer, `postprocess` and the command line; the doors' set — the command line's and the page's: their named choices as a chain (`doors_chain`, the page's ask `read_state_ask` — `STATE_ASK_KEYS`, refusals `StateRefused`), a mode's own set written of it (`frameset_from_mode` → `ModeFrames`, the frame counts offered `OFFERED_NODES`) and what it means for a mode before its set is written (`readout`, the load door's `frameset` block), its quanta said beyond `HARMONIC_LIMIT_EV`, § 6 |
+| `vibration_frames` | L2, the **host's** — it imports `vibration`, the generic tools, the structure, `frameset`, the result's reader and the run door, never transport; it imports with `molbuilder-jupyternb`'s packages, numpy beside molbuilder's own modules, so the example notebook runs it there ([`web/jupyter.md`](?doc=web/jupyter.md) § 7) | the rows' vocabulary (`ROWS`, § 5.1), a mode's own set's `assumptions` row (`assumptions_of_a_mode`) and a snapshot set's, the weights of a set's rows for a state (`weights_for_set`, § 7), **a run's folder read as a `Vibration`** (`vibration_of_run`, below), the one frame-set writer and its reader (`write_frame_set` → `Written`, `read_frame_set` → `Frames`, `Snapshots` or `FrameSet`, § 5), a mode's outermost move for any state by its number (`outermost_move_of`) — asked by the web layer, `postprocess` and the command line; the doors' set — the command line's and the page's: their named choices as a chain (`doors_chain`, the page's ask `read_state_ask` — `STATE_ASK_KEYS`, refusals `StateRefused`), a mode's own set written of it (`frameset_from_mode` → `ModeFrames`, the frame counts offered `OFFERED_NODES`) and what it means for a mode before its set is written (`readout`, the load door's `frameset` block), its quanta said beyond `HARMONIC_LIMIT_EV`, § 6 |
 
 **No call of `vibration` reaches `vibration_frames`**: the foundation's
 module never depends on the module built on it. The writer and the reader are
@@ -180,7 +180,7 @@ numbers; the molecule adds only what needs atoms or the mode's number:
 from molbuilder.postprocess import vibration, states
 v = vibration(run_folder)
 m = v.mode(7)
-d = m.bind(states.thermal(temperature_k=300.0).add_quantum())   # one photon on the warm mode
+d = m.bind(states.thermal(temperature_k=300.0).add_quantum())   # of a 300 K sample, the molecules that absorbed one photon
 d.distribution        # its distribution of Q, in amu½·Å: .pdf(q), .cdf(q), .moment(k), .quantile(p), .gauss_rule(n)
 d.state               # the chain placed on the mode's oscillator: .populations, .mean_quanta, .words
 d.words               # thermal at 300 K (0.621 mean quanta); one quantum added
@@ -210,7 +210,7 @@ a chain or a distribution; what placing a chain refuses (§ 9.1).
 | `d.` | answers |
 |---|---|
 | `mode`, `chain`, `state`, `given`, `distribution` | the mode; the chain as given (`None` for a distribution given); the chain placed on the mode's oscillator, an `OscillatorState` (`None` for a distribution given); the distribution given, in $x$, as given — what its words and record read (`None` for a chain); the distribution of $Q$ in amu½·Å — the one in $x$ (`given`, or `dist.of_state(d.state)`) scaled by $Q_{\mathrm{zp}}$, a `dist.Scaled` whose `base` and `scale` are flattened (§ 9.1): for a distribution given already scaled, its own base and the two scales multiplied |
-| `temperature_k`, `temperature_from` | the temperature of the state's start — a thermal or classical one's — and where it came from: `"given"`, `"the record's"`, `"the motion's"`, `"the set's"` (`vibration.GIVEN`, `THE_RECORDS`, `THE_MOTIONS`, `THE_SETS`); `None` for a start of no temperature (the ground state, a level, a mean) and a distribution given |
+| `temperature_k`, `temperature_from` | the temperature of the state's start — a thermal or classical one's — and where it came from: `"given"`, `"the record's"`, `"the motion's"` (`vibration.GIVEN`, `THE_RECORDS`, `THE_MOTIONS`); `None` for a start of no temperature (the ground state, a level, a mean) and a distribution given. A set's rows re-weighted at an open start take the set's temperature, said in § 7's own words — no bound state holds it |
 | `spread_amu12_ang`, `mean_quanta` | $\sqrt{\langle Q^2\rangle}$; the state's mean number of quanta (`d.state.mean_quanta`), `None` for a classical state or a distribution given |
 | `words` | the state in words: the chain's steps, a temperature taken said right after the start's temperature (*thermal at 300 K (0.621 mean quanta), the record's temperature; one quantum added*), or the distribution's own words, said as the person's |
 | `atom_rms_ang` | each atom's r.m.s. move, $\sqrt{\langle Q^2\rangle}\,\lvert\mathbf L_A\rvert$ — 0 for a held atom ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 2b.2) |
@@ -246,21 +246,53 @@ thermal start — the ground state, a level — has no use for one.
 | thermal at $T$ | `thermal(temperature_k=T)` | 200 cm⁻¹ at 300 K: mean 0.621 |
 | thermal at the caller's temperature | `thermal()` | its `temperature_from` the record's, the motion's or the set's |
 | an effective temperature, a mean $\bar n$ | `thermal(mean_quanta=n̄)` | |
-| $n$ quanta exactly | `level(n)` | mean $n$ |
+| the mode put directly in its level $n$ — no temperature, nothing before it | `level(n)` | mean $n$ |
 | one photon on a cold mode | `ground().add_quantum()` — the same state as `level(1)` | mean 1 |
-| one photon on a warm mode | `thermal(temperature_k=T).add_quantum()` | mean 3 |
-| two photons on a warm mode | `thermal(temperature_k=T).add_quantum().add_quantum()` | mean 5 |
-| a detected anti-Stokes event | `thermal(temperature_k=T).remove_quantum()` | mean 2 |
-| a photon, then an anti-Stokes event | `thermal(temperature_k=T).add_quantum().remove_quantum()` | mean $10/3$ |
+| of a warm sample, the molecules that absorbed one photon | `thermal(temperature_k=T).add_quantum()` | mean 3 |
+| of a warm sample, those that absorbed two photons | `thermal(temperature_k=T).add_quantum().add_quantum()` | mean 5 |
+| of a warm sample, those that gave one quantum up (an anti-Stokes photon) | `thermal(temperature_k=T).remove_quantum()` | mean 2 |
+| those that absorbed a photon, then gave one up | `thermal(temperature_k=T).add_quantum().remove_quantum()` | mean $10/3$ |
 | the classical bell curve | `classical_thermal(temperature_k=T)` | no quanta |
+
+**A level, or a quantum added?** `level(n)` puts the mode directly in its
+level $n$, with no temperature and nothing before it: *mode $k$ excited by
+one quantum* is `level(1)`. An event acts on the state before it and keeps
+**only the molecules it happened to**: `thermal(temperature_k=T).add_quantum()`
+is, of a sample at $T$, the molecules that took up one quantum at the mode's
+frequency — a photon absorbed, a Stokes photon scattered, an electron losing
+$\hbar\omega$ — each exactly one level up. It is not every level shifted up
+by one, and not the whole sample under light, most of which takes up
+nothing. A mode already holding more quanta takes one up more readily —
+$n+1$ times as readily from level $n$ as from level 0 (science § 2e.2 says
+why) — so the molecules that took one up held more than the sample's average
+before it: a thermal mean $\bar n$ becomes $2\bar n + 1$, not $\bar n + 1$.
+`remove_quantum()` keeps the molecules that gave one up — an anti-Stokes
+photon, an electron gaining $\hbar\omega$ — $n$ times as readily from level
+$n$. On a stiff mode, as the modes a frame set is for are, nearly every
+molecule starts in level 0 and the two agree within a few percent — the
+share of the molecules that absorbed left in level 1 is $1/(1+\bar n)^2$:
+
+| at 300 K | $\bar n$ before | in level 1 after `.add_quantum()` | mean after (`level(1)`: 1) |
+|---|---|---|---|
+| 500 cm⁻¹ | 0.100 | 82.6% | 1.200 |
+| 700 cm⁻¹ | 0.0361 | 93.2% | 1.072 |
+| 1000 cm⁻¹ | 0.00833 | 98.4% | 1.017 |
+| 1600 cm⁻¹ | 0.000465 | 99.9% | 1.001 |
+
+A set records the start and the step (`info.state`), the start's
+temperature (the `temperature_k` row) and its own mean (in the
+`assumptions` row), and the mean after the step (`mean_quanta`, § 5.1).
 
 Each step can be swapped: a colder mode is another `temperature_k`, a third
 photon one more `.add_quantum()`. A quantum two modes share is no chain of
 one mode's steps: a degenerate pair is turned by hand to the light's axes,
 one combination excited and the other thermal (§ 3.1; science § 2c.2); two
 modes of nearby frequencies need a joint state over both modes' levels
-(science § 2e.5). **The page's and the command line's choices are three of
-these** — thermal at a temperature, thermal of a mean, $n$ quanta (§ 6).
+(science § 2e.5). **The command line's choices are three of these** —
+thermal at a temperature, thermal of a mean, $n$ quanta — **and the spectrum
+tab's dialog's two**, thermal at a temperature and $n$ quanta
+([`web/spectra.md`](?doc=web/spectra.md) § 4.3); any other chain is a
+script's (§ 6).
 
 ---
 
@@ -279,8 +311,8 @@ from molbuilder.postprocess import vibration, states, structure_dir
 v = vibration(structure_dir("P", "spectrum", "V") / "01_freq/run-0")   # the run's folder (§ 1)
 warm = states.thermal(temperature_k=300.0)
 motion = v.motion(warm)                                    # every real mode thermal at 300 K
-motion = motion.with_mode(7, states.level(1))              # mode 7 one quantum exactly
-motion = motion.with_mode(9, states.thermal().add_quantum())   # mode 9 one photon on the motion's 300 K
+motion = motion.with_mode(7, states.level(1))              # mode 7 put directly in its first excited level
+motion = motion.with_mode(9, states.thermal().add_quantum())   # mode 9: of its 300 K sample, the molecules that absorbed one photon
 motion = v.motion(warm, modes=range(7, 31))                # only modes 7 to 30 move
 chosen = v.mode_selection().window(50.0, None).add([3]).drop([12, 13])
 motion = v.motion(warm, modes=chosen)                      # the modes chosen in steps
@@ -397,7 +429,13 @@ grid = [v.displaced({7: a, 9: b}) for a, b in pairs]          # (0, 0) first
 w = [wa * wb for wa in f7.weights for wb in f9.weights]       # (0, 0) at 4/9
 write_frame_set(topic_dir("P", "structure") / "bdt-m7xm9.xyz", grid, w, vibration=v,
                 rows=[{"name": "sampling_rule", "value": "gauss-hermite x gauss-hermite",
-                       "note": "modes 7 and 9 thermal at 300 K, each its own 3-point rule"}],
+                       "note": "modes 7 and 9 thermal at 300 K, each its own 3-point rule"},
+                      {"name": "assumptions",
+                       "value": "Harmonic modes 7 and 9, thermal at 300 K, independent; "
+                                "every other mode at the relaxed geometry; exact to "
+                                "degree 5 in each mode.  Frames of a vibration: the "
+                                "electrons cross fast against it, no inelastic step; "
+                                "the state the same at every voltage"}],
                 frame_rows=[[{"name": "q7_amu12_ang", "value": a,
                               "note": "position along mode 7"},
                              {"name": "q9_amu12_ang", "value": b,
@@ -437,12 +475,15 @@ written = write_frame_set(topic_dir("P", "structure") / "bdt-m7-300K.xyz", f)  #
 § 5.10's decisions): another mode is another set, cited by its own
 calculation, and how the modes' results are weighed against each other is the
 person's; many modes at once are snapshots (§ 3), or a model of the person's
-own (§ 3.4). **A thermal set is stated by its temperature**
+own (§ 3.4). **A thermal set is stated by its temperature or its mean**
 ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
-§ 5, with the user's ruling of 2026-10-28) — the junction's, or for a mode
-pumped at random moments its effective one, `vibration.bose_einstein_temperature(
-frequency_cm1, mean_quanta)` turning a measured number of quanta
-into it. **What the frames move is said**: each frame's largest single-atom
+§ 5, with the user's ruling of 2026-10-28) — the junction's temperature, or
+for a mode pumped at random moments its effective one,
+`oscillator.bose_einstein_temperature(frequency_cm1, mean_quanta)` (or the
+mode's own, `m.oscillator.bose_einstein_temperature(mean_quanta)`, § 9.1)
+turning a measured number of quanta into it; a set made of the mean,
+`states.thermal(mean_quanta=n)`, states the mean and no `temperature_k`
+row (§ 5.1). **What the frames move is said**: each frame's largest single-atom
 move, and the outermost frames' on the set's rows — the check a person reads
 against a bond length. `d.outermost_move(nodes=3)` is its one rule,
 $\lvert q_{\mathrm{out}}\rvert\max_A\lvert\mathbf L_A\rvert$, the outermost
@@ -502,7 +543,7 @@ state — so that route needs five frames at least.
   records nothing to bind again — a distribution of a person's own class,
   which can be drawn from and placed but not read back (§ 9.1's
   `to_record`) — a mode's set read back with no state for its mode: without its
-  vibration (given it, its state is bound again) or written by 2.81–2.84,
+  vibration (given it, its state is bound again) or written before 2.85.0,
   which records none (written again as a person's frames) — and a snapshot
   set read back without its vibration (given it, it is written again), a
   person's set read back (a `FrameSet`: written again as a person's frames,
@@ -530,11 +571,11 @@ relaxed geometry first are the file's frames 1 … after the prepended one.
 | it writes | how |
 |---|---|
 | **frame 0, the set's reference** ([`model/structure.md`](?doc=model/structure.md) § 2.2f) | the relaxed geometry — this rule's one home: a mode's own set with an odd rule has its node there, at the rule's weight; an even rule's set and a snapshot set get it prepended at weight 0; a person's frames keep their first frame as frame 0 where it **is** the relaxed geometry as a pair holds positions — within the structure's one rule of two places (`structure.SAME_PLACE_ANG`, $10^{-6}$ Å: a pair's six decimals, so a set read back and written again is the set it was; the user, 2026-11-24) — the relaxed geometry written there exactly, as `v.displaced({})` or a node at $Q = 0$ gives it (§ 4: every rule's middle node is 0 exactly); a first frame farther off is no frame 0 and gets it prepended at weight 0. Exact in memory; the file holds every position to $10^{-6}$ Å, as every pair does |
-| **a prepended frame 0's rows** | for a recipe, every frame row its other frames state, at its value there: `q_amu12_ang` 0 (each mode's, for snapshots), `node_sigma` 0, `displacement_ang` 0, `max_atom_displacement_ang` 0, `weight` 0; for a person's frames, the writer's own measured rows computed there, `weight` 0, and the person's `frame0_rows` — a person's frame row absent at frame 0 said |
+| **a prepended frame 0's rows** | for a recipe, every frame row its other frames state, at its value there: `q_amu12_ang` 0 (a mode's own set's; a snapshot set's per-mode coordinates are `info.sampling`'s, frame 0's all zero), `node_sigma` 0, `displacement_ang` 0, `max_atom_displacement_ang` 0, `weight` 0; for a person's frames, the writer's own measured rows computed there, `weight` 0, and the person's `frame0_rows` — a person's frame row absent at frame 0 said |
 | **each frame's `weight`**, the one row a calculation reads | as given; weights not summing to 1 within the container's tolerance written as given and said ([`model/structure.md`](?doc=model/structure.md) § 2.2f) |
 | **each frame's measured rows**, for every set | `displacement_ang`, `max_atom_displacement_ang` — computed from the coordinates alone |
 | the provenance, as rows | `vibration_run`, `vibration_result_sha256` (the JSON's, § 1), `mass_source`, `frequency_scale` where one was applied |
-| **the maker's assumptions**, one row | `assumptions`: the harmonic modes, each mode's state, their independence, for snapshots the statistics of a finite set — science § 7's items, the sentences it asks to be stated beside the numbers, carried as written by any calculation like every row; a person's set carries the person's own `assumptions` row, or none, said |
+| **the maker's assumptions**, one row | `assumptions`: the harmonic modes, each mode's state, their independence, for snapshots the statistics of a finite set, and what frames of a vibration assume — the electron fast against the vibration, no inelastic step or polaron shift in a frame average, one state at every voltage — science § 7's items 1–4, the sentences it asks to be stated beside the numbers, carried as written by any calculation like every row; a person's set carries the person's own `assumptions` row, or none, said |
 | the masses | the pair's `mass_amu` channel, every atom's |
 | what made the frames, as rows with their meanings | § 5.1's; for a set the person built, the rows and frame rows the person gives |
 | **what the state was bound from**, a mode's own set | `info.state`, the mode's state's record (`d.to_record()`): a chain's — `{"chain": [{"step", "values"}, …], "temperature_k", "temperature_from"}`, the chain as given, its steps in order, and the temperature an open start took — or a distribution's, `{"distribution": {"family", …}}`, its family and numbers (§ 9.1); bound again when the set is read back. *Example*, one photon on a 200 cm⁻¹ mode at 300 K: `{"chain": [{"step": "thermal", "values": {"temperature_k": 300.0}}, {"step": "add_quantum", "values": {}}], "temperature_k": 300.0, "temperature_from": "given"}`, beside the rows `temperature_k` 300, `mean_quanta` 2.24, `quantum` 1, `sampling_rule` `gauss`, no `quanta` row, and `assumptions` holding *thermal at 300 K (0.621 mean quanta); one quantum added* — a thermal set at 300 K writes `temperature_k` 300 too, told apart by `info.state`, `sampling_rule` and its words |
@@ -568,10 +609,11 @@ refused**, never written over: a calculation citing it is pinned to it.
 `Frames` (a mode's own set; its `mode_distribution` its `info.state` bound
 again to its mode at the set's frequency, of its vibration — the one given,
 or the run its `vibration_run` names reopened through `vibration_of_run`
-(§ 1); `None` where that run does not read, said, and where the set records
-no `info.state` — a mode's set written by 2.81–2.84 — its frames, weights and
-coordinates whole, said once that it records no state: no reader of its rows
-as a state, the user's choice of 2026-11-26),
+(§ 1); `None` where that run does not read, said; where the set records no
+`info.state` — a mode's set written before 2.85.0 — its frames, weights,
+coordinates and moves whole, said once that it records no state, its run not
+reopened and no vibration asked for: no reader of its rows as a state, the
+user's choice of 2026-11-26),
 a `Snapshots` (a sampled set, from `info.sampling`, each mode's recorded
 state bound again — a snapshot set written by 2.82–2.84, its motion recorded
 the old way, with no `background`, is refused by name, not read, the user's
@@ -586,10 +628,13 @@ is a `Snapshots` only where it holds `info.sampling`, a `Frames` only where
 it states the toolkit's own rule (§ 4) — `sampling_rule` `gauss-hermite` or
 `gauss` and `sampling_nodes`, its degree $2m - 1$ — its mode's number,
 frequency and zero-point amplitude read, and every frame states its
-coordinate; any other — a person's set written in the vocabulary's names —
-a `FrameSet`, said. A vibration given that is no
+coordinate; any other — a set a person built, in the vocabulary's names or
+not — a `FrameSet`, said only where it states a mode's or a snapshot set's
+rows not written the toolkit's way. A structure of one frame is no frame set,
+refused by name. A recorded state or motion that does not bind again — a
+hand-edited step, say — is said, the set read without it. A vibration given that is no
 vibration, or not the set's — its result's sha256 not the set's
-`vibration_result_sha256`, or an older set's `info.vibration` — is refused by
+`vibration_result_sha256` — is refused by
 name, whichever kind the set is, as a motion refuses another vibration's
 state (§ 3.1); a vibration given at another frequency scale than the set's
 is brought to the set's (its `frequency_scale` row); a run reopened whose
@@ -606,8 +651,10 @@ frame set's rows, or a pair that does not read, is refused by name
 
 The vocabulary is the toolkit's — one table in `vibration_frames` (the names,
 kinds, units and meanings) — and a person's script may write the same
-names. Every row the toolkit writes carries its meaning as its `note`, the
-meaning for the kind of set it is: **the set's own information, its own** —
+names. Every row the toolkit writes carries its meaning as its `note` — the
+table's meaning below, in plain text (one meaning a row, whatever the kind of
+set; a meaning for each kind is *to build*, [`plans/plan.md`](?doc=plans/plan.md)) —
+**the set's own information, its own** —
 no other module interprets it, and transport's pages show each row by its
 stored name, value and unit alone
 ([`engines/transport.md`](?doc=engines/transport.md) § 3.8.1, the user,
@@ -630,7 +677,7 @@ set's `set_apart_modes`.
 | | `vibration_result_sha256` | given | the sha256 of that run's result JSON | — |
 | | `mass_source` | given | which masses the `mass_amu` channel holds, by name, and so which $Q$ is measured with; `standard atomic weights`, a molbuilder vibration's: the isotope-averaged standard atomic weights (`chemistry.atomic_mass`) the vibration's deck stated, as its result states them; every $\mathbf L$ is normalised with them, $\sum_A m_A \lvert\mathbf L_A\rvert^2 = 1$ | — |
 | | `frequency_scale` | given | the factor every mode's frequency was scaled by (`v.with_frequency_scale`), each pattern kept; absent when none | — |
-| | `assumptions` | given | the maker's assumptions, in words — what the weights' average holds under: harmonic modes, each mode's state, the modes' independence, for snapshots every mode not included at the relaxed geometry (an imaginary one named: no harmonic state) and a finite set's statistical error ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 7); a person's set, the person's own | — |
+| | `assumptions` | given | the maker's assumptions, in words — what the weights' average holds under: harmonic modes, each mode's state, the modes' independence, for snapshots every mode not included at the relaxed geometry (an imaginary one named: no harmonic state) and a finite set's statistical error, and what frames of a vibration assume — the electron fast against the vibration, the state the same at every voltage ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 7, items 1–4); a person's set, the person's own | — |
 | | `sampling_rule` | given | the recipe, by name, that placed the frames and gave their weights: `gauss-hermite` — a bell curve's Gauss rule, a thermal or classical state's, or a bell curve the person gave; `gauss` — any other distribution's own Gauss rule ($n$ quanta, a photon on a warm mode, a list), its state in `info.state`; `monte-carlo` — snapshots of every included mode drawn from its state, each frame of weight $1/N$; a set the person built, the person's words | — |
 | | `sampling_nodes` | given | a mode's own set: $m$, the rule's number of nodes, one frame at each (for example 3: a thermal set's $q = 0, \pm\sqrt3\,\sigma$, weights $\tfrac23, \tfrac16, \tfrac16$) | — |
 | | `samples` | given | a snapshot set: $N$, the snapshots drawn — the frames after frame 0 | — |
@@ -645,10 +692,10 @@ set's `set_apart_modes`.
 | | `frequency_cm1` | given | a mode's own set: the wavenumber its frames were placed for — the result's own, or a scaled one, the result's then in `result_frequency_cm1` | cm⁻¹ |
 | | `result_frequency_cm1` | given | a mode's own set at a scaled frequency: the mode's wavenumber as the result states it; absent when `frequency_cm1` is the result's | cm⁻¹ |
 | | `zero_point_amplitude_amu12_ang` | given | a mode's own set: the zero-point amplitude $Q_{\mathrm{zp}} = \sqrt{\hbar/2\omega}$ at `frequency_cm1` | amu½·Å |
-| | `temperature_k` | given | the temperature of the state's start — a thermal or classical one's, whatever follows it (`info.state`'s steps say what does: a set of one photon on a warm mode states the warm mode's temperature): for a mode pumped at random moments its effective temperature, the one whose thermal state holds the same mean number of quanta ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 2a.1; `vibration.bose_einstein_temperature`); a snapshot set's background's, where a mode not set apart keeps it. Absent for a start of none — the ground state, a level, a thermal state named by its mean — and a distribution given | K |
+| | `temperature_k` | given | the temperature of the state's start — a thermal or classical one's, whatever follows it (`info.state`'s steps say what does: a set of one photon on a warm mode states the warm mode's temperature): for a mode pumped at random moments its effective temperature, the one whose thermal state holds the same mean number of quanta ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 2a.1; `oscillator.bose_einstein_temperature`); a snapshot set's background's, where a mode not set apart keeps it. Absent for a start of none — the ground state, a level, a thermal state named by its mean — and a distribution given | K |
 | | `quanta` | given | a mode's own set of $n$ quanta exactly — a chain whose one form is a level, `level(n)` or the ground state with $n$ quanta added: $n$ | — |
-| | `mean_quanta` | derived | a mode's own set: the state's mean number of quanta — in closed form where its chain is a family, $\sum_n n\,p_n$ of its list otherwise (§ 9.1); absent for a classical state and a distribution given, which count none | — |
-| | `spread_amu12_ang` | derived | a mode's own set: the r.m.s. of the state the frames sample, $\sigma = \sqrt{\langle Q^2\rangle}$ — $Q_{\mathrm{zp}}\sqrt{2\bar n+1}$ for a quantum state of mean $\bar n$ ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 2a); a set written before 2.81.0 names it `sigma_amu12_ang`, read the same | amu½·Å |
+| | `mean_quanta` | derived | a mode's own set: the state's mean number of quanta **after every step** `info.state` records — a thermal start's own mean is said in the `assumptions` row (*thermal at 300 K (0.0361 mean quanta); one quantum added* beside `mean_quanta` 1.072 on a 700 cm⁻¹ mode) — in closed form where its chain is a family, $\sum_n n\,p_n$ of its list otherwise (§ 9.1); absent for a classical state and a distribution given, which count none | — |
+| | `spread_amu12_ang` | derived | a mode's own set: the r.m.s. of the state the frames sample, $\sigma = \sqrt{\langle Q^2\rangle}$ — $Q_{\mathrm{zp}}\sqrt{2\bar n+1}$ for a quantum state of mean $\bar n$ ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 2a) | amu½·Å |
 | | `max_displacement_ang` | measured | a mode's own set: the outermost move — $\max_A\lvert\Delta\mathbf R_A\rvert$ at the outermost frames, $= \lvert q_{\mathrm{out}}\rvert\max_A\lvert\mathbf L_A\rvert$ for any state (`d.outermost_move`) — the check against a bond length | Å |
 | each frame's rows | `displacement_ang` | measured | the frame's plain displacement from frame 0, one number per frame, $\sqrt{\sum_A\lvert\Delta\mathbf R_A\rvert^2}$ over every atom — no masses; the atoms' move vectors themselves are the toolkit's `atom_moves_ang` | Å |
 | | `max_atom_displacement_ang` | measured | its largest single atom's, $\max_A\lvert\Delta\mathbf R_A\rvert$ | Å |
@@ -658,10 +705,7 @@ set's `set_apart_modes`.
 
 *Given* is stated by the vibration result, the person or the recipe; *measured* is
 computed from the coordinates alone; *derived* is computed from the others by
-the formula shown. A set written before 2.81.0 states `info.vibration`
-(`run`, `result_sha256`) where a new one writes the two provenance rows, and
-names its spread `sigma_amu12_ang`; the toolkit reads either, and those are
-the marks it tells such a set by (`assumptions_of_set`, § 7).
+the formula shown.
 
 ---
 
@@ -685,7 +729,8 @@ notebook*). Its kernel is `molbuilder-jupyternb`, molbuilder's source on its
 path as [`web/jupyter.md`](?doc=web/jupyter.md) § 7 states — frame sets are
 made there through the toolkit — and the *(to build)*
 `tests/test_vibration_frames_notebook_e2e.py` runs it on that env's Python,
-named by its path (`nbclient` is that env's), so it is a check as well as a
+named by its path (`nbclient`, declared in that env's recipe when the test is
+built — today it arrives only as jupyterlab's dependency), so it is a check as well as a
 demonstration *(the user, 2026-11-23: "an example jupyternotebook that can
 open a calculation result folder and generate some mixing/plots as the
 demonstration/example/tests to validate these calls")*:
@@ -828,15 +873,9 @@ transport's own door that averages a data file's frames at weights given,
 ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12), each voltage
 by its own rule — answered with averaged_at's keys, `weights` the `PointWeights`,
 `said` the weights' words then the average's, and `assumptions` transport's
-own, then the set's, named for the motion it was made for, not the one
-asked — its own row, *the set's own, for the state it was written for: …*,
-or, for an older set that states none, molbuilder's words for it,
-*molbuilder's for the set, which states none, for the state it was written
-for: …* (science § 7, never dropped) — `assumptions_of_set`: a mode's own set
-written before 2.81.0, told by its own marks (`sigma_amu12_ang` or
-`info.vibration`, § 5.1), every one a thermal set, its harmonic assumptions
-in the words a set states them now, at its temperature; nothing for a
-person's set that states none, its state not known.
+own, then the set's `assumptions` row, named for the motion it was made
+for, not the one asked — *the set's own, for the state it was written for:
+…* (science § 7, never dropped); nothing for a set that states none.
 
 **A snapshot set is not re-weighted** for another motion: the weights for
 another distribution of independent draws are likelihood ratios, and the
@@ -905,10 +944,10 @@ of a chain), `tests/test_vibration_mechanics.py` (§ 2's binding — an open
 start's temperature and its words, a distribution given, the refusals; the
 bound distribution the generic one in $Q$, its moments against the closed
 forms, its frames and its draws on the mode's own stream; `weights_at`,
-`bose_einstein_temperature`, the motion — its background bound to every
+the motion — its background bound to every
 mode, a mode set apart and the temperature it takes — and its snapshots, the
-modes chosen in steps, beside the modes' own rows), `tests/test_vibration_frames.py` (the vocabulary's unit rule, an older
-mode set's assumptions, `weights_for_set` — a set's
+modes chosen in steps, beside the modes' own rows), `tests/test_vibration_frames.py` (the vocabulary's unit rule, a set that
+records no state, `weights_for_set` — a set's
 own state its own rule, an even rule's set at its own state saying nothing
 of another (`test_an_even_rules_set_at_its_own_state_says_nothing_of_another`),
 the state named, the set's temperature taken and said; a row's unit in one
@@ -990,8 +1029,10 @@ flowchart TB
 Modules 1–5 **travel** with a job in the vibration bundles (§ 1) — numpy,
 `math` and the constants, and for `vibration` the frequency-window rule
 (`spectra.selection`) — and module 6 is the host's. **Each module imports
-only the ones above it** in the drawing: 1–4 know nothing of molecules or
-frame sets, `vibration` builds on them, `vibration_frames` on it. A person
+only the ones above it** in the drawing: 1–4 compute nothing of molecules
+or frame sets — their notes name the molecule's use where that is why a rule
+stands, the rule itself a generic one — `vibration` builds on them,
+`vibration_frames` on it. A person
 reaches every tool through `molbuilder.postprocess`
 ([`model/parse.md`](?doc=model/parse.md) § 3), which hands on `Oscillator`,
 the state module as `states`, the distribution module as `dist`, the
@@ -1050,7 +1091,7 @@ flowchart LR
 
 **A first example, end to end** — one quantum added to a 200 cm⁻¹ mode at
 300 K (an absorbed photon on a warm mode). Every output in this section was
-printed by molbuilder 2.85.0; numpy prints its arrays to four decimals here.
+printed by molbuilder 2.85.1; numpy prints its arrays to four decimals here.
 
 ```python
 >>> import numpy as np
@@ -1135,8 +1176,8 @@ ValueError: an oscillator needs a positive frequency, in cm-1; got -50.0
 
 ##### The mechanics on a wavenumber
 
-The same formulas as module functions, in amu½·Å, which `vibration` hands
-on under their names:
+The same formulas as module functions, in amu½·Å — `oscillator.<name>` in a
+person's script (`from molbuilder.postprocess import oscillator`):
 
 | call | what it is | equation | refuses |
 |---|---|---|---|
@@ -1266,7 +1307,7 @@ flowchart LR
 | call | what it is | assumes | its list | refuses |
 |---|---|---|---|---|
 | `ground()` | the ground state, the zero-point motion alone | — | $p_0 = 1$ | — |
-| `level(n)` | $n$ quanta exactly — the oscillator's level $n$ | the mode holds exactly $n$, as after $n$ detected quanta on a cold mode | $p_n = 1$ | $n$ not a whole number 0 or more |
+| `level(n)` | the mode put directly in its level $n$ — $n$ quanta exactly, no temperature and nothing before it | the mode holds exactly $n$: on a stiff mode, $n$ quanta absorbed from its ground state (§ 2) | $p_n = 1$ | $n$ not a whole number 0 or more |
 | `thermal(temperature_k=T)` | the mode in equilibrium at $T$ | equilibrium with the surroundings | $p_n = \bar n^{\,n}/(\bar n+1)^{n+1}$, $\bar n$ Bose–Einstein's at $T$ on the oscillator | both a temperature and a mean; a temperature that is not a number of kelvin, 0 or more; a mean below 0 |
 | `thermal(mean_quanta=n̄)` | many quanta added at random moments and relaxed, named by its mean — an effective temperature | that steady random excitation | the same list, of that $\bar n$ | as above |
 | `thermal()` | a thermal state whose temperature is given where the chain is placed (`.on(..., temperature_k=)`) | as above | as above | as above |
@@ -1277,8 +1318,12 @@ flowchart LR
 **What they are:** one quantum gained or lost, **detected** — an absorbed
 photon, a Stokes photon scattered or a tunnelling electron losing
 $\hbar\omega$ (added); an anti-Stokes photon or an electron gaining
-$\hbar\omega$ (removed). **Assumed:** the event is quicker than the mode
-relaxes (its energy lifetime), so it acts on the state as it stands.
+$\hbar\omega$ (removed) — and **the molecules it happened to**: of the
+state before, only those that gained (lost) the quantum, each exactly one
+level up (down); not every level shifted, and not the whole sample, most of
+which gains nothing (§ 2's *A level, or a quantum added?*). **Assumed:** the
+event is quicker than the mode relaxes (its energy lifetime), so it acts on
+the state as it stands.
 
 $$
 \text{added: } \hat\rho \to \frac{\hat b^\dagger\hat\rho\,\hat b}{\mathrm{Tr}},\quad
@@ -1334,9 +1379,9 @@ if temperature_k is given and the start names its own mean:
     refuse — a mean and a temperature would name the start twice
 if the start (thermal or classical) names neither: start.temperature ← temperature_k   (refused if none is given)
 any other start (the ground state, a level): temperature_k is not used
-if the start is thermal: start.mean ← n̄(T) on this oscillator, or the mean it names
+if the start is thermal: start ← thermal of mean n̄(T) on this oscillator, or of the mean it names; the state keeps T
 chain ← its reduced form
-refuse a quantum removed straight after a start that holds none
+refuse a quantum removed straight after a start that, as typed, holds none (a thermal one judged at its T, never at its mean)
 → the state; its list is built the first time it is asked (below)
 ```
 
@@ -1374,9 +1419,9 @@ seven frames reproduce; science § 2e.6 says why each number.
 | `.populations` | the list, cut for $\langle x^{12}\rangle$ — a removal its start cannot make after the events before it refused by name here, and wherever the list is asked (`.mean_quanta`, `dist.of_state`) |
 | `.populations_for(order)` | the list cut for $\langle x^{\mathrm{order}}\rangle$ — a classical state refused, counting no quanta |
 | `.mean_quanta` | $\bar n$ — in closed form where known: a level $n$; the ground state 0; a thermal state $\bar n$; with one quantum added $2\bar n + 1$, removed $2\bar n$ — else $\sum_n n\,p_n$; `None` for a classical state |
-| `.temperature_k` | its start's temperature, or `None` |
+| `.temperature_k` | the temperature its thermal start was placed at, or its classical start's; `None` for any other start |
 | `.words` | each step in words |
-| `.chain`, `.oscillator`, `.precision`, `.steps`, `.is_classical` | its reduced chain, the thermal start's mean and temperature resolved; the oscillator; the share of the averages its list may leave out; the chain's steps; whether it starts classical |
+| `.chain`, `.oscillator`, `.precision`, `.steps`, `.is_classical` | its reduced chain, a thermal start holding its mean alone; the oscillator; the share of the averages its list may leave out; the chain's steps; whether it starts classical |
 
 ```python
 >>> warm = states.thermal(temperature_k=300.0).on(osc)
@@ -1407,11 +1452,44 @@ values)` one start or event by its name (`ground`, `level`, `thermal`,
 `(key, value)` pairs sorted by key, so two steps that are one compare equal
 (`step.get(key)`, `step.with_values(...)`); `chain.start` its start,
 `chain.is_classical` whether it starts classical, `chain.temperature_open`
-whether its thermal start names neither a temperature nor a mean.
+whether its thermal start names neither a temperature nor a mean. **A chain
+built by hand is checked as the starts and the events check them**: a first
+step that is no start, a key it does not take or a value it refuses, a
+thermal start naming both a temperature and a mean, a later step that is no event or holds a value, a quantum added or removed on
+a classical start — each refused by name, so a misspelled step is never
+computed as another.
 
 ```python
 >>> states.thermal(temperature_k=300.0).add_quantum().steps
 (Step(name='thermal', values=(('temperature_k', 300.0),)), Step(name='add_quantum', values=()))
+>>> states.Chain((states.Step("thermal", (("mean_quanta", 1.0),)), states.Step("add_quantm")))
+Traceback (most recent call last):
+  ...
+ValueError: after its start a chain holds add_quantum and remove_quantum, each of no value; got Step(name='add_quantm', values=())
+```
+
+##### `chain.with_temperature(temperature_k)`, `words_with_source(source)`
+
+**What they are:** an open start's temperature filled — the filling `.on`
+makes before it places the chain, here for a chain that stays unplaced (a
+motion's background) — and a chain's or a placed state's words with where
+that temperature came from said right after it (`source`, the holder's
+name: *thermal at 300 K (0.621 mean quanta), the record's temperature*;
+`None` says none), the one wording of a temperature taken (§ 2).
+**Refuses:** a temperature for a start that names its own temperature or
+mean, and one that takes none (the ground state, a level).
+
+```python
+>>> states.thermal().with_temperature(77.0).words
+'thermal at 77 K'
+>>> states.thermal().add_quantum().on(osc, temperature_k=300.0).words_with_source("the record's")
+"thermal at 300 K (0.621 mean quanta), the record's temperature; one quantum added"
+>>> states.classical_thermal().with_temperature(300.0).words_with_source("the motion's")
+"the classical bell curve at 300 K, the motion's temperature, no zero-point motion"
+>>> states.thermal(temperature_k=300.0).with_temperature(77.0)
+Traceback (most recent call last):
+  ...
+ValueError: thermal names its own temperature or mean; a temperature fills only an open one
 ```
 
 ##### `chain.words`, `chain.to_record()`, `Chain.from_record(record)`
@@ -1423,7 +1501,8 @@ the thermal start's mean quanta — and the chain as a frame set records it
 as given. `Chain.from_record` makes the chain again **by the starts and the
 events themselves**, so a record is checked as they check. **Refuses:** what
 is no list of steps, a first step that is no start, a later one that is no
-event, and what a start refuses.
+event or holds a value, a start's values that are no mapping or hold a key
+it does not take, and what a start refuses.
 
 ```python
 >>> c = states.thermal().add_quantum()
@@ -1438,7 +1517,7 @@ True
 >>> states.Chain.from_record([{"step": "add_quantum", "values": {}}])
 Traceback (most recent call last):
   ...
-ValueError: a chain starts with ground, level, thermal or classical_thermal; its record starts with 'add_quantum'
+ValueError: a chain starts with ground, level, thermal or classical_thermal; its first step is 'add_quantum'
 ```
 
 ---

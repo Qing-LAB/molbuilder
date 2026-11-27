@@ -23,8 +23,8 @@ ROLE    a vibration from either of its forms (:func:`vibration_of`) and a
         (:func:`doors_chain`, :func:`frameset_from_mode`, :func:`readout`,
         § 6); the rows' vocabulary (:data:`ROWS`, § 5.1: each name, where
         it lives, its kind, unit and meaning, written as the row's note)
-        and what a set assumes (:func:`assumptions_of_a_mode`,
-        :func:`assumptions_of_set`); the weights of a set's rows for a
+        and what a mode's own set assumes (:func:`assumptions_of_a_mode`);
+        the weights of a set's rows for a
         state (:func:`weights_for_set`, § 7) -- every state
         a chain or a distribution bound to a mode (`vibration.Mode.bind`)
 USED-BY the command line (`molbuilder frameset from-mode`:
@@ -60,11 +60,6 @@ from .vibration import DEFAULT_NODES
 #: coordinates by (`model/structure-annotations.md`).
 MASS_CHANNEL = "mass_amu"
 
-#: Where a set written before 2.81.0 says the modes came from:
-#: ``info.vibration = {run, result_sha256}`` -- read, never written (§ 5.1).
-INFO_KEY = "vibration"
-
-
 @dataclass(frozen=True)
 class Row:
     """One row of the vocabulary (§ 5.1): its ``name`` -- which carries its
@@ -87,17 +82,11 @@ class Row:
         return unit_of_name(self.name)
 
     @property
-    def unit_spelled(self) -> str:
-        """Its unit as the units table spells it: ``"1"`` for a number of
-        none."""
-        return self.unit or "1"
-
-    @property
     def unit_written(self) -> Optional[str]:
         """What its maker writes in the row's ``unit``: blank where the name
         carries the unit, ``1`` for a number of none
         (`model/structure.md` § 2.2d) -- a text's ``1`` not kept."""
-        return None if self.unit else self.unit_spelled
+        return None if self.unit else "1"
 
 
 #: THE VOCABULARY -- `engines/vibration-frames.md` § 5.1's table, in its
@@ -120,7 +109,8 @@ ROWS: Tuple[Row, ...] = (
         "the factor every mode's frequency was scaled by, each pattern kept"),
     Row("assumptions", "structure", "given",
         "the maker's assumptions, in words -- what the weights' average "
-        "holds under (science/vibrational-averaging.md 7, items 1 and 7)"),
+        "holds under (science/vibrational-averaging.md § 7, a vibration's "
+        "frame set's own)"),
     Row("sampling_rule", "structure", "given",
         "the recipe, by name, that placed the frames and gave their weights: "
         "gauss-hermite, a bell curve's Gauss rule -- a thermal or classical "
@@ -184,9 +174,11 @@ ROWS: Tuple[Row, ...] = (
         "a mode's own set of n quanta exactly -- a chain whose one form is a "
         "level: n"),
     Row("mean_quanta", "structure", "derived",
-        "a mode's own set: the state's mean number of quanta -- in closed "
-        "form where its chain is a family (a thermal state's n = 1 / "
-        "(exp(hbar omega / k_B T) - 1)), sum_n n p_n of its list otherwise"),
+        "a mode's own set: the state's mean number of quanta after every "
+        "step info.state records -- a thermal start's own mean is said in "
+        "the assumptions row -- in closed form where its chain is a family "
+        "(a thermal state's n = 1 / (exp(hbar omega / k_B T) - 1), one "
+        "quantum added 2n + 1), sum_n n p_n of its list otherwise"),
     Row("spread_amu12_ang", "structure", "derived",
         "a mode's own set: the r.m.s. of the state the frames sample, "
         "sigma = sqrt(<Q^2>) -- Q_zp sqrt(2n + 1) for a quantum state of "
@@ -217,15 +209,26 @@ ROWS: Tuple[Row, ...] = (
         "of finding the molecule at the frame"),
 )
 
-#: A NAME A SET WRITTEN BEFORE 2.81.0 GAVE A ROW, read as the row it is now
-#: (§ 5.1).
-_OLDER_NAMES = {"sigma_amu12_ang": "spread_amu12_ang"}
+#: WHAT FRAMES OF A VIBRATION ASSUME beside the calculation over them
+#: (`science/vibrational-averaging.md` § 7, a vibration's frame set's own):
+#: the end of every set's ``assumptions`` row the toolkit writes -- a mode's
+#: own set's and a snapshot set's -- so no transport surface says it.
+_FRAMES_OF_A_VIBRATION = (
+    "Frames of a vibration: each is a geometry the electrons cross fast "
+    "against the vibration, hbar omega << max(|e - E_F|, Gamma); the "
+    "inelastic steps at eV = hbar omega and a strongly coupled level's "
+    "polaron shift need the electron-vibration coupling and are not in a "
+    "frame average.  The state is the same at every voltage: a bias that "
+    "heats the modes the current couples to, or light that pumps them, is "
+    "said by an effective temperature, measured, and stated as the set's.")
+
 
 def assumptions_of_a_mode(state_words: str) -> str:
-    """The ``assumptions`` row of a mode's own set (§ 5; science § 7,
-    items 1 and 7): the harmonic mode in ``state_words`` -- its state, as
-    the set states it -- one mode alone, and its rule's degree as its
-    only error."""
+    """The ``assumptions`` row of a mode's own set (§ 5; science § 7, a
+    vibration's frame set's own): the harmonic mode in ``state_words`` --
+    its state, as the set states it -- one mode alone, its rule's degree as
+    its only error, and what frames of a vibration assume
+    (:data:`_FRAMES_OF_A_VIBRATION`)."""
     return ("Harmonic modes: the molecule's position along the mode follows "
             f"its state's distribution -- {state_words} -- the same either "
             "side of equilibrium; a strongly anharmonic mode skews it, which "
@@ -233,34 +236,8 @@ def assumptions_of_a_mode(state_words: str) -> str:
             "other mode stays at the relaxed geometry.  A mode's own set "
             "carries no statistical error, only its rule's degree: its "
             "weights average a response polynomial in the mode's coordinate "
-            "exactly up to degree 2m - 1, m the rule's nodes.")
-
-
-def assumptions_of_set(rows, info=None) -> Optional[str]:
-    """What a set's average assumes, as its maker states it: its
-    ``assumptions`` row; for a mode's own set written before 2.81.0 -- told
-    by its own marks, the spread's older name or an ``info.vibration``
-    (``info``, the structure's), a thermal set as every one the generator
-    wrote then -- which states none, the harmonic assumptions in the words a
-    set written now states, at its temperature (science § 7: "never
-    dropped"); else ``None``, a person's set's state not known."""
-    if rows is None:
-        return None
-    own = rows.value("assumptions")
-    if own is not None:
-        return str(own)
-    older = (any(rows.value(name) is not None for name in _OLDER_NAMES)
-             or isinstance((info or {}).get(INFO_KEY), dict))
-    temperature = finite_number(rows.value("temperature_k"))
-    if _kind_of(rows) == _MODE_SET and older and temperature is not None:
-        from .oscillator_state import thermal
-        chain = thermal(temperature_k=temperature)
-        nu = finite_number(rows.value("frequency_cm1"))
-        if nu is not None and nu > 0.0:
-            from .oscillator import Oscillator
-            return assumptions_of_a_mode(chain.on(Oscillator(nu)).words)
-        return assumptions_of_a_mode(chain.words)
-    return None
+            "exactly up to degree 2m - 1, m the rule's nodes.  "
+            + _FRAMES_OF_A_VIBRATION)
 
 
 #: WHAT A SET IS, by the rows its maker wrote (:func:`_kind_of`).
@@ -275,7 +252,7 @@ _RULE_GAUSS_HERMITE, _RULE_GAUSS, _RULE_MONTE_CARLO = (
 
 def _kind_of(rows) -> Optional[str]:
     """What a set is, by its rows -- the one rule :func:`weights_for_set`
-    and :func:`assumptions_of_set` ask: a snapshot set (:data:`_SNAPSHOT_SET`) by
+    and :func:`read_frame_set` ask: a snapshot set (:data:`_SNAPSHOT_SET`) by
     its ``samples`` row or its ``monte-carlo`` rule; a mode's own set
     (:data:`_MODE_SET`) by its mode's number, or its frequency and zero-point
     amplitude; else ``None`` -- frames a person built."""
@@ -484,12 +461,13 @@ def _keeps_background(motion) -> bool:
 
 
 def _assumptions_of_snapshots(snaps, imaginary: Sequence[int]) -> str:
-    """A snapshot set's ``assumptions`` row (§ 5; science § 7, items 1 and
-    7): harmonic modes, each mode's state -- the background where an
+    """A snapshot set's ``assumptions`` row (§ 5; science § 7, a
+    vibration's frame set's own): harmonic modes, each mode's state -- the background where an
     included mode keeps it, each mode set apart in its own words -- their
     independence, every mode not included at the
-    relaxed geometry, the ``imaginary`` ones (no harmonic state) named, and
-    a finite set's statistical error."""
+    relaxed geometry, the ``imaginary`` ones (no harmonic state) named, a
+    finite set's statistical error, and what frames of a vibration assume
+    (:data:`_FRAMES_OF_A_VIBRATION`)."""
     motion = snaps.motion
     apart = motion.set_apart_modes
     if _keeps_background(motion):
@@ -510,7 +488,8 @@ def _assumptions_of_snapshots(snaps, imaginary: Sequence[int]) -> str:
                  else ""))
            + f".  A finite set of {snaps.samples} snapshots{pairs}: its "
            "average carries a statistical error, which the analysis of its "
-           "results computes (Snapshots.standard_error).")
+           "results computes (Snapshots.standard_error).  "
+           + _FRAMES_OF_A_VIBRATION)
     return out
 
 
@@ -519,9 +498,8 @@ def _background_record(motion) -> Dict[str, Any]:
     as given or its distribution's family and numbers, the temperature its
     start took and where from, and whether it is classical -- a distribution
     of a person's own class refused by name (`Distribution.to_record`)."""
-    from .oscillator_state import Chain
     b = motion.background
-    made = ({"chain": b.to_record()} if isinstance(b, Chain)
+    made = ({"chain": b.to_record()} if motion.background_is_chain
             else {"distribution": b.to_record()})
     return {**made, "temperature_k": motion.temperature_k,
             "temperature_from": motion.temperature_from,
@@ -551,12 +529,6 @@ def _sampling_of(snaps) -> Dict[str, Any]:
         "antithetic": bool(snaps.antithetic),
         "q_amu12_ang": [[float(x) for x in row]
                         for row in snaps.q_amu12_ang]}
-
-
-def _is_chain(x) -> bool:
-    """Whether ``x`` is a chain of steps (`oscillator_state.Chain`)."""
-    from .oscillator_state import Chain
-    return isinstance(x, Chain)
 
 
 def _row(row: Row, value: Any) -> Dict[str, Any]:
@@ -600,12 +572,12 @@ def _checked_target(path) -> Path:
 
 
 #: What a mode's set read back with no state for its mode needs to be written
-#: again -- read without its vibration, or written by 2.81-2.84, which
+#: again -- read without its vibration, or written before 2.85.0, which
 #: records no state (§ 5).
 _GIVE_ITS_STATE = (
     "the frames were read back with no state for their mode -- without their "
     "vibration (given it, read_frame_set(path, vibration=v) binds their "
-    "state again), or written by 2.81-2.84, which records none (written "
+    "state again), or written before 2.85.0, which records none (written "
     "again as a person's frames: write_frame_set(path, f.positions_ang, "
     "f.weights, vibration=v, rows=...))")
 
@@ -642,7 +614,7 @@ def write_frame_set(path, frames=None, weights=None, *, vibration=None,
     Refused by name (:class:`FrameSetError`): a pair already at ``path``
     (a calculation citing it is pinned to it), a name the codec does not
     write, a mode's set read back with no state for its mode (without its
-    vibration, or written by 2.81-2.84) or a snapshot set read back without
+    vibration, or written before 2.85.0) or a snapshot set read back without
     its vibration, a recipe's state that records nothing to bind again (a
     distribution of a person's own class), a person's set read back (a
     :class:`FrameSet`, written
@@ -766,7 +738,7 @@ def write_frame_set(path, frames=None, weights=None, *, vibration=None,
                           else ", ".join(str(k) for k in included)),
                 "set_apart_modes": motion.set_apart_modes or None,
                 "quantum": (None if not _keeps_background(motion)
-                            or not _is_chain(motion.background)
+                            or not motion.background_is_chain
                             else 0 if motion.classical else 1),
                 "temperature_k": (float(motion.temperature_k)
                                   if _keeps_background(motion)
@@ -1097,19 +1069,38 @@ def _beyond_harmonic(m, s) -> Optional[str]:
             f"drawn from may no longer hold")
 
 
+def _holds_words(mean_quanta: Optional[float],
+                 spread_over_zero_point: float) -> str:
+    """WHAT A STATE HOLDS, IN WORDS -- the one wording the command line and
+    the page print (`web/spectra.md` § 4.3): its mean number of quanta, four
+    figures, the noun the figure's (*1 quantum* for a mean of 1.0004), and
+    its spread against its zero-point amplitude."""
+    from .oscillator import _quanta_words
+    held = ("" if mean_quanta is None else
+            f"it holds {_quanta_words(mean_quanta, spec='.4g')} on average; ")
+    return (f"{held}its spread is {spread_over_zero_point:.4g} times its "
+            f"zero-point amplitude")
+
+
 def readout(m, chain, node_counts=OFFERED_NODES) -> Optional[Dict[str, Any]]:
     """WHAT A STATE MEANS FOR MODE ``m`` BEFORE ITS SET IS WRITTEN
     (`web/spectra.md` § 4.3) -- the page's readout under the dialog, the
     load door's ``frameset`` block: ``{mean_quanta, spread_amu12_ang,
-    spread_over_zero_point, outermost_move_ang: {"3": …, …}, state,
+    spread_over_zero_point, outermost_move_ang: {"3": …, …}, state, holds,
     beyond_harmonic}`` for the mode bound to ``chain`` (:func:`doors_chain`
-    makes it), ``state`` its words, the outermost move for each frame count
-    of ``node_counts``; ``beyond_harmonic`` the words where its quanta put
+    makes it), ``state`` its words, ``holds`` its quanta and spread in words
+    (:func:`_holds_words`), the outermost move for each frame count of
+    ``node_counts``; ``beyond_harmonic`` the words where its quanta put
     more than :data:`HARMONIC_LIMIT_EV` into the mode, else ``None``.
     ``None`` for an imaginary mode, which has no state."""
     if m.has_imag:
         return None
-    s = _bound_of(m, chain)
+    return _readout_of(m, _bound_of(m, chain), node_counts)
+
+
+def _readout_of(m, s, node_counts) -> Dict[str, Any]:
+    """:func:`readout`'s block for mode ``m`` bound already (``s``), so the
+    write door binds once."""
     q_zp = float(m.zero_point_amplitude_amu12_ang)
     spread = float(s.spread_amu12_ang)
     return {
@@ -1119,6 +1110,7 @@ def readout(m, chain, node_counts=OFFERED_NODES) -> Optional[Dict[str, Any]]:
         "outermost_move_ang": {str(n): s.outermost_move(n)
                                for n in node_counts},
         "state": s.words,
+        "holds": _holds_words(s.mean_quanta, spread / q_zp),
         "beyond_harmonic": _beyond_harmonic(m, s)}
 
 
@@ -1138,13 +1130,33 @@ class ModeFrames:
     frames: Tuple[Dict[str, float], ...]
     said: Tuple[str, ...]
 
-    def to_wire(self, root=None) -> Dict[str, Any]:
-        """As a page is answered: the pair's path from ``root`` (the tree),
-        each frame, and what is said."""
+    @property
+    def holds(self) -> str:
+        """Its quanta and its spread in words (:func:`_holds_words`)."""
+        return _holds_words(self.mean_quanta, self.spread_over_zero_point)
+
+    @property
+    def frame_lines(self) -> Tuple[str, ...]:
+        """Each frame in words, named as every message names one
+        (`structure.frame_words`): its coordinate in units of the spread,
+        its largest atom move and its weight -- the one wording the command
+        line and the page print."""
+        from .structure import frame_words
+        n = len(self.frames)
+        return tuple(f"{frame_words(f, n)}: q/σ {row['q_sigma']:+.4f}, "
+                     f"largest atom move {row['max_atom_displacement_ang']:.4f}"
+                     f" Å, weight {row['weight']:.6f}"
+                     for f, row in enumerate(self.frames))
+
+    def to_wire(self, root) -> Dict[str, Any]:
+        """As a page is answered: the pair's path from ``root`` (the tree)
+        and as written (``written``, the folder a page announces), each
+        frame and its line, what it holds, and what is said."""
         from .projects import address
-        path = (address(self.path, root) if root is not None
-                else str(self.path))
-        return {"path": path, "frames": [dict(f) for f in self.frames],
+        return {"path": address(self.path, root),
+                "written": str(self.path),
+                "frames": [dict(f) for f in self.frames],
+                "lines": list(self.frame_lines), "holds": self.holds,
                 "said": list(self.said)}
 
 
@@ -1188,7 +1200,7 @@ def frameset_from_mode(run_folder, *, mode, out, chain,
                         rows.value("max_atom_displacement_ang", f)),
                     "weight": float(w)}
                    for f, w in enumerate(rows.weights))
-    said = readout(m, chain, node_counts=(nodes,))
+    said = _readout_of(m, s, (nodes,))
     return ModeFrames(
         path=written.path, state=s.words,
         mean_quanta=said["mean_quanta"],
@@ -1296,9 +1308,8 @@ def _degree_of(nodes: float) -> int:
 
 
 def _run_of_set(provenance) -> Optional[Path]:
-    """The vibration run a set names (:func:`_provenance`'s ``run`` -- its
-    ``vibration_run`` row, or an older set's ``info.vibration``), as a
-    folder: its address read back through the projects tree
+    """The vibration run a set names (:func:`_provenance`'s ``run``, its
+    ``vibration_run`` row), as a folder: its address read back through the projects tree
     (`projects.at`), or the full path it was written as where it lay
     outside the tree."""
     from .projects import OutsideRoot, at
@@ -1323,20 +1334,21 @@ def read_frame_set(path, *, vibration=None):
     state bound again), a `vibration.Frames` for the toolkit's own mode set
     (its ``sampling_rule`` a mode's rule with its ``sampling_nodes``, every
     frame's coordinate stated; its ``info.state`` bound again to its mode,
-    of its vibration -- a set that records none, written by 2.81-2.84,
-    read without its state, said once), or a :class:`FrameSet` for any other
-    -- a person's, said where it names a recipe's rows.  The vibration is
-    the one given, or the run the set names reopened
-    (:func:`vibration_of_run`), brought to the set's frequency scale; where
-    neither is had, or the run's result is not the one the set names, the
-    set is read without it -- its geometries, weights and analyses whole --
-    and said.
+    of its vibration -- a set that records none, written before 2.85.0,
+    read without its state, said once, its run not reopened), or a
+    :class:`FrameSet` for any other -- a person's, said where it names a
+    recipe's rows.  The vibration is the one given, or the run the set
+    names reopened (:func:`vibration_of_run`), brought to the set's
+    frequency scale; where neither is had, or the run's result is not the
+    one the set names, the set is read without it -- its geometries,
+    weights, moves and analyses whole -- and said; a recorded state or
+    motion that does not bind again is said, the set read without it.
 
-    Refused by name (:class:`FrameSetError`): a pair that does not read, a
-    structure that states no frame set's rows, a vibration given that is no
-    vibration or not the set's (its result's sha256 not the set's), a
-    snapshot set written by 2.82-2.84 -- its motion recorded the old way,
-    no ``background`` (the user's choice, 2026-11-26)."""
+    Refused by name (:class:`FrameSetError`): a pair that does not read,
+    one structure, frames that state no frame set's rows, a vibration given
+    that is no vibration or not the set's (its result's sha256 not the
+    set's), a snapshot set written by 2.82-2.84 -- its motion recorded the
+    old way, no ``background`` (the user's choice, 2026-11-26)."""
     import numpy as np
     from .frameset import read
     from .vibration import Frames, Snapshots, Vibration
@@ -1346,17 +1358,18 @@ def read_frame_set(path, *, vibration=None):
         struct = StructureCodec().load(path, frames=True, said_out=[])
     except (ValueError, OSError) as exc:
         raise FrameSetError(f"{name}: {exc}") from exc
+    if struct.frames is None or struct.n_frames < 2:
+        raise FrameSetError(f"{name} holds one structure: a frame set holds "
+                            f"two frames or more")
     rows = read(struct)
     if rows is None:
-        raise FrameSetError(f"{name} states no frame set's rows -- one "
-                            f"structure, or frames that state none")
-    positions = (np.asarray(struct.frames, dtype=float)
-                 if struct.frames is not None
-                 else np.asarray(struct.positions, dtype=float)[None])
+        raise FrameSetError(f"{name} states no frame set's rows -- frames "
+                            f"that state none")
+    positions = np.asarray(struct.frames, dtype=float)
     weights = np.asarray(rows.weights if rows.weights is not None
                          else [np.nan] * struct.n_frames, dtype=float)
     said: List[str] = list(rows.warnings)
-    provenance = _provenance(rows, struct)
+    provenance = _provenance(rows)
     stated_sha = (provenance or {}).get("result_sha256")
     v = vibration
     if v is not None:
@@ -1406,7 +1419,12 @@ def read_frame_set(path, *, vibration=None):
     if kind is None:
         return FrameSet(positions, weights, rows, tuple(said))
 
-    if v is None:
+    # A MODE'S SET THAT RECORDS NO STATE (written before 2.85.0) is read
+    # without it, whatever vibration is had: its run is not reopened, and
+    # no vibration is asked for, which could bind nothing.
+    record = (struct.info or {}).get("state")
+    stateless = kind == _MODE_SET and not isinstance(record, dict)
+    if v is None and not stateless:
         run = _run_of_set(provenance)
         if run is None:
             said.append("the set names no vibration run: it is read without "
@@ -1430,11 +1448,10 @@ def read_frame_set(path, *, vibration=None):
     if kind == _MODE_SET:
         q = np.array([[x] for x in q_rows], dtype=float)
         bound = None
-        record = (struct.info or {}).get("state")
-        if not isinstance(record, dict):
+        if stateless:
             said.append("the set records no state (info.state): its frames, "
-                        "weights and coordinates are read whole, its state "
-                        "is not")
+                        "weights, coordinates and moves are read whole, its "
+                        "state is not")
         elif v is not None:
             scale = finite_number(rows.value("frequency_scale")) or 1.0
             mode = _mode_at(_at_scale(v, scale), int(number), nu)
@@ -1450,7 +1467,13 @@ def read_frame_set(path, *, vibration=None):
     modes = np.array(sampling.get("modes") or [], dtype=int)
     q = np.asarray(sampling.get("q_amu12_ang") or [], dtype=float).reshape(
         n, len(modes))
-    motion = _motion_of(v, sampling) if v is not None else None
+    motion = None
+    if v is not None:
+        try:
+            motion = _motion_of(v, sampling)
+        except ValueError as exc:
+            said.append(f"its recorded motion does not bind again ({exc}): "
+                        f"it is read without its motion")
     return Snapshots(motion, modes, q, bool(sampling.get("antithetic")),
                      int(rows.value("seed")), int(rows.value("start")),
                      written_positions_ang=positions, read_said=tuple(said))
@@ -1484,21 +1507,14 @@ def _motion_of(v, sampling):
 #  Where a set came from                                                    #
 # ----------------------------------------------------------------------- #
 
-def _provenance(rows, structure) -> Optional[Dict[str, Any]]:
+def _provenance(rows) -> Optional[Dict[str, Any]]:
     """Where a vibration's set came from, for :func:`read_frame_set` to read
     its vibration again: ``{run, result_sha256}`` from its two provenance
-    rows, or an older set's ``info.vibration`` -- ``None`` where it states
-    neither; ``rows`` ``None`` for a structure that states no rows."""
-    if rows is not None and any(
-            rows.value(n) is not None
-            for n in ("vibration_run", "vibration_result_sha256")):
+    rows -- ``None`` where it states neither."""
+    if any(rows.value(n) is not None
+           for n in ("vibration_run", "vibration_result_sha256")):
         return {"run": rows.value("vibration_run"),
                 "result_sha256": rows.value("vibration_result_sha256")}
-    info = (structure.info or {}).get(INFO_KEY)
-    if isinstance(info, dict) and (info.get("run") or info.get(
-            "result_sha256")):
-        return {"run": info.get("run"),
-                "result_sha256": info.get("result_sha256")}
     return None
 
 
@@ -1570,8 +1586,8 @@ def weights_for_set(rows, chain_or_distribution):
         f"{_bound_words(state, given, None)}", *weights.said))
 
 
-__all__ = ["FrameSetError", "TWO_FORMS", "vibration_of", "INFO_KEY", "MASS_CHANNEL", "ROWS", "Row",
-           "assumptions_of_a_mode", "assumptions_of_set",
+__all__ = ["FrameSetError", "TWO_FORMS", "vibration_of", "MASS_CHANNEL", "ROWS", "Row",
+           "assumptions_of_a_mode",
            "vibration_of_run",
            "weights_for_set", "write_frame_set", "Written", "read_frame_set",
            "FrameSet", "outermost_move_of",

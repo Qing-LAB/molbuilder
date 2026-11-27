@@ -20,7 +20,6 @@ USED-BY the kind table (`transport.on.siesta.points`), through
 from __future__ import annotations
 
 import bisect
-import math
 from pathlib import Path
 from typing import Any, Dict, Optional, Sequence
 
@@ -214,6 +213,12 @@ class _ProductSays:
 
     @staticmethod
     def words(head: str, points, facts) -> str:
+        try:                               # inside molbuilder
+            from .conductance import frames_average
+        except ImportError:                # beside a job
+            from conductance import (  # type: ignore[no-redef]
+                frames_average)
+
         def one(state, fact):
             if state is not None:
                 return state
@@ -231,8 +236,7 @@ class _ProductSays:
               for _r, state, fact in points]
         if (weights is not None and len(weights) == len(points)
                 and all(g is not None for g in gs)):
-            out += (f"; the frames' average "
-                    f"{math.fsum(w * g for w, g in zip(weights, gs)):.4g}")
+            out += f"; the frames' average {frames_average(weights, gs):.4g}"
         return out
 
 

@@ -338,8 +338,9 @@ def reaveraged(path, chain_or_distribution) -> Dict[str, Any]:
     frame 0's -- by the record's own rule at each voltage, NaN where it has
     no value, its reason said -- ``weights`` the `distribution.PointWeights`,
     ``said`` the weights' words then the average's, and ``assumptions``
-    transport's own, then the set's own, named so -- the state it was
-    written for (`vibration_frames.assumptions_of_set`).  The binding's
+    transport's own, then the set's own ``assumptions`` row, named for the
+    state it was written for -- none for a set that states none.  The
+    binding's
     rule and its refusals are the toolkit's (`engines/vibration-frames.md`
     § 2, § 7); a data file of another schema is refused by its door
     (`transport.datafile.DataFileError`)."""
@@ -348,19 +349,14 @@ def reaveraged(path, chain_or_distribution) -> Dict[str, Any]:
     weights = weights_for_set(rows, chain_or_distribution)
     got = averaged_at(path, weights.weights)
     # WHAT THE NUMBERS ASSUME, beside them (science § 7, "never dropped"):
-    # transport's own, then the set's -- its own row, or molbuilder's words
-    # for a set that states none -- for the state it was written for, not
-    # the one asked.
-    from .vibration_frames import assumptions_of_set
-    own = assumptions_of_set(rows)
-    whose = ("the set's own" if rows is not None
-             and rows.value("assumptions") is not None
-             else "molbuilder's for the set, which states none")
+    # transport's own, then the set's own row, for the state it was written
+    # for, not the one asked.
+    own = rows.value("assumptions")
     return {**got, "weights": weights,
             "said": [*weights.said, *got["said"]],
             "assumptions": [*got["assumptions"], *(
-                [f"{whose}, for the state it was written for: {own}"]
-                if own else [])]}
+                [f"the set's own, for the state it was written for: {own}"]
+                if own is not None else [])]}
 
 
 def outermost_move(path, *, mode: int, chain_or_distribution, nodes=None):

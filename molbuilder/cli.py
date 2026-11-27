@@ -1973,8 +1973,6 @@ def cmd_frameset_from_mode(run, mode, temperature, mean_quanta, quanta,
         molbuilder frameset from-mode P/spectrum/V/01_freq/run-0 \\
             --mode 7 --temperature 300 --out P/structure/mode7.xyz
     """
-    from .structure import frame_words
-    from .oscillator import _quanta_words
     from .vibration_frames import (FrameSetError, StateRefused,
                                    doors_chain, frameset_from_mode)
     try:
@@ -1993,21 +1991,13 @@ def cmd_frameset_from_mode(run, mode, temperature, mean_quanta, quanta,
         raise click.ClickException(str(exc))
     click.echo(f"wrote {got.path} -- mode {mode}, {len(got.frames)} frames "
                f"(and its .molstruct.json)")
+    # IN THE WORDS THE PAGE PRINTS TOO, from their one home
+    # (`vibration_frames.ModeFrames`, `web/spectra.md` § 4.3): the state, what
+    # it holds, each frame as every message names one.
     click.echo(f"  {got.state}")
-    # A COUNT SAID AS PRINTED, its noun the figure's (`web/spectra.md`
-    # § 4.3): a mean of 1.0004 holds "1 quantum".
-    click.echo(f"  it holds "
-               f"{_quanta_words(got.mean_quanta, spec='.4g')} on "
-               f"average; its "
-               f"spread is {got.spread_over_zero_point:.4f} x its zero-point "
-               f"amplitude")
-    # EACH FRAME AS EVERY MESSAGE NAMES ONE (`structure.frame_words`,
-    # `model/structure.md` § 2.2e) -- the page's write lines too.
-    for f, row in enumerate(got.frames):
-        click.echo(f"  {frame_words(f, len(got.frames))}: q/sigma "
-                   f"{row['q_sigma']:+.4f}, largest atom move "
-                   f"{row['max_atom_displacement_ang']:.6f} A, weight "
-                   f"{row['weight']:.6f}")
+    click.echo(f"  {got.holds}")
+    for line in got.frame_lines:
+        click.echo(f"  {line}")
     for line in got.said:
         click.echo(f"note: {line}")
 

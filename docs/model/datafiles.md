@@ -76,7 +76,7 @@ content, named once, read by the writer and the reader alike; the catalogue
 | field | what it says |
 |---|---|
 | name, dimensions | the variable, over its axes — every axis a row of § 2a and a coordinate of its own name, so a reader selects by value (`transmission.sel(bias_v=0.2)`) |
-| `kind` | `given` (an input as stated), `raw` (as the engine printed it), `measured` (read off the structures' coordinates; no variable of a file is of this kind — a frame set's measured rows, [`structure.md`](?doc=model/structure.md) § 2.2f, are carried in its structure, `structure_json`, never as variables of their own), `derived` (molbuilder's computation), `state` (what happened: a run's state, why a value is missing), `coordinate` |
+| `kind` | `given` (an input as stated), `raw` (as the engine printed it), `derived` (molbuilder's computation), `state` (what happened: a run's state, why a value is missing), `coordinate` |
 | `units` · `long_name` · `definition` | one spelling a unit (`angstrom`, `A`, `eV`); what it is; how it is obtained — the formula for a derived one. **A value cited from another record keeps what it means**: a frame set's rows ([`structure.md`](?doc=model/structure.md) § 2.2f) are carried whole in the file's `structure_json`, each with its meaning as written (`note`), so a number carried into a file still says what it is and how it was obtained; no variable holds a maker's row — the one row a calculation reads, each frame's `weight`, is the file's own label with the calculation's own definition |
 | `source` | for a raw one, the file it was read from |
 | `auxiliary` | a label beside an axis (CF auxiliary coordinate, named in each variable's `coordinates`): an atom's element, a frame's folder — **of the kind its value is** (`given`, `raw`), never `coordinate`, which is an axis's own |
@@ -744,7 +744,7 @@ the group that is their home; the coordinates more than one file shares are
 
 | attribute | on | what it says |
 |---|---|---|
-| `kind` | every variable | how the value was obtained: `given` — an input, as stated (a setting, a structure's value, a value cited from another record); `raw` — as the engine printed or wrote it; `measured` — read off the structures' coordinates (a frame set's rows, [`model/structure.md`](?doc=model/structure.md) § 2.2f); `derived` — molbuilder's computation, its formula in `definition`; `state` — what happened: a run's state, why a value is missing; `coordinate` — an axis's own values; a label beside an axis is of the kind its value is (§ 2) |
+| `kind` | every variable | how the value was obtained: `given` — an input, as stated (a setting, a structure's value, a value cited from another record); `raw` — as the engine printed or wrote it; `derived` — molbuilder's computation, its formula in `definition`; `state` — what happened: a run's state, why a value is missing; `coordinate` — an axis's own values; a label beside an axis is of the kind its value is (§ 2) |
 | `units` | every number | one spelling of § 2c — `1` for a count, an index, a fraction or a flag; a text has none |
 | `long_name` | every variable | what it is, in a few words |
 | `definition` | every variable | how it is obtained — the formula for a derived one — and what its fill value means there; a value cited from another record keeps that record's meaning (§ 2) |

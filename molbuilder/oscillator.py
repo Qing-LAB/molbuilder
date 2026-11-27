@@ -21,14 +21,12 @@ ROLE    the quantum mechanics of one harmonic oscillator, nothing molecular:
           :func:`raising_matrix`, :func:`position_matrix`) -- a level's
           distribution function is `distribution.Level`'s, from the
           level's one table here (:func:`_number_distribution`).
-USED-BY `vibration` (which hands the mechanics on under their names -- read
-        there by the record's writers, `spectra.derived` and
-        `spectra.normal_modes`, and the spectrum tab's door,
-        `web.blueprints.spectra`), `vibration_frames` (a set's mode's
-        oscillator, the quanta's words) and `cli` (the quanta's words)
-        directly, `oscillator_state`, `distribution`, `sampling` (the
-        whole-number rule), and a person's script (`postprocess` hands the
-        module on).
+USED-BY `vibration`, the record's writers (`spectra.derived`,
+        `spectra.normal_modes`), the spectrum tab's door
+        (`web.blueprints.spectra`), `vibration_frames` (a set's mode's
+        oscillator, the quanta's words), `oscillator_state`,
+        `distribution`, `sampling` (the whole-number rule), and a person's
+        script (`postprocess` hands the module on).
 TRAVELS with `vibration` in both vibration bundles (`runwrap.bundle_members`),
         so it imports the constants two ways and nothing else of molbuilder.
 """
@@ -94,8 +92,8 @@ def zero_point_amplitude_amu12_ang(frequency_cm1: float,
                                    has_imag: bool = False) -> Optional[float]:
     """``Q_zp = sqrt(hbar / 2 omega) = sqrt(C / nu)`` in amu^1/2.A, ``C``
     the constants' ``ZERO_POINT_Q2_AMU_ANG2_CM1`` (§ 2b.1) -- from any
-    frequency, the mode's pattern kept; ``None`` for an imaginary mode,
-    which has no harmonic width."""
+    frequency; ``None`` for a frequency flagged imaginary (``has_imag``) or
+    not above 0, which has no harmonic width."""
     nu = float(frequency_cm1)
     if has_imag or not nu > 0.0:
         return None
@@ -151,11 +149,12 @@ def classical_spread_amu12_ang(frequency_cm1: float,
         2.0 * temperature_k / (nu * CM1_KELVIN))
 
 
-def _checked_quanta(n: Any, what: str = "a mean number of quanta") -> float:
-    """``n`` as a number of quanta, 0 or more, refused by name otherwise."""
+def _checked_quanta(n: Any) -> float:
+    """``n`` as a mean number of quanta, 0 or more, refused by name
+    otherwise."""
     v = _finite_non_negative(n)
     if v is None:
-        raise ValueError(f"{what} is 0 or more; got {n!r}")
+        raise ValueError(f"a mean number of quanta is 0 or more; got {n!r}")
     return v
 
 

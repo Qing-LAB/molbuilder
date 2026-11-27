@@ -151,8 +151,8 @@ imaginary mode has moves for a coordinate given and no state.
 ## 2b. Frames from the modes — the motion toolkit
 
 *(The motion and its snapshots built, 2.80.0; reading a run's folder, the
-writer and the reader, 2.82.0; the command line and the page for any state,
-2.83.0; the generic tools and the modes chosen in steps, 2.84.0; every
+writer and the reader, 2.82.0; the command line and the page, a mode's set
+its state asked every time, 2.83.0; the generic tools and the modes chosen in steps, 2.84.0; every
 mode's state a chain or a distribution bound to the mode, 2.85.0 — the
 tools' manual is [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
 § 9.1; the design and every choice is [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md),

@@ -100,22 +100,23 @@ def _temperature_k(body):
     ``temperature_k`` in the JSON body, as a float, ``None`` when the
     request names none; a value that is not one is refused with the reason
     (a 400, `web-api.md` § 2), by the rule every door shares
-    (`vibration.checked_temperature_k`)."""
+    (`oscillator.checked_temperature_k`)."""
     raw = (body or {}).get("temperature_k")
     if raw is None or raw == "":
         return None
-    from molbuilder.vibration import checked_temperature_k
+    from molbuilder.oscillator import checked_temperature_k
     return checked_temperature_k(raw)
 
 
-def _framesets(results, path, asked: Optional[Dict[str, Any]]):
+def _framesets(results, path, asked: Optional[Dict[str, Any]], chain=None):
     """EACH MODE'S READOUT FOR THE DIALOG'S STATE (`web/spectra.md` § 4.3)
     -- ``(state, {mode number: block})``: at ``asked``, the dialog's choice
     as it sent it, else at the thermal state at the record's temperature,
     the box the dialog starts at -- ``state`` said back as the dialog holds
     it; ``None`` where neither is stated or the result holds no geometry
-    yet.  The choice is made a chain by the doors' rule
-    (`vibration_frames.read_state_ask`), each block the motion toolkit's
+    yet.  ``chain`` the asked choice made a chain by the doors' rule
+    (`vibration_frames.read_state_ask`, read once by the load door), the
+    record's thermal state made one here; each block the motion toolkit's
     readout of the mode bound to it (`vibration_frames.readout`); a choice
     the doors refuse is a ``ValueError`` (a 400).  A result with no
     geometry yet is asked as such (``atoms_weighted``, what its `vibration`
@@ -129,7 +130,7 @@ def _framesets(results, path, asked: Optional[Dict[str, Any]]):
         if v.record_temperature_k is None:
             return None
         state = {"temperature_k": float(v.record_temperature_k)}
-    chain = read_state_ask(state)
+        chain = read_state_ask(state)
     return state, {m.index_1based: readout(m, chain) for m in v.modes}
 
 
@@ -342,9 +343,8 @@ def api_spectra_load():
     decide how to react:
 
       * SpectraJsonNotFoundError  -> 404
-      * SpectraJsonSchemaError    -> 422 with ``expected`` / ``actual``
-                                     so the UI can render an "update
-                                     molbuilder" hint
+      * SpectraJsonSchemaError    -> 422 with ``expected`` / ``actual``,
+                                     the page printing the reader's words
       * SpectraJsonMalformedError -> 400
       * SpectraJsonFieldError     -> 400
     """
@@ -354,9 +354,10 @@ def api_spectra_load():
     try:
         temperature_k = _temperature_k(body)
         from molbuilder.vibration_frames import read_state_ask
-        # THE DIALOG'S CHOICE, refused here before the file is read; kept
-        # as sent, to be said back as the dialog holds it.
-        _view_asked(body, "frameset_state", read_state_ask)
+        # THE DIALOG'S CHOICE, read once and refused here before the file
+        # is read -- its chain asked of every mode; kept as sent, to be said
+        # back as the dialog holds it.
+        frameset_chain = _view_asked(body, "frameset_state", read_state_ask)
         frameset_state = body.get("frameset_state")
         from molbuilder.spectra import infrared as _ir, raman as _raman
         infrared = _view_asked(body, "infrared", _ir.read_ask)
@@ -393,7 +394,8 @@ def api_spectra_load():
     except SpectraJsonError as exc:
         return _err_load(exc)
     try:
-        framesets = _framesets(results, path, frameset_state)
+        framesets = _framesets(results, path, frameset_state,
+                               frameset_chain)
     except ValueError as exc:
         return err(str(exc), 400, kind="field")
     return _loaded(results, run=run, temperature_k=temperature_k,
@@ -423,7 +425,8 @@ def api_spectra_frameset():
     count (the doors' default when unsaid), and the pair's ``.xyz``, each
     path inside the tree (the fence, `web-api.md` § 2.1), the ``.xyz``
     where a file may be written (`files._writable`).  Answers ``{ok, path,
-    frames, said}``, or the writer's refusal in its words (400)."""
+    written, frames, lines, holds, said}`` (`vibration_frames.ModeFrames`),
+    or the writer's refusal in its words (400)."""
     from molbuilder.persist import unknown_keys
     from molbuilder.vibration_frames import (STATE_ASK_KEYS, FrameSetError,
                                              doors_chain, frameset_from_mode)
@@ -469,9 +472,9 @@ def _err_load(exc: SpectraJsonError):
 
     Returns (Flask response, status_code) -- the dispatcher decides
     HTTP code based on exception type so the UI can decide how to
-    react without parsing the message string.  Schema mismatches
-    carry their numeric versions so the UI can render an "update
-    molbuilder" hint directly.
+    react without parsing the message string.  Schema mismatches carry
+    their numeric versions beside the reader's own words, which the page
+    prints.
     """
     if isinstance(exc, SpectraJsonNotFoundError):
         return err(str(exc), 404, kind="not_found")

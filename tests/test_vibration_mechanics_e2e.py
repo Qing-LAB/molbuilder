@@ -327,13 +327,14 @@ def test_the_command_line_writes_a_modes_set_in_any_state(doors_sets, kind):
     state_line = r.output.splitlines()[1].strip()
     assert state_line and state_line in rows.value("assumptions"), r.output
     # WHAT IT PRINTS IS THE SET'S OWN: its mean quanta and spread, from its
-    # rows (§ 5.1) -- the noun the printed figure's (`web/spectra.md`
-    # § 4.3): "1 quantum", "2 quanta".
+    # rows (§ 5.1), four figures -- the noun the printed figure's
+    # (`web/spectra.md` § 4.3): "1 quantum", "2 quanta" -- in the one
+    # wording the page prints too.
     spread = rows.value("spread_amu12_ang") / rows.value(
         "zero_point_amplitude_amu12_ang")
     mean = f"{rows.value('mean_quanta'):.4g}"
     assert (f"it holds {mean} {'quantum' if mean == '1' else 'quanta'} "
-            f"on average; its spread is {spread:.4f} x its zero-point "
+            f"on average; its spread is {spread:.4g} times its zero-point "
             f"amplitude") in r.output, r.output
     # MANY QUANTA SAID, never refused (the user's choice, 2026-11-24):
     # beyond 1 eV in the mode, <n> h c nu by CODATA, the note says so.

@@ -38,8 +38,8 @@ ROLE    from what a result states of a mode -- its frequency, whether it is
           move, a list or chosen in steps (:class:`ModeSelection`), a state
           bound to each mode, each drawn on its own (:class:`Motion`), its
           snapshots and their analyses (:class:`Snapshots`).
-USED-BY the result's derived values (`spectra.derived`), the thermochemistry
-        (`spectra.normal_modes`), the motion toolkit's frame sets
+USED-BY the result's derived values (`spectra.derived`), the motion
+        toolkit's frame sets
         (`vibration_frames`: the writer and reader, the doors' set, the
         outermost move, the weights for a set's rows), the SIESTA
         vibration's Raman displacements (`spectra.siesta_vibration`), the
@@ -71,19 +71,17 @@ import numpy as np
 # TWO WAYS, because this module travels beside the job (see the header).
 # The mechanics are one oscillator's (`oscillator`), a state's steps
 # `oscillator_state`'s, the distributions `distribution`'s, the seed's
-# streams and the arrays' statistics `sampling`'s.  The mechanics are handed
-# on here under their names, read here by the record's writers
-# (`spectra.derived`, `spectra.normal_modes`) and the spectrum tab's door
-# (`web.blueprints.spectra`).
+# streams and the arrays' statistics `sampling`'s -- each asked here, and
+# by every other reader directly (`engines/vibration-frames.md` § 1).
 try:                                        # inside molbuilder
     from .constants import FORCE_CONSTANT_MDYN_ANG_PER_AMU_CM2
     from .oscillator import (
         Oscillator, _checked_frequency, _whole,
-        checked_temperature_k, classical_spread_amu12_ang,
-        bose_einstein_mean_quanta, spread_of_quanta, bose_einstein_temperature,
+        checked_temperature_k, bose_einstein_mean_quanta, spread_of_quanta,
         thermal_spread_amu12_ang, zero_point_amplitude_amu12_ang)
     from .oscillator_state import Chain, OscillatorState
-    from .sampling import (_checked_seed, even_odd_parts, mean_with_error,
+    from .sampling import (_checked_seed, _count_words, even_odd_parts,
+                           mean_with_error,
                            normal_stream, pair_means)
     from .distribution import Distribution, PointWeights, of_state
 except ImportError:                         # beside a job, in a bundle
@@ -91,13 +89,13 @@ except ImportError:                         # beside a job, in a bundle
         FORCE_CONSTANT_MDYN_ANG_PER_AMU_CM2)
     from oscillator import (  # type: ignore[no-redef]
         Oscillator, _checked_frequency, _whole,
-        checked_temperature_k, classical_spread_amu12_ang,
-        bose_einstein_mean_quanta, spread_of_quanta, bose_einstein_temperature,
+        checked_temperature_k, bose_einstein_mean_quanta, spread_of_quanta,
         thermal_spread_amu12_ang, zero_point_amplitude_amu12_ang)
     from oscillator_state import (  # type: ignore[no-redef]
         Chain, OscillatorState)
     from sampling import (  # type: ignore[no-redef]
-        _checked_seed, even_odd_parts, mean_with_error, normal_stream,
+        _checked_seed, _count_words, even_odd_parts, mean_with_error,
+        normal_stream,
         pair_means)
     from distribution import (  # type: ignore[no-redef]
         Distribution, PointWeights, of_state)
@@ -342,9 +340,15 @@ class Frames:
     @property
     def atom_moves_ang(self) -> Optional[np.ndarray]:
         """Each frame's every-atom move, ``Q L`` (frames x atoms x 3) -- the
-        vibration's one rule (:meth:`Vibration._moves`)."""
+        vibration's one rule (:meth:`Vibration._moves`); read back with no
+        state for its mode, from the geometries as written, frame 0 the
+        reference (as :attr:`Snapshots.atom_moves_ang`); ``None`` with
+        neither."""
         if self.mode_distribution is None:
-            return None
+            if self.positions_ang is None:
+                return None
+            p = np.asarray(self.positions_ang, dtype=float)
+            return p - p[:1]
         return self.mode_distribution.mode._v._moves(self.mode_index_1based,
                                                      self.q_amu12_ang)
 
@@ -547,30 +551,19 @@ def _placed(oscillator: Oscillator, zero_point_amplitude: float,
                      f"{type(chain_or_distribution).__name__}")
 
 
-def _with_source(words: str, temperature_from: Optional[str]) -> str:
-    """A chain's words with a temperature taken said in its start, right
-    after the temperature -- *thermal at 300 K (0.621 mean quanta), the
-    record's temperature; one quantum added*, *the classical bell curve at
-    300 K, the motion's temperature, no zero-point motion* -- the one
-    wording of where a mode's state's temperature came from."""
-    first, _, rest = words.partition("; ")
-    if temperature_from in (THE_RECORDS, THE_MOTIONS, THE_SETS):
-        said, tail = f", {temperature_from} temperature", ", no zero-point motion"
-        first = (first[:-len(tail)] + said + tail if first.endswith(tail)
-                 else first + said)
-    return first + (f"; {rest}" if rest else "")
-
-
 def _bound_words(state: Optional[OscillatorState],
                  given: Optional[Distribution],
                  temperature_from: Optional[str]) -> str:
     """A mode's state in words (`engines/vibration-frames.md` § 2): the
-    chain's steps (`OscillatorState.words`), a temperature taken said in
-    its start (:func:`_with_source`), or a distribution given, in its own
-    words as given, said as the person's."""
+    chain's steps, a temperature taken said right after the start's
+    temperature (`OscillatorState.words_with_source`; *thermal at 300 K
+    (0.621 mean quanta), the record's temperature*, *the classical bell
+    curve at 300 K, the motion's temperature, no zero-point motion*), or a
+    distribution given, in its own words as given, said as the person's."""
     if state is None:
         return f"{given.words} -- the person's own distribution of x = Q / Q_zp"
-    return _with_source(state.words, temperature_from)
+    return state.words_with_source(
+        temperature_from if temperature_from != GIVEN else None)
 
 
 @dataclass(frozen=True, eq=False)
@@ -587,8 +580,8 @@ class ModeDistribution:
     ``given``, not ``distribution.base``, is what was given;
     ``temperature_k`` the temperature of the state's start and
     ``temperature_from`` where it came from (:data:`GIVEN`,
-    :data:`THE_RECORDS`, :data:`THE_MOTIONS`, :data:`THE_SETS`), ``None``
-    for a start of none.  The molecule adds what needs the mode: its draws,
+    :data:`THE_RECORDS`, :data:`THE_MOTIONS`), ``None`` for a start of
+    none.  The molecule adds what needs the mode: its draws,
     its frames as geometries, the weights of frames placed elsewhere, each
     atom's move, its record."""
     mode: "Mode" = field(repr=False)
@@ -1239,10 +1232,16 @@ class Motion:
     chosen_by: Tuple[str, ...] = field(default=(), repr=False)
 
     @property
+    def background_is_chain(self) -> bool:
+        """Whether the background is a chain of steps -- a distribution
+        given says neither quantum nor classical."""
+        return isinstance(self.background, Chain)
+
+    @property
     def classical(self) -> bool:
         """Whether the background is classical -- a chain whose start is
         the classical bell curve."""
-        return isinstance(self.background, Chain) and self.background.is_classical
+        return self.background_is_chain and self.background.is_classical
 
     @property
     def background_words(self) -> str:
@@ -1250,12 +1249,12 @@ class Motion:
         said (*thermal at 300 K, the record's temperature*), or a
         distribution's, said as the person's."""
         b = self.background
-        if not isinstance(b, Chain):
+        if not self.background_is_chain:
             return _bound_words(None, b, None)
         if b.temperature_open and self.temperature_k is not None:
-            b = Chain((b.start.with_values(temperature_k=self.temperature_k),)
-                      + b.steps[1:])
-        return _with_source(b.words, self.temperature_from)
+            b = b.with_temperature(self.temperature_k)
+        return b.words_with_source(
+            self.temperature_from if self.temperature_from != GIVEN else None)
 
     @property
     def set_apart_modes(self) -> str:
@@ -1410,8 +1409,8 @@ class Snapshots:
     modes); ``antithetic`` whether pairs; ``seed`` the seed the snapshots
     were drawn with and ``start`` the first of its sequence drawn.
     ``motion``
-    ``None`` for a set read back without its vibration
-    (`vibration_frames.read_frame_set`): ``written_positions_ang`` its
+    ``None`` for a set read back without its vibration, or one whose
+    recorded motion does not bind again (`vibration_frames.read_frame_set`): ``written_positions_ang`` its
     geometries as written, its analyses whole, its moves from those
     geometries."""
     motion: Optional[Motion] = field(repr=False)
@@ -1485,7 +1484,7 @@ class Snapshots:
         if self.motion is None:
             out = [f"the largest single-atom move is {largest[i]:.4f} Å, "
                    f"{_frame_words(i, len(largest))}; read without its "
-                   f"vibration, the modes moving it and their spreads are "
+                   f"motion, the modes moving it and their spreads are "
                    f"not known"]
         else:
             spreads = ", ".join(
@@ -1519,8 +1518,7 @@ class Snapshots:
             raise ValueError(
                 f"one value per frame of the set as written "
                 f"({self.samples + 1}, frame 0 first); got "
-                f"{v.shape[0] if v.ndim else 'one'} value"
-                f"{'' if v.ndim and v.shape[0] == 1 else 's'}")
+                f"{_count_words(v)}")
         return v[1:]
 
     def _units(self, values) -> Tuple[np.ndarray, int, List[str]]:
@@ -1544,13 +1542,14 @@ class Snapshots:
                         f" missing")
         return x[~missing], int((~missing).sum()), said
 
-    def _none_left(self, count: int, said: List[str]) -> bool:
+    def _none_left(self, count: int, said: List[str]) -> None:
+        """What is said where fewer than two units are left to take an
+        error from."""
         unit = "pair" if self.antithetic else "snapshot"
         if count == 0:
             said.append(f"no {unit} left: every one has a value missing")
         elif count == 1:
             said.append(f"one {unit}: its error has nothing to be taken from")
-        return count < 2
 
     def standard_error(self, values) -> Estimate:
         """The average over the snapshots and its error (science § 5.5) --
@@ -1588,12 +1587,7 @@ def _frequency_words(mode: "Mode") -> str:
             f"result's {mode.result_frequency_cm1:g}")
 
 
-__all__ = ["DEFAULT_NODES", "checked_temperature_k",
-           "zero_point_amplitude_amu12_ang",
-           "bose_einstein_mean_quanta", "spread_of_quanta",
-           "thermal_spread_amu12_ang", "classical_spread_amu12_ang",
-           "bose_einstein_temperature",
-           "thermal_spread_of", "THERMAL_ROW_KEYS", "thermal_row",
+__all__ = ["DEFAULT_NODES", "thermal_spread_of", "THERMAL_ROW_KEYS", "thermal_row",
            "mode_over_atoms", "largest_move", "q_for_largest_move",
            "atom_moves", "displaced", "coordinate_of",
            "zero_point_displacement_ang", "largest_zero_point_move_ang",

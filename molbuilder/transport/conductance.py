@@ -9,9 +9,10 @@ ROLE    the one rule, the one rule of the transmission it is read on -- per
         for every point (`transport.record`) and by a transmission run's
         report step for its round's milestone (`execution/run-reports.md`
         § 2.9): so the number a message says is the record's rule, on the
-        values it is given.
+        values it is given; and the frames' averaged conductance at their
+        weights (:func:`frames_average`).
 USED-BY `transport.record`, `transport.run_words`, `transport.tbtnc`,
-        `transport.points`
+        `transport.points`, `frame_average`
 """
 from __future__ import annotations
 
@@ -73,7 +74,17 @@ def spin_of(params) -> str:
             else SPIN_NON_POLARIZED)
 
 
-__all__ = ["at_fermi", "per_spin_channel", "spin_of"]
+def frames_average(weights: Sequence[float], values: Sequence[float]
+                   ) -> float:
+    """THE FRAMES' AVERAGED CONDUCTANCE, one value a frame each at the
+    frames' stated weights, ``sum_f W_f G_f`` (`engines/transport.md`
+    § 2a.12) -- the one rule the record's averaged conductance
+    (`frame_average`) and a round's report line (`transport.run_words`,
+    beside the job) take."""
+    return math.fsum(float(w) * float(x) for w, x in zip(weights, values))
+
+
+__all__ = ["at_fermi", "frames_average", "per_spin_channel", "spin_of"]
 
 
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it

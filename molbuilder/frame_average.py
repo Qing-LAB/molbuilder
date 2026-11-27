@@ -3,7 +3,8 @@ points are combined and read as, after the calculation has run
 (`engines/transport.md` § 2a.12; `model/structure.md` § 2.2f).
 
 MODULE  frame_average (L2; the frames' rows (`frameset`), the transport
-        stages' voltage rule and its data file's groups, numpy)
+        stages' voltage rule, its averaged conductance
+        (`transport.conductance`) and its data file's groups, numpy)
 ROLE    the post-process over a multi-frame transport calculation, kept out of
         its execution: the frames' weighted average at each voltage
         (:func:`average_block`) and its summary lines (:func:`summary_lines`),
@@ -33,24 +34,23 @@ calculation and that's it").  Nothing here refuses a row.
 """
 from __future__ import annotations
 
-import math
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from .frameset import WEIGHT_ROW, finite_number
 from .units import volts_words
 
 #: WHAT TRANSPORT'S AVERAGE OF THE FRAMES ASSUMES, said beside its numbers
-#: wherever it is taken (`science/vibrational-averaging.md` § 7, items 2-6)
-#: -- said of frames; what the frames' maker assumes is its own
-#: ``assumptions`` row, carried with the set's rows as written.
+#: wherever it is taken (`science/vibrational-averaging.md` § 7, transport's
+#: own) -- what holds for ANY frames; what holds for frames of a vibration
+#: is the maker's ``assumptions`` row, carried with the set's rows as
+#: written (the user, 2026-11-26: "transport does transport calculation and
+#: that's it").
 ASSUMPTIONS = (
-    "Static frames: each frame is a frozen geometry, the electron crossing "
-    "fast against the atoms' motion; the inelastic steps at eV = hbar*omega "
-    "and a strongly coupled level's polaron shift need the electron-"
-    "vibration coupling and are not here.",
-    "One distribution, one voltage at a time: the average is taken over "
-    "the frames at each voltage separately, with the same weights at every "
-    "voltage; a bias that heats the motion is not modelled.",
+    "Static frames: each frame is a fixed geometry, and the transmission is "
+    "computed at it with its atoms held still.",
+    "One set of weights at every voltage: the average is taken over the "
+    "frames at each voltage separately, each frame's weight the same at "
+    "every voltage.",
     "Each frame's electrons in their ground state for that frame: every "
     "frame runs its own self-consistent device.",
     "The level alignment is DFT's, frame by frame.",
@@ -186,7 +186,8 @@ def at_voltage(v: float, n: int, weights: List[float],
         entry["conductance_why"] = ("the transmission window does not "
                                     "straddle E_F")
     else:
-        g_avg = math.fsum(wf * g for wf, g in zip(weights, gs))
+        from .transport.conductance import frames_average
+        g_avg = frames_average(weights, gs)
         entry.update(conductance_g0=g_avg, delta_conductance_g0=g_avg - gs[0])
         if gs[0]:
             entry["conductance_change_percent"] = (100.0 * (g_avg - gs[0])

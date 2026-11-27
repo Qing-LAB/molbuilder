@@ -2024,8 +2024,8 @@ junction, cited whole as the structure (`structure_json`,
 [`model/structure.md`](?doc=model/structure.md) § 2.2f). **Of `info`,
 transport reads what every structure citation is read by** — frame 0's
 `info.calculation` (required, § 3.1) and a relaxation record of its geometry
-(`info.relaxation`) — **and none of the maker's own keys** (`info.sampling`,
-an older set's `info.vibration`) or its channels; the record's `frame_set`
+(`info.relaxation`) — **and none of the maker's own keys** (`info.state`,
+`info.sampling`) or its channels; the record's `frame_set`
 cites the pair by its path and sha256. **Transport never asks what made
 the frames, what their rows mean, or how many there are** — that is the
 maker's: a mode's own set, snapshots of the whole molecule and a set a
@@ -3044,12 +3044,16 @@ weight alone:
   $\Delta T(E) = \langle T(E)\rangle - T_0(E)$ from frame 0's, the set's reference; at $E_F$ the averaged
   conductance $\langle G\rangle$ beside frame 0's, and $\langle \Delta G\rangle / G$ in per cent of it;
 
-with transport's own assumptions beside the numbers, said of frames — each
-frame a static geometry the electrons cross fast, the same weights at every
-voltage, each frame its own ground state, the DFT alignment, the electrodes
-unmoved ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
-§ 7, items 2–6), stated where an average is taken; the maker's own — the harmonic modes, the states, a
-finite set's statistics — are its `assumptions` row, carried as written with
+with transport's own assumptions beside the numbers, which hold for any
+frames — each frame a fixed geometry computed with its atoms held still, one
+set of weights at every voltage, each frame its own ground state, the DFT
+alignment, the electrodes unmoved
+([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
+§ 7, transport's own; the user, 2026-11-26: "transport does transport
+calculation and that's it"), stated where an average is taken; what holds
+for frames of a vibration — the harmonic modes, the states, the electron fast
+against the vibration and no inelastic step, the same state at every
+voltage, a finite set's statistics — is the maker's `assumptions` row, carried as written with
 the set's rows ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
 § 5) — and **the frame set the average is taken over, cited** — the
 record's `frame_set`: the structure's rows as written, each with its
@@ -3317,8 +3321,9 @@ runs state more than one, *its version not stated by its output* where
 none does (`ncdata.state`), the same in the root's `engine_version`, and
 each run's group its own. Beside it the root keeps the calculation's own
 records as they read when it was written — its description, template and
-job request, the provenance chain, how the I–V was computed, the frame
-set's rows, the Fermi levels' frames, each run's SCF tolerances — each
+job request, the provenance chain, how the I–V was computed, what is said
+of the weights and what the average assumes, the Fermi levels' frames, each
+run's SCF tolerances — each
 attribute, and which are JSON records, with what it says: [`model/datafiles.md`](?doc=model/datafiles.md) § 9.1. The large
 arrays are compressed (zlib), which a reader undoes by itself.
 
@@ -5503,7 +5508,9 @@ calculation, or put it back* (`compose.pair_changed_said`, the comparison
 `workingcopy_structure.pair_files_changed`, which the composition refuses
 on, § 3.1). The rows drawn are **of the frames the page draws** — the
 composed junction on the Results tab and in the reuse answer, the citation
-as read at the describe door, the pair read now at Task setup — so a pair
+as read at the describe door, and at Task setup the frames the calculation
+composed once its first prep has (`compose.cited_frames` given its folder),
+the pair read now before it — so a pair
 moved or deleted after the calculation ran takes nothing from its card. For
 frames stating no rows, *N frames — a family: each frame's curve its own, no
 average*, and what is said of the pair beneath; for one structure, nothing.
@@ -6086,7 +6093,7 @@ list must be hand-swept on every deletion.
 | Record | `transport/record.py` | TBtrans output → `<label>.transport.json` (`summarize task`); a point whose transmission has not run yet reads as **pending**, one its ended walk never started as **not run** — never as a failure |
 | The frames' post-process | `molbuilder/frame_average.py` | outside transport's execution: the frames' average at their stated weights, its summary lines, the data file's frame part, what a page is answered of the frames — every row carried as written, none said in words of its own (§ 2a.12, § 3.8.1) — and a data file's frames averaged at weights a caller gives (`averaged_at`); called by the record, the data file, the describe door and `postprocess.reaveraged`. What a set's rows mean is its maker's, stated in each row's `note` ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 5.1 for a vibration's); no transport page says it (§ 3.8.1) |
 | Data file | `transport/datafile.py` | the record's composition as `<label>.transport.nc` — every point's raw outputs beside what is derived from them, on one grid, each variable defined (§ 2a.12) — and its reader |
-| The frames' rows | `molbuilder/frameset.py` | the rows as written and each frame's weight (`model/structure.md` § 2.2f), read by the frames' post-process |
+| The frames' rows | `molbuilder/frameset.py` | the rows as written and each frame's weight (`model/structure.md` § 2.2f), read by the frames' post-process, the record (`transport.record`), the run's points (`transport.points`), the motion toolkit's reader (`vibration_frames`), `postprocess.frame_rows` and the report log's reader |
 
 Reading an fdf is `parse.fdf.parse_fdf_params`'s; no command compares two
 decks.

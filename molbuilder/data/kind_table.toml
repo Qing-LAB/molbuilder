@@ -64,7 +64,7 @@
 # description's `cited_kind`: the kind of run a citation is; and the parts
 # the shared doors ask of a kind that cites or extends -- `extension` (the
 # limits of extending a finished calculation), `cited_frames` (the frames
-# its citation holds), `order_record` (the citation's atom order recorded
+# its citation holds -- given its folder once composed, the frames it ran), `order_record` (the citation's atom order recorded
 # at a prep that names no group), `reuse` (what a prep copies in from the
 # calculation it extends and what each point computes, a module named
 # whole).

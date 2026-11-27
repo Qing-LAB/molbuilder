@@ -8,10 +8,13 @@ ROLE    :func:`read` -- the structure's rows and each frame's as written,
         each row's meaning (:meth:`FrameRows.meaning`), and each frame's
         ``weight``
 USED-BY the frames' post-process (`frame_average`: the weighted average, the
-        data file's frame part, what a page is answered); a vibration's set
-        read back and its rows' weights (`vibration_frames`); a data file's
-        frame set's rows (`postprocess.frame_rows`); the report log's reader
-        (`parse.instruments.reports`, :func:`finite_number`)
+        data file's frame part, what a page is answered); the transport
+        record (`transport.record`) and its run's points
+        (`transport.points`); a vibration's set read back and its rows'
+        weights (`vibration_frames`); a data file's frame set's rows
+        (`postprocess.frame_rows`, :meth:`FrameRows.meaning` a script's to
+        ask); the report log's reader (`parse.instruments.reports`,
+        :func:`finite_number`)
 
 **A calculation over the frames needs the frames and nothing else** (user,
 2026-10-18: "the frame can of course carry meta data, and why you treat it as

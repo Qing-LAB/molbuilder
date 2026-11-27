@@ -18,6 +18,7 @@ or relabelled with words it never had; a maker's note drawn on a transport
 page; a harmonic mode's assumptions stated beside frames a person built.
 """
 import math
+import re
 
 import pytest
 
@@ -95,9 +96,33 @@ def test_the_record_reads_the_weights_alone_and_says_its_own_assumptions(
     assert len(block["warnings"]) == warned, block
     assert not any("bond_stretch" in w for w in block["warnings"])
     assert block["assumptions"] == (list(ASSUMPTIONS) if average else [])
-    # TRANSPORT'S FIVE (science § 7, items 2-6), a set stating a mode
-    # included: the harmonic mode's is its maker's own row.
+    # TRANSPORT'S FIVE (science § 7, transport's own) hold for ANY frames --
+    # a fixed geometry, one set of weights at every voltage, each frame its
+    # own ground state, DFT's alignment, the electrodes unmoved -- and say
+    # nothing of how the frames were made: a vibration's are its maker's
+    # own row (the user, 2026-11-26).
     assert len(ASSUMPTIONS) == 5
+    vibration_words = re.compile(
+        r"\b(vibrations?|hbar|omega|polarons?|inelastic|heat\w*|modes?|"
+        r"quant\w*|motions?)\b")
+    assert [a for a in ASSUMPTIONS if vibration_words.search(a.lower())] \
+        == [], ASSUMPTIONS
+
+
+def test_a_rows_meaning_is_read_as_written():
+    """`model/structure.md` § 2.2f: the one reader carries each row's note as
+    its meaning -- the structure's row's own, a frame row's the first
+    meaning any frame writes -- and ``None`` where none is written, as a
+    person's script asks it of `postprocess.frame_rows`.  The silent
+    failure: a meaning drawn from another row, or a blank note answered as
+    one."""
+    from molbuilder.frameset import read
+    rows = read(_frames())
+    assert rows.meaning("frequency_cm1") == "the mode's wavenumber"
+    assert rows.meaning("weight", of_frames=True) == _OWN
+    assert rows.meaning("weight") is None
+    assert rows.meaning("seed") is None
+    assert rows.meaning("bond_stretch", of_frames=True) is None
 
 
 def test_summarize_prints_each_row_as_written():

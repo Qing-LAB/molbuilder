@@ -1,5 +1,4 @@
-"""The transport composite's RECORD — `engines/transport.md` § 2a.12,
-build step P6.
+"""The transport composite's RECORD — `engines/transport.md` § 2a.12.
 
 TBtrans's own outputs are the truth this module reads: the k-averaged
 transmission file (``<label>.TBT.AVTRANS_<L>-<R>``, two columns E vs T)
@@ -1019,7 +1018,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
     from ..runfiles import JUNCTION_FILE
     from ..frame_average import (AverageError, average_block, average_said,
                                  citation_block)
-    from ..frameset import read as read_frame_set
+    from ..frameset import read as read_frame_rows
     from ..deck_record import DeckRecordUnreadable
     from .compose import read_provenance, recorded_junction
     from .rung import compose_refusals
@@ -1040,7 +1039,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
     except compose_refusals() as exc:
         recorded, junction_unread = None, str(exc)
     junction = recorded.structure if recorded is not None else None
-    frame_set = (read_frame_set(junction) if junction is not None
+    frame_set = (read_frame_rows(junction) if junction is not None
                  else None)
     points_out: List[Dict] = []
     pending: List[Dict] = []
@@ -1303,7 +1302,7 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
 
     try:
         # A PAGE STILL OPENS (`engines/transport.md` § 3.8.1): the Results
-        # tab's read draws a refused frame set where the average would be;
+        # tab's read draws a refused average where the average would be;
         # the record `summarize` writes is refused by name.
         average = (average_said if partial else average_block)(
             frames_had(calc) if junction is not None or junction_unread
@@ -1810,7 +1809,7 @@ def printed_said(p: Dict) -> str:
 
 
 def iv_table_text(record: Dict) -> str:
-    """The printed deliverable: one row per point -- its frame's token,
+    """The printed deliverable: one row per point -- its frame in words,
     G(E_F), the junction's total current, and the figure TBtrans printed --
     then what the current is, in the record's words (:data:`CURRENT_MEANS`),
     and the frames' average at each voltage, or why there is none, and the

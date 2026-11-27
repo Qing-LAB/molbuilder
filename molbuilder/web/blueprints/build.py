@@ -57,6 +57,7 @@ from ._shared import (
     item_record as _item_record,
     stated_params as _stated_params,
     catalogue_to_form_schema as _catalogue_to_form_schema,
+    cited_pair_said,
     engine_key_for as _engine_key_for,
     issues_to_json as _issues_to_json,
     ok_structure_response,
@@ -2626,12 +2627,17 @@ def _folder_ladder(calc) -> dict:
 
 
 def _folder_frame_set(task, folder) -> Dict[str, Any]:
-    """``{frame_set}``: the cited junction's frames, as the describe door
-    answers them (`frame_average.answer`: its rows as the set stores them,
-    none interpreted), for a description of a kind that cites its structure
-    (the kind table's ``description.cites`` -- a transport calculation's
-    junction); ``None`` for every other kind.  A citation that does not
-    read says why, in its words -- the folder still opens."""
+    """``{frame_set}``: the junction's frames, as the describe door answers
+    them (`frame_average.answer`: its rows as the set stores them, none
+    interpreted), for a description of a kind that cites its structure (the
+    kind table's ``description.cites`` -- a transport calculation's
+    junction): the frames the calculation composed and ran once its first
+    prep has, the cited pair as it is now before it (the kind's
+    ``cited_frames`` part, `engines/transport.md` § 3.8.1), its ``said`` the
+    cited pair against the sha256 that prep pinned (`_shared.cited_pair_said`,
+    nothing before it); ``None`` for every other kind.  A citation, or once
+    composed a junction, that does not read says why, in its words -- the
+    folder still opens."""
     from molbuilder.kind_table import description_part, kind as _kind
     none = {"frame_set": None}
     cites = _kind(task.calculation).description.cites if task else None
@@ -2651,8 +2657,14 @@ def _folder_frame_set(task, folder) -> Dict[str, Any]:
             "why": f"{folder} is in no projects tree, so its citation "
                    f"{cited_at} names nothing"}}
     # ...ITS FRAMES, by the kind's own reading of its citation (its
-    # ``cited_frames`` part).
-    return {"frame_set": cited_frames(str(cited_at), tree)}
+    # ``cited_frames`` part) -- the frames it composed and ran once its
+    # first prep has -- and the pair against what its record pinned.
+    frames = cited_frames(str(cited_at), tree, pathlib.Path(folder))
+    if "why" not in frames:
+        from molbuilder.transport.compose import read_provenance
+        pinned = (read_provenance(pathlib.Path(folder)) or {}).get("files")
+        frames["said"] = cited_pair_said(cited_at, tree, pinned)
+    return {"frame_set": frames}
 
 
 def _folder_set_to(folder):
