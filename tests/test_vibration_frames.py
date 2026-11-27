@@ -55,13 +55,14 @@ _NU, _QZP = 1000.0, 1.0
 
 
 def _mode_set(m=3, temperature_k=300.0, with_temperature=True, *,
-              extra=(), without=(), no_q_at=None):
+              extra=(), without=(), no_q_at=None, weight_scale=1.0):
     """A mode's own set's rows as `frameset.read` hands them, made through
     the Structure API as a script makes one: its frames at the m-point
     Gauss-Hermite rule's nodes for the thermal spread at ``temperature_k``,
-    each weighted by the rule -- the set's own weights; ``extra`` structure
-    rows ``(name, value)`` added, the structure rows named in ``without``
-    left out, frame ``no_q_at`` stating none."""
+    each weighted by the rule -- the set's own weights, times
+    ``weight_scale``; ``extra`` structure rows ``(name, value)`` added, the
+    structure rows named in ``without`` left out, frame ``no_q_at`` stating
+    none."""
     from molbuilder.frameset import read
     from molbuilder.structure import Structure
     from molbuilder.oscillator import thermal_spread_amu12_ang
@@ -84,8 +85,8 @@ def _mode_set(m=3, temperature_k=300.0, with_temperature=True, *,
         if f != no_q_at:
             s.set_customized("q_amu12_ang", math.sqrt(2.0) * sigma * x[f],
                              frame=f)
-        s.set_customized("weight", w[f] / math.sqrt(math.pi), unit="1",
-                         frame=f)
+        s.set_customized("weight", weight_scale * w[f] / math.sqrt(math.pi),
+                         unit="1", frame=f)
     return read(s)
 
 
@@ -207,21 +208,29 @@ def test_an_open_start_takes_the_sets_temperature_and_says_so_first(
     ("a frame without q", "at 300 K", "no position along"),
     ("no temperature", "open", "name a temperature: the set states none"),
     ("no temperature", "classical, open", "the set states none"),
-    ("none", "at 300 K", "one structure, or frames"),
+    ("none", "at 300 K", "no frame set's rows -- one structure"),
+    ("one structure stating a row", "at 300 K",
+     "no frame set's rows -- one structure"),
+    ("weights off 1", "at 300 K",
+     "the frames' weights sum to 1.1.*, not 1 within 1e-06: every frame's "
+     "weight is required"),
     ("a path", "at 300 K", "not a str"),
 ], ids=["a snapshot set", "a set of no mode", "a frame stating no q",
         "a thermal open start, the set stating no temperature",
         "a classical open start, the set stating no temperature", "no rows",
+        "one structure stating a row", "weights summing off 1",
         "a path, not rows"])
 def test_a_set_the_state_cannot_weight_is_refused_by_name(rows, chain,
                                                           refused):
     """§ 7: refused by name -- a snapshot set (its frames have no single
     mode's coordinate and its weights are equal), a set of no mode, a frame
     stating no coordinate, an open start of a set stating no temperature
-    (naming the temperature to give), what is no set's rows (named by its
-    kind, never printed whole).  A start of none -- n quanta -- needs none.
-    The silent failure: weights for a motion the frames cannot carry, or a
-    temperature the person never named taken from nowhere."""
+    (naming the temperature to give), rows whose own weights break their
+    rule (`model/structure.md` § 2.2f: re-weighted from weights not summing
+    to 1), what is no set's rows (named by its kind, never printed whole).
+    A start of none -- n quanta -- needs none.  The silent failure: weights
+    for a motion the frames cannot carry, or a temperature the person never
+    named taken from nowhere."""
     from molbuilder.postprocess import states
     from molbuilder.vibration_frames import weights_for_set
     chain = {"at 300 K": states.thermal(temperature_k=300.0),
@@ -235,6 +244,14 @@ def test_a_set_the_state_cannot_weight_is_refused_by_name(rows, chain,
         got = _mode_set(no_q_at=0)
     elif rows == "no temperature":
         got = _mode_set(with_temperature=False)
+    elif rows == "weights off 1":
+        got = _mode_set(weight_scale=1.1)
+    elif rows == "one structure stating a row":
+        from molbuilder.frameset import read
+        from molbuilder.structure import Structure
+        lone = Structure.from_xyz(_H2)
+        lone.set_customized("bond", "H-H")
+        got = read(lone)
     elif rows == "a path":
         got = "F.transport.nc" * 1000
     else:
@@ -806,6 +823,8 @@ def test_a_persons_frames_are_written_with_what_every_set_needs(tmp_path):
      "a _Mine states no record to be made again from"),
     ("a frame row named weight", "the writer's own"),
     ("a weight short", "one weight per frame"),
+    ("weights summing off 1", "the frames' weights sum to 1.1, not 1 within "
+     "1e-06: the weights given are each frame's share of the average"),
     ("no vibration", "with the vibration they are of"),
     ("a recipe given weights", "bring their own vibration"),
     ("a row named mass_source", "the writer's own"),
@@ -854,6 +873,8 @@ def test_the_writer_refuses_by_name(tmp_path, call, refused):
                                           "unit": "1"}]] * 2)
         elif call == "a weight short":
             write_frame_set(path, grid, [1.0], vibration=v)
+        elif call == "weights summing off 1":
+            write_frame_set(path, grid, [0.5, 0.6], vibration=v)
         elif call == "a row named mass_source":
             write_frame_set(path, grid, [0.5, 0.5], vibration=v,
                             rows=[{"name": "mass_source", "value": "mine"}])
@@ -887,17 +908,15 @@ def test_the_writer_refuses_by_name(tmp_path, call, refused):
 
 
 def test_the_writer_says_what_it_writes_as_given(tmp_path):
-    """§ 5: written and said, never refused -- weights not summing to 1, a
-    person's frames moving a held atom.  The silent failure: an average at
-    weights that are not shares, or a held atom moved unseen."""
+    """§ 5: written and said, never refused -- a person's frames moving a
+    held atom.  The silent failure: a held atom moved unseen."""
     from molbuilder.vibration_frames import write_frame_set
     v = _model(held=True)
     moved = v.displaced({1: 0.1}).copy()
     moved[3] += 0.05
     got = write_frame_set(tmp_path / "set.xyz", [v.displaced({}), moved],
-                          [0.5, 0.6], vibration=v,
+                          [0.5, 0.5], vibration=v,
                           rows=[{"name": "assumptions", "value": "mine"}])
-    assert any("sum to 1.1" in w for w in got.said), got.said
     assert any("frame 2 of 2 moves a held atom" in w for w in got.said), \
         got.said
 
@@ -1100,7 +1119,11 @@ def test_a_set_at_the_results_own_frequency_states_no_scale(tmp_path, scaled):
     ("another vibration for a person's set", "FrameSetError",
      "the vibration given is not"),
     ("no vibration", "FrameSetError", "vibration is a vibration"),
-    ("no rows", "FrameSetError", "states no frame set's rows"),
+    ("frames stating no weight", "FrameSetError",
+     "bare.xyz: no frame states a weight: every frame's weight is "
+     "required, their sum 1 -- assign them: postprocess.with_weights"),
+    ("weights summing off 1", "FrameSetError",
+     "off.xyz: the frames' weights sum to 1.2, not 1 within 1e-06"),
     ("one structure stating a row", "FrameSetError",
      "a frame set holds two frames or more"),
     ("no run", "FrameSetError",
@@ -1152,10 +1175,16 @@ def test_the_reader_and_the_run_door_refuse_by_name(tmp_path, call, cls,
         elif call == "a file of another name":
             (tmp_path / "notes.txt").write_text("mine")
             vibration(tmp_path / "notes.txt")
-        elif call == "no rows":
+        elif call == "frames stating no weight":
             h2 = Structure.from_xyz("2\nH2\nH 0 0 0\nH 0 0 0.74\n")
             read_frame_set(StructureCodec().write(
                 h2.with_frames([h2.positions] * 2), tmp_path / "bare.xyz"))
+        elif call == "weights summing off 1":
+            h2 = Structure.from_xyz("2\nH2\nH 0 0 0\nH 0 0 0.74\n")
+            off = h2.with_frames([h2.positions] * 2)
+            for f in range(2):
+                off.set_customized("weight", 0.6, unit="1", frame=f)
+            read_frame_set(StructureCodec().write(off, tmp_path / "off.xyz"))
         elif call == "one structure stating a row":
             lone = Structure.from_xyz("2\nH2\nH 0 0 0\nH 0 0 0.74\n")
             lone.set_customized("bond", "H-H")
@@ -1492,3 +1521,31 @@ def test_the_doors_warn_of_many_quanta(quanta, warned):
             f"mode 3 holds {quanta} quanta in this state, {energy:.3g} eV")
     else:
         assert said["beyond_harmonic"] is None
+
+
+def test_a_snapshot_sets_analyses_take_the_weights_it_stores(tmp_path):
+    """§ 3.3, § 7, science § 5.5 (the user, 2026-11-26: "weight is
+    explicitly calculated and saved with multiframe data"): a snapshot set
+    read back weighs each frame as its file stores it, and its average and
+    error are the statistics' own on the snapshots' values and those
+    weights, frame 0 left out.  (Every set the toolkit writes stores 0, then
+    1/N, so the weights read and the weights drawn agree on any set it
+    writes: this holds the read and the route to the statistics.)  THE
+    SILENT FAILURE: a set read back whose weights are not its file's, or an
+    error taken another way than the statistics take it."""
+    from molbuilder.frameset import read
+    from molbuilder.postprocess import read_frame_set, sampling, write_frame_set
+    from molbuilder.workingcopy_structure import StructureCodec
+    v = _model()
+    path = write_frame_set(tmp_path / "set.xyz", v.motion(_WARM).sample(
+        6, seed=3, antithetic=True)).path
+    stored = np.asarray(read(StructureCodec().load(path, frames=True))
+                        .weights)
+    back = read_frame_set(path, vibration=v)
+    assert np.array_equal(back.weights, stored)
+    values = np.array([9.0, 1.0, 3.0, 2.0, 2.0, 5.0, 1.0])
+    est = back.standard_error(values)
+    mean, error = sampling.mean_with_error(
+        *sampling.pair_means(values[1:], stored[1:]))
+    assert (est.value, est.error) == (pytest.approx(float(mean), abs=1e-15),
+                                      pytest.approx(float(error), abs=1e-15))

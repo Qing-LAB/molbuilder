@@ -601,12 +601,38 @@ point per frame ([`engines/transport.md`](?doc=engines/transport.md) § 2a.9):
 | the electrode atoms where frame 0 has them, in every frame | the coordinates | every frame shares the leads' calculation (`engines/transport.md` § 2a.9). Which atoms are the leads is transport's to know: a transport citation names the frames that move one beyond the leads' tolerance (`engines/transport.md` § 2a.9, its home), said, never refused; a maker checks only the atoms it holds still |
 
 **The one row a calculation reads: each frame's `weight`**
-(`frameset.WEIGHT_ROW`) — its share of the combined result. Where every frame
-states one as a number, the record averages the frames at those weights
-(`engines/transport.md` § 2a.12); where some frames state none, or one is not
-a number, there is no average and a warning says so; weights that do not sum
-to 1 (within `frameset.WEIGHT_SUM_TOLERANCE`, 10⁻⁶) are averaged as written,
-with a warning. Nothing is refused for a row. **A weight is the motion's,
+(`frameset.WEIGHT_ROW`) — its share of the combined result — **required**
+*(the user, 2026-11-26: "you should not assume equal weight for all frames,
+weight is explicitly calculated and saved with multiframe data, and is
+required, and will be checked for normalization"; "if there is no weight
+then the user need to call a function to assign equal weight"; of a sum off
+1, "Refuse"; and 2026-10-09: "all weights should add up to 1 that's an
+explicit rule within error tolerance")*. Every
+frame of a set of two frames or more states one as a finite number and they
+sum to 1 within `frameset.WEIGHT_SUM_TOLERANCE`, 10⁻⁶ — one structure has
+no frames to weigh, and none is asked of it; no reader fills one in or
+rescales them, and a weight below 0 is the maker's. **A frame set that
+breaks the rule is refused by name wherever its frames are averaged or
+cited** — a transport calculation's citation
+([`engines/transport.md`](?doc=engines/transport.md) § 3.1), the motion
+toolkit's writer, reader and analyses
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 5,
+§ 7) — by the one rule, `frameset`'s (`weights_of` asked of a structure,
+`read`'s `weights` and `warnings` of its rows), naming the frames that
+state none, a weight that is not a number, or the sum, and the way on: **`frameset.with_weights(structure, weights)`** — a new
+structure, each frame's `weight` row set, refused by the same rule — or
+**`frameset.equal_weights(structure)`**, $1/F$ on every frame, frame 0
+included (both handed on by `postprocess`; one structure refused by
+both); a person who wants frame 0 out of the average gives its weight 0.
+**Weights a person gives** — to a data file's frames
+(`postprocess.averaged_at`, by `frameset.sum_broken`), to the statistics
+(`sampling`, which restates the sum's tolerance — it travels in a job's
+bundle without the structure — and also refuses a weight below 0, a share
+of a mean) — meet the same sum; the set's own weights are not asked
+there. `frameset.read` answers the weights only
+where they meet the rule, its `warnings` the rule's words where they do not.
+Viewing frames reads no weight — the frame bar, a frame taken out
+(§ 2.2e). **A weight is the motion's,
 not the frame's**: the set's maker's, for the motion the set was made for.
 An average over another motion is an analysis of the frames' results — for a
 mode's own set, with the motion toolkit's weights

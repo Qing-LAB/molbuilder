@@ -75,25 +75,34 @@ def test_the_page_is_answered_the_rows_as_the_set_stores_them():
                                "weight_sum", "warnings"}, definition
 
 
-@pytest.mark.parametrize("weights, average, warned", [
-    ((0.5, 0.5), True, 0),
-    ((0.6, 0.6), True, 1),
-    ((0.5, None), False, 1),
+@pytest.mark.parametrize("weights, average, broken", [
+    ((0.5, 0.5), True, None),
+    ((0.6, 0.6), False, "the frames' weights sum to 1.2, not 1 within 1e-06"),
+    ((0.5, None), False, "the frames' weight rows do not give every frame a "
+                         "number (frame 2 of 2 states none)"),
 ], ids=["weights summing to 1", "weights off 1", "a frame stating none"])
 def test_the_record_reads_the_weights_alone_and_says_its_own_assumptions(
-        weights, average, warned):
-    """§ 2a.12: the average is taken at each frame's stated weight where
-    every frame states one, a sum off 1 averaged as written and warned of;
-    what is said is the weights' alone -- never a row of the maker's -- and
-    transport's own five assumptions, said of frames, stand beside an
-    average and only beside one.  The silent failure: a harmonic mode's
-    assumption stated beside frames a person built."""
-    from molbuilder.frame_average import ASSUMPTIONS, average_block
+        weights, average, broken):
+    """§ 2a.12, `model/structure.md` § 2.2f: the average is taken at each
+    frame's stated weight where the weights meet their rule -- every
+    frame's a number, their sum 1 within 10^-6 -- and none where they break
+    it, the warning saying how once and the reason the way on, never a
+    sum off 1 averaged as written (the user, 2026-11-26: "weight ... is
+    required, and will be checked for normalization"); what is said is the
+    weights' alone -- never a row of the maker's -- and transport's own
+    five assumptions, said of frames, stand beside an average and only
+    beside one.  The silent failures: frames averaged at weights that do
+    not sum to 1; a harmonic mode's assumption stated beside frames a
+    person built."""
+    from molbuilder.frame_average import (ASSUMPTIONS, NO_WEIGHTS_WHY,
+                                          average_block)
     from molbuilder.frameset import read
     block = average_block(2, read(_frames(weights)), [], [],
                           same_volts)
     assert (block["weights"] is not None) is average, block
-    assert len(block["warnings"]) == warned, block
+    assert block["warnings"] == ([] if broken is None else [broken]), block
+    assert block["why"] == (None if average else NO_WEIGHTS_WHY), block
+    assert "postprocess.averaged_at(data_file, weights)" in NO_WEIGHTS_WHY
     assert not any("bond_stretch" in w for w in block["warnings"])
     assert block["assumptions"] == (list(ASSUMPTIONS) if average else [])
     # TRANSPORT'S FIVE (science § 7, transport's own) hold for ANY frames --
@@ -145,18 +154,21 @@ def test_summarize_prints_each_row_as_written():
 
 
 def test_frames_with_no_average_say_why():
-    """§ 2a.12: frames that state no rows are a family with no average, said
-    so -- told apart from a composed junction that does not read, whose
-    frames are counted but not read.  The silent failure: a family's
-    calculation told its junction is broken."""
-    from molbuilder.frame_average import average_block
-    family = average_block(3, None, [], [], same_volts)
+    """§ 2a.12: frames that state no rows -- a calculation composed before
+    2.86.0, whose frames a citation now refuses -- have no average, said:
+    no frame states a weight, and the way on -- told apart from a composed
+    junction that does not read, whose frames are counted but not read.
+    The silent failure: such a calculation told its junction is broken."""
+    from molbuilder.frame_average import NO_WEIGHTS_WHY, average_block
+    stated_none = average_block(3, None, [], [], same_volts)
     unread = average_block(3, None, [], [], same_volts,
                            unread="its sidecar does not read")
-    assert "family" in family["why"] and "does not read" not in \
-        family["why"], family["why"]
-    assert "does not read" in unread["why"], unread["why"]
-    for block in (family, unread):
+    assert stated_none["why"] == NO_WEIGHTS_WHY, stated_none
+    assert stated_none["warnings"] == ["no frame states a weight"], \
+        stated_none
+    assert "does not read" in unread["why"] and unread["warnings"] == [], \
+        unread
+    for block in (stated_none, unread):
         assert block["at"] == [] and block["assumptions"] == [], block
 
 
@@ -261,3 +273,95 @@ def test_a_calculations_cited_pair_changed_since_is_said(tmp_path, edited,
     assert "the frames shown are the ones the calculation ran" in said
     assert said.endswith("cite the pair as it is now in a new calculation, "
                          "or put it back"), said
+
+
+def test_weights_are_required_and_assigned_by_their_rule():
+    """`model/structure.md` § 2.2f (the user, 2026-11-26: "weight is
+    explicitly calculated and saved with multiframe data, and is required,
+    and will be checked for normalization"; "if there is no weight then the
+    user need to call a function to assign equal weight"): frames stating
+    no weight are refused by the one check, naming the way on; assigned
+    equal weights, 1/F on every frame, frame 0 included, or weights of the
+    person's own -- a new structure, the given one unchanged, every other
+    row kept, each weight dimensionless with its meaning.  THE SILENT
+    FAILURES: frames given equal weights nobody stated; a structure changed
+    under the person's hands."""
+    import numpy as np
+    from molbuilder.frameset import (FrameWeightsError, equal_weights, read,
+                                     weights_of, with_weights)
+    bare = _frames((None, None, None))
+    with pytest.raises(FrameWeightsError, match=(
+            "^no frame states a weight: every frame's weight is required, "
+            "their sum 1 -- assign them: postprocess.with_weights\\(structure, "
+            "weights\\), or postprocess.equal_weights\\(structure\\) for 1/F "
+            "on every frame, frame 0 included$")):
+        weights_of(bare)
+    equal = equal_weights(bare)
+    assert weights_of(equal) == pytest.approx((1 / 3,) * 3, abs=1e-15)
+    rows = read(equal)
+    assert rows.meaning("weight", of_frames=True) == \
+        "the frame's share of the frames' average"
+    assert [r["unit"] for f in rows.frames for r in f
+            if r["name"] == "weight"] == ["1"] * 3
+    assert [rows.value("bond_stretch", f) for f in range(3)] == \
+        [0.0, 0.05, 0.1]
+    with pytest.raises(FrameWeightsError):
+        weights_of(bare)
+    own = with_weights(bare, np.array([0.0, 0.5, 0.5]))
+    assert weights_of(own) == (0.0, 0.5, 0.5)
+
+
+@pytest.mark.parametrize("weights, refused", [
+    ([0.5, 0.5], "^the structure holds 3 frames: the weights are one per "
+                 "frame, frame 0 first -- 2 given$"),
+    ([0.5, 0.5, 0.5], "^the frames' weights sum to 1.5, not 1 within 1e-06: "
+                      "every frame's weight is required"),
+    ([0.5, "half", 0.5], "frame 2 of 3's is 'half'"),
+    ("equal", "the weights are one per frame, frame 0 first -- a str given"),
+], ids=["not one per frame", "a sum off 1", "a weight that is no number",
+        "a word for weights"])
+def test_weights_that_break_the_rule_are_not_assigned(weights, refused):
+    """`model/structure.md` § 2.2f: weights that break the rule are refused
+    by name where they are assigned, as where they are read.  THE SILENT
+    FAILURE: a set written with weights a citation then refuses."""
+    from molbuilder.frameset import FrameWeightsError, with_weights
+    with pytest.raises(FrameWeightsError, match=refused):
+        with_weights(_frames((None, None, None)), weights)
+
+
+def test_one_structure_has_no_frames_to_weigh():
+    """`model/structure.md` § 2.2f: one structure is no frame set -- its
+    weights neither checked nor assigned, refused by name."""
+    from molbuilder.frameset import FrameWeightsError, equal_weights, weights_of
+    from molbuilder.structure import Structure
+    lone = Structure.from_xyz("2\nH2\nH 0 0 0\nH 0 0 0.74\n")
+    for door in (weights_of, equal_weights):
+        with pytest.raises(FrameWeightsError,
+                           match="one structure has no frames to weigh"):
+            door(lone)
+
+
+def test_frames_on_another_grid_keep_their_weights_beside_the_refusal():
+    """§ 2a.12, § 3.8.1: frames whose transmissions lie on different energy
+    grids have no average -- the refusal its reason -- and their weights as
+    they are: never read as frames stating none; the data file's frame part
+    filled from that block whole.  THE SILENT FAILURES: a set whose weights
+    meet the rule said to state none; the report's Export failing on it."""
+    from molbuilder.frame_average import (average_said, data_file_variables,
+                                          fill_data_file)
+    from molbuilder.frameset import read
+    from molbuilder.ncdata import empty
+    s = _frames()
+    points = [{"frame": 0, "bias_v": 0.0, "energy_ev": [0.0, 1.0],
+               "transmission": [0.1, 0.2], "conductance_g0": 0.1},
+              {"frame": 1, "bias_v": 0.0, "energy_ev": [0.0, 2.0],
+               "transmission": [0.1, 0.2], "conductance_g0": 0.1}]
+    block = average_said(2, read(s), points, [], same_volts)
+    assert "another energy grid" in block["why"], block
+    assert (block["weights"], block["weight_sum"], block["warnings"],
+            block["assumptions"], block["at"]) == ([0.5, 0.5], 1.0, [], [],
+                                                   []), block
+    sizes = {"frame": 2, "bias_v": 1, "energy_ev": 2}
+    values = {v.name: empty(v, sizes) for v in data_file_variables()}
+    fill_data_file(values, {}, s, block, [0.0], lambda v, vs: 0)
+    assert float(values["weight_sum"]) == 1.0

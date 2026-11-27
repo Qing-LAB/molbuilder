@@ -12,7 +12,7 @@ at 2.77.23 is [`archive/2026-11-22-plan-consolidation.md`](?doc=archive/2026-11-
 
 ## ▶ Where we are *(2026-11-26)*
 
-**2.85.1.** F0–F11 and F7a are closed (2.56.2–2.77.2). F12, *Proven*,
+**2.86.0.** F0–F11 and F7a are closed (2.56.2–2.77.2). F12, *Proven*,
 walked its three roads in the browser on real runs and ran the full batch
 (6106 fast and 805 e2e tests, none failed, at 2.77.2); its two review rounds
 ([`archive/audits/2026-11-18-f12-review/`](?doc=archive/audits/2026-11-18-f12-review/TRIAGE-round1.md))
@@ -20,7 +20,7 @@ sorted every finding into the releases below. **The finish plan** *(the
 user, 2026-11-19: "a consolidated plan to get things finished, not to drag
 things along")*: five releases, R1–R5, each with its review rounds. R1 and R2
 are done; R3, one home per fact on the server side, grew from one release
-into parts as reviews and the user's decisions added work, twenty of them
+into parts as reviews and the user's decisions added work, twenty-one of them
 shipped:
 
 | version | part | what it did | record |
@@ -48,6 +48,7 @@ shipped:
 | 2.84.0 | R3d2b2b4a | a mode's state built in steps — the generic tools and their manual (each call's equation, pseudocode and a run example), the modes that move chosen in steps; the steady drive, joining snapshot sets and drive groups removed | `fix26-review.md` |
 | 2.85.0 | R3d2b2b4b | one layer: every mode's state a chain or a distribution bound to the mode, a set read back by binding again, every old state type and keyword form removed; transport showing a cited frame set as the set stores it, interpreting none of it | `fix27-review.md` |
 | 2.85.1 | R3d2b2b4b, the clean-up | the baseline review of 2.85.0: transport's assumptions split by owner, the science chapter naming each step's call, the oscillator's mechanics in one home, a chain built by hand checked, a set read back said where its state does not bind; what `level(n)` and `.add_quantum()` are, said plainly | `fix28-review.md` |
+| 2.86.0 | R3d2b2b4b, the weights | every frame's weight required and their sum 1, refused by name otherwise wherever frames are averaged or cited; the weights assigned (`with_weights`, `equal_weights`); every analysis on the weights a set stores; a finished calculation's frames averaged at a person's own weights (`postprocess.averaged_at`) | `fix29-review.md` |
 
 Records: `archive/audits/2026-11-18-f12-review/fix<N>-review.md`. Since
 2.77.23 the host env holds `molbuilder-source.pth` on the development machine
@@ -269,7 +270,8 @@ and an API reviewer** *(the user, 2026-11-23)*.
   1 within the tolerance, else refused by name wherever a set is read or
   cited, a function to assign weights (equal ones too), snapshot sets and
   their analyses on the weights the set stores, transport's averaging at a
-  person's own weights handed on by `postprocess` *(the user, 2026-11-26)*;
+  person's own weights handed on by `postprocess` *(the user, 2026-11-26)*
+  — built in 2.86.0;
   **2.87.0, the older files dropped** — vibration results before schema 15,
   spectra data files before @11, structure sidecars before v17, transport
   calculations before 2.10.0 *(the user, 2026-11-26: "Drop all as asked")*;
@@ -430,7 +432,7 @@ and an API reviewer** *(the user, 2026-11-23)*.
 
 ## Waiting on the user
 
-- **Next**: the answers to the questions each release of R3d2 brings (2.86.0, 2.87.0, the notebook).
+- **Next**: the answers to the questions each release of R3d2 brings (2.87.0, the notebook).
 - At their releases: R3f's Prep-as-a-process
   design, the side rail's change after measuring, and deletions #6, #26; R4's
   selection-route design and MolView's atom filter; every deletion, listed

@@ -234,8 +234,10 @@ def structure_saved(tree: Path, structure=None, *, frames: int = 1,
     saved in the projects tree ``tree`` as a pair, through the codec, at
     ``at`` -- :data:`STRUCTURE` unless a test keeps several structures: what
     `molbuilder describe` takes, and the path it takes it by (returned).  ``frames`` > 1 saves it as a frame set, each
-    frame moving its bridge (`transport.sort.REGION_BRIDGE`), as a frame set
-    a transport calculation cites must.  The structure at a place is the one
+    frame moving its bridge (`transport.sort.REGION_BRIDGE`) and stating its
+    weight, the frames' weights equal and summing to 1
+    (`frameset.equal_weights`), as a frame set a transport calculation cites
+    must (`model/structure.md` § 2.2f).  The structure at a place is the one
     the last call saved there; a calculation described from it holds its own
     copy."""
     from molbuilder.projects import populate_project_skeleton
@@ -246,7 +248,8 @@ def structure_saved(tree: Path, structure=None, *, frames: int = 1,
         moved = [s.positions.copy() for _ in range(frames)]
         for i, frame in enumerate(moved):
             frame[s.regions[REGION_BRIDGE]] += 0.01 * i
-        s = s.with_frames(moved)
+        from molbuilder.frameset import equal_weights
+        s = equal_weights(s.with_frames(moved))
     # THE ROAD'S PROJECT, MADE AS A PERSON MAKES ONE -- whole, by the
     # tree's one door -- the structure saved into its structure topic.
     project = tree / Path(at).parts[0]

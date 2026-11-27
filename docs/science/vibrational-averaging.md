@@ -1060,10 +1060,11 @@ amu$^{-1/2}$·Å$^{-1}$). At the four frames it is 0.8956, 2.1265, 0.4889 and
 **Computed by** — `motion.sample(N, seed=, antithetic=)` → the snapshots:
 `.q_amu12_ang` each mode's coordinate, `.positions_ang` each geometry,
 `.weights` $1/N$ each, frame 0 the relaxed geometry at 0;
-`snaps.standard_error(values)` → the average, its error and the count, from
-the calculation's values one per frame; on a person's own arrays,
-`sampling.mean_with_error(values)` → the mean and its error,
-`sampling.pair_means(values)` → a paired set's pair means
+`snaps.standard_error(values)` → the average at the set's stored weights,
+its error and the count, from the calculation's values one per frame; on a
+person's own arrays and their weights, `sampling.mean_with_error(values,
+weights)` → the mean and its error, `sampling.pair_means(values, weights)`
+→ a paired set's pair means and the pairs' weights
 ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 3.3,
 § 7; § 9.1 `mean_with_error`, `pair_means`). Steps 2 and 3 above, on the
 four frames' values:
@@ -1072,10 +1073,11 @@ four frames' values:
 >>> import numpy as np
 >>> from molbuilder.postprocess import sampling
 >>> four = np.array([0.8956, 2.1265, 0.4889, 1.0616])
->>> [round(float(a), 4) for a in sampling.mean_with_error(four)]
+>>> weights = np.full(4, 0.25)                               # each snapshot's, as the set stores it
+>>> [round(float(a), 4) for a in sampling.mean_with_error(four, weights)]
 [1.1432, 0.3492]
 >>> pairs = np.array([0.8956, 1.1166, 0.4889, 2.0452])     # frames 1 and 3, each followed by its mirror
->>> [round(float(a), 4) for a in sampling.mean_with_error(sampling.pair_means(pairs))]
+>>> [round(float(a), 4) for a in sampling.mean_with_error(*sampling.pair_means(pairs, weights))]
 [1.1366, 0.1305]
 ```
 
@@ -1096,7 +1098,8 @@ adds the modes' effects, in part where they multiply (§ 5.5).
 
 **Computed by** — the same `seed=` with and without `.with_mode(k, …)` → a
 set and its baseline, every other mode's draws the same; on the two
-calculations' values, `sampling.pair_means(x[1:] - x0[1:])` and
+calculations' values at the sets' stored weights, the same in both,
+`sampling.pair_means(x[1:] - x0[1:], base.weights[1:])` and
 `sampling.mean_with_error(...)` → the excitation's own effect and its
 error ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
 § 3.3, § 7; § 9.1 `pair_means`).
@@ -1106,7 +1109,7 @@ warm = states.thermal(temperature_k=300.0)                # on a run of your own
 base = v.motion(warm).sample(64, seed=1, antithetic=True)
 photon = v.motion(warm).with_mode(7, states.thermal().add_quantum()).sample(64, seed=1, antithetic=True)
 # x, x0: the two calculations' values, one per frame, frame 0 first
-sampling.mean_with_error(sampling.pair_means(x[1:] - x0[1:]))   # the photon's own effect, and its error
+sampling.mean_with_error(*sampling.pair_means(x[1:] - x0[1:], base.weights[1:]))   # the photon's own effect, and its error
 ```
 
 ### 2c.5 Which modes to include — the soft ones
@@ -2701,7 +2704,7 @@ xychart-beta
 
 **Computed by** — no call computes $T$: each frame's is the transport
 calculation's. On values at mirrored positions the split is arithmetic:
-`sampling.pair_means(values)` → each pair's mean, the even part; on a
+`sampling.pair_means(values, weights).means` → each pair's mean, the even part; on a
 paired snapshot set, `snaps.parts(values)` → the even and odd shares of
 its spread (§ 5.5; [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
 § 7, § 9.1 `pair_means`). The chart's $T(+u), T(-u)$ at $u = 1, 2, 3$:
@@ -2709,7 +2712,7 @@ its spread (§ 5.5; [`engines/vibration-frames.md`](?doc=engines/vibration-frame
 ```python
 >>> import numpy as np
 >>> from molbuilder.postprocess import sampling
->>> sampling.pair_means(np.array([0.1149, 0.0918, 0.1364, 0.0902, 0.1646, 0.0954]))   # the bowl
+>>> sampling.pair_means(np.array([0.1149, 0.0918, 0.1364, 0.0902, 0.1646, 0.0954]), np.full(6, 1 / 6)).means   # the bowl
 array([0.10335, 0.1133 , 0.13   ])
 ```
 
@@ -3195,17 +3198,30 @@ units of $Q_{\mathrm{zp}}$, re-averaged to one quantum:
 
 ### 5.5 Many modes: snapshots, their error, and antithetic pairs
 
-Snapshots of the whole molecule (§ 2c.3) are averaged with equal weights,
-$\langle X\rangle \approx \bar X = \tfrac1N\sum_f X_f$. Unlike a Gauss rule
-it is right for any response, and its error is statistical. For **independent
-snapshots**,
+Snapshots of the whole molecule (§ 2c.3) are drawn so that each counts the
+same, and the set **stores** each one's weight, $w_f = 1/N$ — frame 0, the
+relaxed geometry, at 0. The average is taken at the weights the set stores,
+$\langle X\rangle \approx \bar X = \sum_f w_f X_f$, never at weights an
+analysis counts out for itself *(the user, 2026-11-26: "weight is explicitly
+calculated and saved with multiframe data, and is required")*. Unlike a
+Gauss rule it is right for any response, and its error is statistical. For
+**independent snapshots**, each frame's result of one spread,
 
 $$
-\text{error of } \bar X \approx \frac{s_X}{\sqrt N},
+\text{error of } \bar X \approx \sqrt{\Big(\sum_f w_f^2\Big)\,
+\frac{\sum_f w_f\,(X_f - \bar X)^2}{1 - \sum_f w_f^2}}
+\;=\; \frac{s_X}{\sqrt N}\ \text{at } w_f = 1/N,
 $$
 
-$s_X$ the spread of the frames' own results — read from them, so the frames
-say how many more are needed: four times the frames halve the error.
+$s_X$ the spread of the frames' own results, $s_X^2 = \frac{1}{N-1}\sum_f
+(X_f - \bar X)^2$ — read from them, so the frames say how many more are
+needed: four times the frames halve the error. Why the weighted form: for
+independent $X_f$ of one variance $\sigma^2$, $\mathrm{Var}\,\bar X =
+\sigma^2\sum_f w_f^2$, and $\sum_f w_f(X_f-\bar X)^2$ falls short of
+$\sigma^2$ on average by the factor $1-\sum_f w_f^2$ — $\mathrm{E}(X_f-\bar
+X)^2 = \sigma^2(1 - 2w_f + \sum_g w_g^2)$, summed at the weights — which the
+denominator puts back; a frame of weight 0, frame 0, adds nothing to
+either.
 
 **Antithetic pairs.** In every state the toolkit draws from — thermal, $n$
 quanta, any list over the levels — the molecule is as likely
@@ -3218,10 +3234,12 @@ for many): within each pair the odd terms — $X_1Q$, $X_3Q^3$, … — cancel
 of the modes in [ZachariasGiustino2016] — and only the even terms are left
 to fluctuate. The weights stay equal, $1/N$ each.
 
-**The error of a paired set** is the spread of the **pair means**,
-$\bar X_j = \tfrac12(X_{2j-1} + X_{2j})$, over $\sqrt{N/2}$ — never the
-frames' spread over $\sqrt N$: the two frames of a pair are not independent,
-and that formula is wrong both ways.
+**The error of a paired set** is the spread of the **pair means** — the
+formula above over the pairs, each pair the weight of its two frames,
+$W_j = w_{2j-1} + w_{2j}$, its mean $\bar X_j = (w_{2j-1}X_{2j-1} +
+w_{2j}X_{2j})/W_j$: at equal weights $\tfrac12(X_{2j-1} + X_{2j})$, its
+spread over $\sqrt{N/2}$ — never the frames' spread over $\sqrt N$: the two
+frames of a pair are not independent, and that formula is wrong both ways.
 
 **When pairs help, and when they hurt.** Split $X$ into its even and odd
 parts (§ 4.1). Independent frames give the mean a variance
@@ -3253,8 +3271,11 @@ with the same seed begins with the smaller one's frames: more frames are the
 same seed drawn further — the next $N$ snapshots, written as a set of their
 own — or another seed. Averaged together, the two calculations' results
 are put end to end, each set's frame 0 left out, and the error taken from
-all their pairs (or frames) together, $N$ counting both — the arithmetic of
-`sampling.mean_with_error` and `pair_means`, on the person's two arrays.
+all their pairs (or frames) together — the arithmetic of
+`sampling.mean_with_error` and `pair_means`, on the person's two arrays and
+their weights: each set's own, summing to 1, scaled by the share the person
+gives that set of the whole — $N_a/(N_a+N_b)$ and $N_b/(N_a+N_b)$ for two
+sets drawn alike, as every weight is its maker's to state.
 The values go in one per snapshot, in the order the snapshots were drawn;
 with pairs each snapshot is followed by its mirror, and `pair_means` and
 `even_odd_parts` group the values two by two themselves — values 1 and 2
@@ -3267,9 +3288,10 @@ $$
 \qquad j = 1 \dots N/2,
 $$
 
-the error of the average the spread of the $\bar X_j$ over $\sqrt{N/2}$,
-the even part the spread of the $\bar X_j$, the odd part that of the
-$\Delta_j$; an odd count is refused by name (most often a set's frame 0 left
+at equal weights — the error of the average the spread of the $\bar X_j$
+over $\sqrt{N/2}$, the even part the spread of the $\bar X_j$, the odd part
+that of the $\Delta_j$, each spread at the pairs' weights $W_j$ (the
+weighted form above, the sample spread at equal weights); an odd count is refused by name (most often a set's frame 0 left
 in). The worked lines are `engines/vibration-frames.md` § 7's.
 
 **The seed, and a set against its baseline.** Every set states the seed it
@@ -3325,11 +3347,12 @@ $r = 1.4$ — and none count from $r = \sqrt2$ on, the integral no longer
 finite; every other mode whose state changes multiplies it. Another motion
 is another set.
 
-**Computed by** — `snaps.standard_error(values)` → the average, its error —
-from the pair means where paired — and the count; `snaps.parts(values)` →
-a paired set's even and odd shares of the spread; on a person's own arrays,
-`sampling.mean_with_error`, `sampling.pair_means` and
-`sampling.even_odd_parts`; more frames later,
+**Computed by** — `snaps.standard_error(values)` → the average at the
+set's stored weights, its error — from the pair means where paired — and
+the count; `snaps.parts(values)` → a paired set's even and odd shares of
+the spread; on a person's own arrays and weights,
+`sampling.mean_with_error(values, weights)`, `sampling.pair_means(values,
+weights)` and `sampling.even_odd_parts(values, weights)`; more frames later,
 `motion.sample(N, seed=, antithetic=, start=N)`
 ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 3.3,
 § 7; § 9.1 module 4).
@@ -3346,7 +3369,7 @@ more = motion.sample(64, seed=20261123, antithetic=True, start=64)   # the next 
 ```python
 >>> import numpy as np
 >>> from molbuilder.postprocess import sampling
->>> [round(float(s), 4) for s in sampling.even_odd_parts(np.array([0.8956, 1.1166, 0.4889, 2.0452]))]
+>>> [round(float(s), 4) for s in sampling.even_odd_parts(np.array([0.8956, 1.1166, 0.4889, 2.0452]), np.full(4, 0.25))]
 [0.1845, 0.4721]
 ```
 

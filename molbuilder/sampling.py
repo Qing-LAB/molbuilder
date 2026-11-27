@@ -12,10 +12,11 @@ ROLE    random sampling, nothing vibrational:
           size - 1`` are the same however many are asked
           (:func:`normal_stream`), and the seed's check
           (:func:`_checked_seed`);
-        * the statistics of independent units -- a mean and its error
-          (:func:`mean_with_error`) -- and of mirrored pairs, their means
-          and their even and odd parts (:func:`pair_means`,
-          :func:`even_odd_parts`).
+        * the statistics of independent units at the weights given -- a
+          mean and its error (:func:`mean_with_error`) -- and of mirrored
+          pairs, their means and weights and their even and odd parts
+          (:func:`pair_means`, :func:`even_odd_parts`): the weights a set
+          stores, never counted out here (the user, 2026-11-26).
 USED-BY `vibration` (a mode's draws and a motion's snapshots, their
         analyses), and a person's script (`postprocess` hands the module on).
 TRAVELS with `vibration` in both vibration bundles: numpy, math and
@@ -24,7 +25,7 @@ TRAVELS with `vibration` in both vibration bundles: numpy, math and
 from __future__ import annotations
 
 import math
-from typing import Any, Tuple
+from typing import Any, NamedTuple, Tuple
 
 import numpy as np
 
@@ -77,23 +78,97 @@ def _checked_seed(seed: Any) -> int:
 #  The statistics of arrays (science § 5.5)                              #
 # --------------------------------------------------------------------- #
 
-def _spread_of(units: np.ndarray) -> np.ndarray:
-    """The spread of independent ``units`` over axis 0, ``ddof`` 1 -- NaN
-    with fewer than two, which leave nothing to take a spread from."""
-    if units.shape[0] < 2:
+#: HOW FAR THE WEIGHTS' SUM MAY BE FROM 1 -- the container's
+#: (`frameset.WEIGHT_SUM_TOLERANCE`, `model/structure.md` § 2.2f), restated:
+#: this module travels in a job's bundle without the structure, and a test
+#: holds the two one.
+WEIGHT_SUM_TOLERANCE = 1e-6
+
+
+class PairMeans(NamedTuple):
+    """A paired set's independent units: each pair's mean at its two values'
+    weights, and its weight, their sum -- ``mean_with_error(*pair_means(
+    values, weights))`` the average and its error."""
+    means: np.ndarray
+    weights: np.ndarray
+
+
+def _checked_weights(weights, count: int) -> np.ndarray:
+    """``weights`` as the statistics take them: one finite number per value,
+    0 or more, summing to 1 within :data:`WEIGHT_SUM_TOLERANCE` -- each
+    value's share of the mean, a set's stored weights, never counted out
+    here (the user, 2026-11-26).  Refused by name otherwise."""
+    try:
+        w = np.asarray(weights, dtype=float)
+    except (TypeError, ValueError):
+        w = None
+    if w is None or w.ndim != 1 or w.shape[0] != count:
+        raise ValueError(
+            f"the weights are one per value, {count} here -- each value's "
+            f"share of the mean; got "
+            + (f"a {type(weights).__name__}" if w is None
+               else _count_words(w)))
+    if not np.isfinite(w).all():
+        raise ValueError("the weights are finite numbers -- each value's "
+                         "share of the mean")
+    if (w < 0).any():
+        raise ValueError(f"a weight is 0 or more -- each value's share of "
+                         f"the mean; got {float(w[w < 0][0])!r}")
+    total = math.fsum(w)
+    if count and abs(total - 1.0) > WEIGHT_SUM_TOLERANCE:
+        raise ValueError(
+            f"the weights sum to {total!r}, not 1 within "
+            f"{WEIGHT_SUM_TOLERANCE:g} -- each value's share of the mean, "
+            f"summing to 1")
+    return w
+
+
+def _along_first(w: np.ndarray, x: np.ndarray) -> np.ndarray:
+    """``w`` shaped to multiply ``x`` along its first axis, its trailing
+    axes kept."""
+    return w.reshape(w.shape + (1,) * (x.ndim - w.ndim))
+
+
+def _spread_at(units: np.ndarray, w: np.ndarray) -> np.ndarray:
+    """The spread of independent ``units`` (axis 0) at their weights
+    (science § 5.5): ``sqrt(sum_i w_i (u_i - u)^2 / (1 - sum_i w_i^2))``,
+    ``u = sum_i w_i u_i`` -- the sample spread, ``ddof`` 1, at equal
+    weights; NaN with fewer than two of weight above 0, which leave nothing
+    to take a spread from.  A unit of weight 0 adds nothing, its value
+    whatever it is (science § 5.5)."""
+    if int((w > 0).sum()) < 2:
         return np.full(units.shape[1:], np.nan)
-    return units.std(axis=0, ddof=1)
+    units, w = units[w > 0], w[w > 0]
+    mean = (_along_first(w, units) * units).sum(axis=0)
+    square = (_along_first(w, units) * (units - mean) ** 2).sum(axis=0)
+    return np.sqrt(square / (1.0 - float(np.sum(w ** 2))))
 
 
-def mean_with_error(units) -> Tuple[np.ndarray, np.ndarray]:
+def _as_units(values) -> np.ndarray:
+    """``values`` along a first axis -- a single number refused by name."""
+    v = np.asarray(values, dtype=float)
+    if v.ndim == 0:
+        raise ValueError(f"the values run along a first axis, one per unit; "
+                         f"got {_count_words(v)}")
+    return v
+
+
+def mean_with_error(units, weights) -> Tuple[np.ndarray, np.ndarray]:
     """The mean over independent ``units`` (axis 0, any trailing axes kept)
-    and its error, their spread over ``sqrt(N)`` (:func:`_spread_of`) --
-    the mean NaN with no unit, the error with fewer than two."""
-    units = np.asarray(units, dtype=float)
-    count = units.shape[0]
-    value = (units.mean(axis=0) if count
-             else np.full(units.shape[1:], np.nan))
-    return value, _spread_of(units) / math.sqrt(max(count, 1))
+    at their ``weights`` -- one per unit, summing to 1 (:func:`_checked_
+    weights`) -- and its error (science § 5.5): ``sqrt(sum_i w_i^2)`` times
+    their spread at the weights (:func:`_spread_at`), their spread over
+    ``sqrt(N)`` at equal weights; a unit of weight 0 adding nothing, its
+    value whatever it is; the mean NaN with no unit, the error with fewer
+    than two of weight above 0."""
+    units = _as_units(units)
+    w = _checked_weights(weights, units.shape[0])
+    if not units.shape[0]:
+        nan = np.full(units.shape[1:], np.nan)
+        return nan, nan
+    kept = w > 0
+    value = (_along_first(w[kept], units[kept]) * units[kept]).sum(axis=0)
+    return value, _spread_at(units, w) * math.sqrt(float(np.sum(w ** 2)))
 
 
 def _count_words(v: np.ndarray) -> str:
@@ -120,29 +195,43 @@ def _in_pairs(values) -> np.ndarray:
     return v.reshape((v.shape[0] // 2, 2) + v.shape[1:])
 
 
-def pair_means(values) -> np.ndarray:
-    """Each mirrored pair's mean, the independent units of a paired set:
-    ``values`` one per snapshot in the order drawn, grouped two by two here
-    (:func:`_in_pairs`) -- ``(v1 + v2)/2, (v3 + v4)/2, ...``, any trailing
-    axes kept."""
-    return _in_pairs(values).mean(axis=1)
+def pair_means(values, weights) -> PairMeans:
+    """Each mirrored pair's mean and weight, the independent units of a
+    paired set: ``values`` one per snapshot in the order drawn, grouped two
+    by two here (:func:`_in_pairs`), ``weights`` one per value as
+    :func:`mean_with_error` takes them -- each pair's weight its two
+    values', its mean at them, ``(v1 + v2)/2`` at equal weights, any
+    trailing axes kept."""
+    pairs = _in_pairs(values)
+    w = _checked_weights(weights, 2 * pairs.shape[0]).reshape(-1, 2)
+    total = w.sum(axis=1)
+    # A PAIR OF WEIGHT 0 adds nothing (:func:`mean_with_error`); its mean is
+    # its two values' plain one, never a division by its weight.
+    with np.errstate(invalid="ignore", divide="ignore"):
+        weighted = ((_along_first(w, pairs) * pairs).sum(axis=1)
+                    / _along_first(total, pairs[:, 0]))
+    means = np.where(_along_first(total, pairs[:, 0]) > 0, weighted,
+                     pairs.mean(axis=1))
+    return PairMeans(means, total)
 
 
-def even_odd_parts(values) -> Tuple[np.ndarray, np.ndarray]:
+def even_odd_parts(values, weights) -> Tuple[np.ndarray, np.ndarray]:
     """A paired set's spread split in two (science § 5.5): the spread of
     the pair means -- the response's even part -- and of the pair
     half-differences ``(v1 - v2)/2, (v3 - v4)/2, ...`` -- its odd part, which
-    the pairs cancel; ``values`` one per snapshot in the order drawn,
-    grouped two by two here (:func:`_in_pairs`); each a spread of
-    independent units (:func:`_spread_of`), NaN with fewer than two pairs."""
+    the pairs cancel; ``values`` and ``weights`` as :func:`pair_means` takes
+    them, each spread at the pairs' weights (:func:`_spread_at`), NaN with
+    fewer than two pairs."""
     pairs = _in_pairs(values)
+    units = pair_means(values, weights)
     halves = (pairs[:, 0] - pairs[:, 1]) / 2.0
-    return _spread_of(pairs.mean(axis=1)), _spread_of(halves)
+    return (_spread_at(units.means, units.weights),
+            _spread_at(halves, units.weights))
 
 
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
 #: imports there by their bare names (`runwrap.bundle_members`).
 TRAVELS_WITH = ("molbuilder.oscillator",)
 
-__all__ = ["normal_stream",
+__all__ = ["WEIGHT_SUM_TOLERANCE", "PairMeans", "normal_stream",
            "mean_with_error", "pair_means", "even_odd_parts"]

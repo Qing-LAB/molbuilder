@@ -993,7 +993,8 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
 
     **THE FRAMES' ROWS ARE READ THROUGH THEIR ONE DOOR** (`frameset.read`):
     the record carries the frames' average at each voltage, at every frame's
-    stated weight, where every frame states one -- the frames' post-process,
+    stated weight, where their weights meet the rule (`frameset.read`) --
+    the frames' post-process,
     `frame_average.average_block` -- and the frame set it cites, its rows as
     written (`frame_average.citation_block`).
 

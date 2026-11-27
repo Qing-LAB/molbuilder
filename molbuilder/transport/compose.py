@@ -212,9 +212,10 @@ RELAX_THROUGH = " -> ".join(
         " ".join((JOBSET_PROG, "prep", *words_for(TASK))),
         " ".join((JOBSET_PROG, "launch", *words_for(TASK)))))
 
-#: The citation condition, in one sentence — used verbatim by every
-#: refusal so the user always learns the WHOLE condition, not just the
-#: half they tripped on.
+#: The citation condition, in one sentence — said whole by every refusal
+#: of a path that is neither kind, so the user learns the WHOLE condition,
+#: not just the half they tripped on; a frame set refused for its weights
+#: is told its own way on (`_classify_pair`).
 CITATION_CONDITION = (
     "a citation is a relaxation run of molbuilder's own that has finished "
     "-- its folder, launched by `jobset launch` so its run record says how "
@@ -224,7 +225,8 @@ CITATION_CONDITION = (
     "Results tab or `" + as_typed("xv2xyz", "--from-run") + "` saves a "
     "finished "
     "relaxation, or a frame set: several geometries of the junction in one "
-    "pair, its first frame the relaxed one.  Relax the junction through "
+    "pair, its first frame the relaxed one, every frame stating its weight, "
+    "their sum 1.  Relax the junction through "
     + RELAX_THROUGH + ", then cite that run or a pair holding it -- a "
     "vibration's own folder is not cited")
 
@@ -317,10 +319,11 @@ def _classify_pair(path: Path) -> CitedPair:
     the settings default from.  Whether every frame keeps the electrode
     atoms where frame 0 has them (`engines/transport.md` § 2a.9) is said
     when the junction is composed (:func:`frames_moving_the_leads`).  The
-    frames' rows are their maker's, carried with the
-    structure and never read here (`model/structure.md` § 2.2f).  The
-    same atoms, species and cell are the structure's own invariant, refused
-    by its reader."""
+    frames' rows are their maker's, carried with the structure and never
+    read here -- but each frame's weight, required by the weights' rule and
+    refused by name where it is broken (`frameset.weights_of`,
+    `model/structure.md` § 2.2f).  The same atoms, species and cell are the
+    structure's own invariant, refused by its reader."""
     from ..sidecars.molstruct import paired_sidecar
     from ..workingcopy_structure import StructureCodec
     sidecar = paired_sidecar(path)
@@ -350,6 +353,15 @@ def _classify_pair(path: Path) -> CitedPair:
             f"{path} carries no info.calculation -- {sidecar.name} records no "
             f"optimization -- so nothing says which settings its geometry was "
             f"optimized with.  {CITATION_CONDITION}.")
+    if struct.n_frames > 1:
+        # EVERY FRAME'S WEIGHT, THEIR SUM 1 -- transport never assumes one.
+        from ..frameset import FrameWeightsError, weights_of
+        try:
+            weights_of(struct)
+        except FrameWeightsError as exc:
+            raise ComposeError(
+                f"{path} is a frame set whose weights break the rule: {exc}; "
+                f"then write it as a new pair and cite that") from exc
     return CitedPair(path=path, sidecar=sidecar, structure=struct,
                      calculation=calc, said=tuple(said))
 

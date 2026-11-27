@@ -67,8 +67,10 @@ function _named(name, unit) {
  * set stores them -- a table of each row's name, value and unit -- and a
  * table, a row per frame, numbered as the frame bar numbers them, a column
  * per row the frames state, under its stored name and unit; what is said
- * of the weights and of the citation beneath. For frames stating no rows,
- * one line; for one structure, nothing (the host hidden).
+ * of the weights and of the citation beneath. For frames stating no rows
+ * -- a calculation composed before 2.86.0, whose frames a citation now
+ * refuses -- their count alone, the report's average saying why it has
+ * none; for one structure, nothing (the host hidden).
  */
 export function renderFrameSet(host, frameSet) {
     if (!host) return;
@@ -87,13 +89,11 @@ export function renderFrameSet(host, frameSet) {
             host.appendChild(_warning(doc, w));
         }
     };
+    host.appendChild(_el(doc, "p", "frameset-line", n + " frames"));
     if (!def) {
-        host.appendChild(_el(doc, "p", "frameset-line",
-            n + " frames — a family: each frame's curve its own, no average."));
         citationSaid();
         return;
     }
-    host.appendChild(_el(doc, "p", "frameset-line", n + " frames"));
     // THE SET'S ROWS, AS STORED: name, value, unit -- in the order the set
     // writes them, none put in other words.
     if (def.structure.length) {
@@ -128,8 +128,8 @@ export function renderFrameSet(host, frameSet) {
         body.appendChild(tr);
     });
     host.appendChild(table);
-    // WHAT IS SAID OF THE WEIGHTS -- a frame with none, a sum off 1 -- and
-    // OF THE CITATION.
+    // HOW THE WEIGHTS BREAK THEIR RULE, where they do -- a frame with none,
+    // a sum off 1 -- and WHAT IS SAID OF THE CITATION.
     for (const w of def.warnings || []) {
         host.appendChild(_warning(doc, w));
     }

@@ -12,14 +12,15 @@ ROLE    the post-process over a multi-frame transport calculation, kept out of
         file's frame part (:func:`data_file_variables`,
         :func:`fill_data_file`), what a page is answered of the frames
         (:func:`answer`), and a data file's frames averaged at weights a
-        caller gives (:func:`averaged_at`) -- with what transport's average
-        assumes (:data:`ASSUMPTIONS`)
+        caller gives (:func:`averaged_at`, handed on as
+        `postprocess.averaged_at`) -- with what transport's average assumes
+        (:data:`ASSUMPTIONS`)
 USED-BY the transport record (`transport.record`), the data file
         (`transport.datafile`), the junction's composition
         (`transport.compose`), the describe door and the record's answer
         (`web/blueprints/transport.py`), Task setup's folder answer
         (`web/blueprints/build.py`), the post-processing layer
-        (`postprocess.reaveraged`)
+        (`postprocess.reaveraged`, `postprocess.averaged_at`)
 
 **Transport runs the frames and keeps every point; this combines them**
 (the user, 2026-10-18: "how to interpret and present the data is entirely
@@ -30,7 +31,10 @@ parameter the combination takes is each frame's ``weight``
 (`frameset.read`); every other row is its maker's, carried as written and
 never read here, and a page is answered each by its stored name, value and
 unit, none interpreted (the user, 2026-11-26: "transport does transport
-calculation and that's it").  Nothing here refuses a row.
+calculation and that's it").  Nothing here refuses a row; the weights are
+required by their rule (`frameset.weights_of`, `model/structure.md` § 2.2f),
+which the citation asks, so a calculation composed before 2.86.0 on frames
+that break it is the one with no average here, said with the way on.
 """
 from __future__ import annotations
 
@@ -38,6 +42,15 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from .frameset import WEIGHT_ROW, finite_number
 from .units import volts_words
+
+#: WHY A CALCULATION'S FRAMES HAVE NO AVERAGE where their weights break the
+#: rule -- one composed before 2.86.0, which a citation now refuses
+#: (`engines/transport.md` § 2a.12): the way on, the frames averaged at
+#: weights a person gives.  How they break it is the rows' own warning.
+NO_WEIGHTS_WHY = ("the frames' weights break the rule -- every frame's "
+                  "required, their sum 1: no average; average the frames at "
+                  "weights of your own, postprocess.averaged_at(data_file, "
+                  "weights)")
 
 #: WHAT TRANSPORT'S AVERAGE OF THE FRAMES ASSUMES, said beside its numbers
 #: wherever it is taken (`science/vibrational-averaging.md` § 7, transport's
@@ -87,9 +100,9 @@ def average_block(n_frames: Optional[int], frame_set,
     ``unread``, why the composed junction that holds the frames does not
     read, where it does not.  ``why`` says, in one sentence, why there is
     no average: nothing composed yet, one structure, a junction that does
-    not read, frames stating no rows -- a family -- or frames that do not
-    each state a weight."""
-    from .frameset import WEIGHT_SUM_TOLERANCE
+    not read, or frames whose weights break the rule -- how, the
+    ``warnings`` (`frameset.weights_said`)."""
+    from .frameset import WEIGHT_SUM_TOLERANCE, weights_said
     weights = (list(frame_set.weights) if frame_set is not None
                and frame_set.weights is not None else None)
     # EVERY KEY, EVERY RECORD.
@@ -99,7 +112,8 @@ def average_block(n_frames: Optional[int], frame_set,
         "weight_sum": (frame_set.weight_sum if frame_set is not None
                        else None),
         "tolerance": WEIGHT_SUM_TOLERANCE,
-        "warnings": list(frame_set.warnings) if frame_set is not None else [],
+        "warnings": (list(weights_said(frame_set, n_frames))
+                     if n_frames is not None and unread is None else []),
         "assumptions": [],
         "why": None,
         "at": [],
@@ -119,14 +133,10 @@ def average_block(n_frames: Optional[int], frame_set,
                         "their weights, does not read -- no average; each "
                         "frame's curve is its own point")
         return block
-    if frame_set is None:
-        # A FAMILY: frames stating no rows (`model/structure.md` § 2.2f).
-        block["why"] = ("the frames state no rows -- a family: no average; "
-                        "each frame's curve is its own point")
-        return block
     if weights is None:
-        block["why"] = (f"the frames do not each state a {WEIGHT_ROW} -- no "
-                        f"average; each frame's curve is its own point")
+        # WEIGHTS THAT BREAK THE RULE -- none stated, one not a number, a
+        # sum off 1 (`model/structure.md` § 2.2f): how, the warnings.
+        block["why"] = NO_WEIGHTS_WHY
         return block
     block["assumptions"] = list(ASSUMPTIONS)
     from .transport.stages import voltages_once
@@ -153,7 +163,7 @@ def at_voltage(v: float, n: int, weights: List[float],
                    "conductance_change_percent": None,
                    "conductance_why": None}
     if waits:
-        # A GAP IN THE FAMILY: the average at this voltage waits for every
+        # A GAP AMONG THE FRAMES: the average at this voltage waits for every
         # frame's point, never computed from the frames that are done.
         entry["why"] = (f"{', '.join(frame_words(f, n) for f in waits)} "
                         f"{'has' if len(waits) == 1 else 'have'} no "
@@ -234,12 +244,12 @@ def summary_lines(avg: Dict, frame_set: Optional[Dict] = None) -> List[str]:
     if avg.get("why"):
         lines.append(f"  the frames' average: {avg['why']}")
     else:
-        total, tol = avg.get("weight_sum"), avg.get("tolerance")
-        within = (total is not None and tol is not None
-                  and abs(total - 1.0) <= tol)
+        # WEIGHTS ANSWERED ONLY WHERE THEY MEET THEIR RULE: their sum within
+        # the tolerance of 1 (`frameset`, `model/structure.md` § 2.2f).
         lines.append(f"  the frames' average over {avg['frames']} frames, "
-                     f"weights {avg['weights']} (sum {total!r}"
-                     + (f", within {tol:g} of 1" if within else "") + "):")
+                     f"weights {avg['weights']} (sum "
+                     f"{avg.get('weight_sum')!r}, within "
+                     f"{avg.get('tolerance'):g} of 1):")
         for e in avg.get("at", ()):
             if e.get("why"):
                 lines.append(f"  {e['bias_v']:>8.3f} V  {e['why']}")
@@ -320,9 +330,11 @@ def average_said(n_frames: Optional[int], frame_set,
         return average_block(n_frames, frame_set, points, missing,
                              same_volts, unread=unread)
     except AverageError as exc:
-        block = average_block(n_frames, None, [], [], same_volts,
+        # THE SAME FRAMES, NO POINT: their weights as they are -- never read
+        # as frames stating none -- and no average, so nothing it assumes.
+        block = average_block(n_frames, frame_set, [], [], same_volts,
                               unread=unread)
-        block.update(why=str(exc), at=[])
+        block.update(why=str(exc), at=[], assumptions=[])
         return block
 
 
@@ -365,14 +377,15 @@ def data_file_variables() -> Tuple[Any, ...]:
     return (
         Var(WEIGHT_ROW, ("frame",), "given", "1", "the frame's weight",
             "the frame's share of the frames' average, as the frame set's "
-            "maker states it (model/structure.md 2.2f); the fill value where "
-            "the frame states none", auxiliary=True),
+            "maker states it -- required, their sum 1 (model/structure.md "
+            "2.2f); the fill value where a frame states none", auxiliary=True),
         Var("weight_sum", (), "derived", "1", "the frames' weights, summed",
             "sum_f weight_f, checked against 1 within weight_tolerance; the "
-            "fill value where the frames state no weights"),
+            "fill value where the frames' weights break the rule "
+            "(frame_warnings says how)"),
         Var("weight_tolerance", (), "given", "1", "the weights' tolerance",
             "how far from 1 their sum may be; the fill value where the "
-            "frames state no weights"),
+            "frames' weights break the rule (frame_warnings says how)"),
         Var("average_transmission", ("bias_v", "energy_ev"), "derived", "1",
             "the frames' average transmission",
             "sum_f weight_f T_f(E) over every frame, at its stated weight",
@@ -392,9 +405,9 @@ def data_file_variables() -> Tuple[Any, ...]:
             key="conductance_change_percent"),
         Var("average_why", ("bias_v",), "state", "",
             "why the frames' average is none",
-            "why there is no average at this voltage: one structure, "
-            "frames that state no rows (a family) or not every one a "
-            "weight -- the same at every voltage -- or the frames whose "
+            "why there is no average at this voltage: one structure, or "
+            "frames whose weights break the rule (model/structure.md "
+            "2.2f) -- the same at every voltage -- or the frames whose "
             "point at this voltage is not done yet",
             dtype=str, key="why"),
         Var("average_conductance_why", ("bias_v",), "state", "",
@@ -468,8 +481,11 @@ def averaged_at(data_file, weights: Sequence[float]) -> Dict[str, Any]:
     per voltage, NaN where none), said, assumptions}`` -- transport's own
     assumptions beside the numbers, as the record's average states them
     (:data:`ASSUMPTIONS`); nothing is computed again and
-    nothing is written.  Refused by name: weights not one per frame, or not
-    numbers (:class:`AverageError`); a data file of another schema
+    nothing is written -- a person's own analysis of the frames' results
+    (the user, 2026-11-26), handed on as `postprocess.averaged_at`.
+    Refused by name (:class:`AverageError`): weights not one finite number
+    per frame, or not summing to 1 within `frameset.WEIGHT_SUM_TOLERANCE`
+    (`model/structure.md` § 2.2f's rule); a data file of another schema
     (`transport.datafile.DataFileError`)."""
     import numpy as np
     from .transport.datafile import (STRUCTURE_GROUP, SUMMARY_GROUP,
@@ -495,6 +511,12 @@ def averaged_at(data_file, weights: Sequence[float]) -> Dict[str, Any]:
                else f"{given.size} given" if given.size != n
                else "not every one a finite number"))
     given = [float(w) for w in given]
+    # THEIR SUM, BY THE WEIGHTS' ONE RULE (`frameset.sum_broken`).
+    from .frameset import sum_broken
+    broken = sum_broken(given)
+    if broken is not None:
+        raise AverageError(f"{broken} -- one per frame, frame 0 first, each "
+                           f"frame's share of the average")
     bias = [float(v) for v in value("bias_v")]
     energy = [float(e) for e in value("energy_ev")]
     curves = np.asarray(value("transmission"), dtype=float)
@@ -532,7 +554,8 @@ def averaged_at(data_file, weights: Sequence[float]) -> Dict[str, Any]:
             "assumptions": list(ASSUMPTIONS)}
 
 
-__all__ = ["ASSUMPTIONS", "AT_VOLTAGE", "AverageError", "RECORD_ATTRS",
+__all__ = ["ASSUMPTIONS", "AT_VOLTAGE", "AverageError", "NO_WEIGHTS_WHY",
+           "RECORD_ATTRS",
            "SUMMARY_PART", "answer", "at_voltage", "average_block",
            "average_said", "averaged_at", "citation_block",
            "data_file_variables", "fill_data_file", "summary_lines"]

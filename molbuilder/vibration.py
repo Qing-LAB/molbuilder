@@ -1422,6 +1422,7 @@ class Snapshots:
     written_positions_ang: Optional[np.ndarray] = field(default=None,
                                                         repr=False)
     read_said: Tuple[str, ...] = field(default=(), repr=False)
+    written_weights: Optional[np.ndarray] = field(default=None, repr=False)
 
     @property
     def samples(self) -> int:
@@ -1430,7 +1431,12 @@ class Snapshots:
 
     @property
     def weights(self) -> np.ndarray:
-        """0 for frame 0, then ``1/N`` each."""
+        """Each frame's weight: a set read back, as it stores them
+        (``written_weights``); drawn here, as drawn -- 0 for frame 0, then
+        ``1/N`` each.  Every analysis of the set's results takes these
+        (§ 7), never counting the frames for itself."""
+        if self.written_weights is not None:
+            return np.asarray(self.written_weights, dtype=float)
         w = np.full(self.q_amu12_ang.shape[0], 1.0 / self.samples)
         w[0] = 0.0
         return w
@@ -1521,11 +1527,14 @@ class Snapshots:
                 f"{_count_words(v)}")
         return v[1:]
 
-    def _units(self, values) -> Tuple[np.ndarray, int, List[str]]:
-        """The snapshots' values kept -- each frame, or with pairs each pair
-        whole, still one value per snapshot in the order drawn -- a value
-        missing dropping its snapshot or its pair, said."""
+    def _units(self, values) -> Tuple[np.ndarray, np.ndarray, int,
+                                      List[str]]:
+        """The snapshots' values kept and their stored weights -- each
+        frame, or with pairs each pair whole, still one value per snapshot
+        in the order drawn -- a value missing dropping its snapshot or its
+        pair, the rest's weights scaled back to sum 1, both said."""
         x = self._values(values)
+        w = self.weights[1:]
         said: List[str] = []
         missing = np.isnan(x.reshape(x.shape[0], -1)).any(axis=1)
         if self.antithetic:
@@ -1535,12 +1544,19 @@ class Snapshots:
                             f"{'s' if pair_missing.sum() > 1 else ''} left out:"
                             f" a value missing")
             kept = np.repeat(~pair_missing, 2)
-            return x[kept], int(kept.sum()), said
-        if missing.any():
-            said.append(f"{int(missing.sum())} snapshot"
-                        f"{'s' if missing.sum() > 1 else ''} left out: a value"
-                        f" missing")
-        return x[~missing], int((~missing).sum()), said
+        else:
+            kept = ~missing
+            if missing.any():
+                said.append(f"{int(missing.sum())} snapshot"
+                            f"{'s' if missing.sum() > 1 else ''} left out: a "
+                            f"value missing")
+        w = w[kept]
+        if not kept.all() and w.size:
+            # THE REST'S WEIGHTS, SCALED BACK TO SUM 1: their shares of one
+            # another as stored.
+            w = w / math.fsum(w)
+            said.append("the rest's weights scaled back to sum 1")
+        return x[kept], w, int(kept.sum()), said
 
     def _none_left(self, count: int, said: List[str]) -> None:
         """What is said where fewer than two units are left to take an
@@ -1552,15 +1568,18 @@ class Snapshots:
             said.append(f"one {unit}: its error has nothing to be taken from")
 
     def standard_error(self, values) -> Estimate:
-        """The average over the snapshots and its error (science § 5.5) --
-        ``values`` one per frame of the set as written, frame 0 first, any
-        trailing axes kept: for independent frames the frames' spread over
-        ``sqrt(N)``, for pairs the pair means' over ``sqrt(N/2)``; frame 0
-        left out."""
-        kept, n, said = self._units(values)
-        units = pair_means(kept) if self.antithetic else kept
-        self._none_left(units.shape[0], said)
-        value, error = mean_with_error(units)
+        """The average over the snapshots at the set's stored weights and
+        its error (science § 5.5) -- ``values`` one per frame of the set as
+        written, frame 0 first, any trailing axes kept: for independent
+        frames from the frames, for pairs from the pair means, each pair its
+        two frames' weight -- at equal weights the frames' spread over
+        ``sqrt(N)``, the pair means' over ``sqrt(N/2)``; frame 0, at weight
+        0, left out."""
+        kept, w, n, said = self._units(values)
+        units = (tuple(pair_means(kept, w)) if self.antithetic
+                 else (kept, w))
+        self._none_left(units[0].shape[0], said)
+        value, error = mean_with_error(*units)
         return Estimate(value, error, n, tuple(said))
 
     def parts(self, values) -> Parts:
@@ -1573,9 +1592,9 @@ class Snapshots:
             raise ValueError("parts split a paired set's spread: this set's "
                              "snapshots were drawn alone, not in mirrored "
                              "pairs")
-        kept, _, said = self._units(values)
+        kept, w, _, said = self._units(values)
         self._none_left(kept.shape[0] // 2, said)
-        even, odd = even_odd_parts(kept)
+        even, odd = even_odd_parts(kept, w)
         return Parts(even, odd, tuple(said))
 
 

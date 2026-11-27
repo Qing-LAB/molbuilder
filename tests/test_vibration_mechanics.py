@@ -1200,14 +1200,17 @@ def test_a_states_own_frames_weighted_for_it_are_its_own_rule(chain, nodes):
 
 def test_an_analysis_says_what_it_dropped_and_few_frames_say_their_degree():
     """`engines/vibration-frames.md` § 7; science § 5.4 item 2: a pair with
-    a value missing left out of `parts` and said; none left said; three
+    a value missing left out of `parts`, the rest's stored weights scaled
+    back to sum 1, both said; none left said; three
     frames re-weighted said to be blind to the shape, two exact only to
     degree 1; one mirrored pair said to have no error.  THE SILENT FAILURE:
     a split or an error from fewer pairs than the person thinks."""
     v = _model_vibration()
     snaps = v.motion(_WARM).sample(6, seed=1, antithetic=True)
     values = np.array([0.0, 1.0, 3.0, np.nan, 2.0, 5.0, 1.0])
-    assert snaps.parts(values).said == ("1 pair left out: a value missing",)
+    assert snaps.parts(values).said == ("1 pair left out: a value missing",
+                                        "the rest's weights scaled back to "
+                                        "sum 1")
     nothing = snaps.standard_error(np.full(7, np.nan))
     assert "no pair left" in nothing.said[-1] and math.isnan(nothing.error)
     m = v.mode(2)

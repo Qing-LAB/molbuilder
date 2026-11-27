@@ -28,6 +28,10 @@ ROLE    ``parse`` -- an engine's file, a run's file → its result (the
         set's transport calculation averaged for another state, the motion
         toolkit's weights of its rows (`vibration_frames.weights_for_set`)
         at transport's averaging door (`frame_average.averaged_at`);
+        ``averaged_at`` -- that door, a calculation's frames averaged at
+        weights a person gives; ``with_weights`` / ``equal_weights`` -- a
+        frame set's weights assigned, by the weights' rule (`frameset`;
+        `model/structure.md` § 2.2f);
         ``outermost_move`` -- how far a mode's frame set in any state moves
         its atom that moves most (`vibration_frames.outermost_move_of`);
         ``vibration`` -- a vibration to compute with, from its run's folder
@@ -68,6 +72,8 @@ from . import oscillator, sampling
 from . import oscillator_state as states
 from .atom_index import AtomIndexUnknown, atom_index_map
 from .atom_permutation import MAP_KEY, AtomIndexMap
+from .frame_average import averaged_at
+from .frameset import equal_weights, with_weights
 from .oscillator import Oscillator
 from .parse.coords import read_xv, read_xv_cell
 from .projects import (list_projects, list_structures, list_topics,
@@ -344,7 +350,6 @@ def reaveraged(path, chain_or_distribution) -> Dict[str, Any]:
     rule and its refusals are the toolkit's (`engines/vibration-frames.md`
     § 2, § 7); a data file of another schema is refused by its door
     (`transport.datafile.DataFileError`)."""
-    from .frame_average import averaged_at
     rows = frame_rows(path)
     weights = weights_for_set(rows, chain_or_distribution)
     got = averaged_at(path, weights.weights)
@@ -436,6 +441,7 @@ __all__ = ["AtomIndexMap", "AtomIndexUnknown", "RunStepsError", "atom_index_map"
            "read_chart_data",
            "read_structure", "read_transport_data", "read_xv", "read_xv_cell", "reaveraged",
            "frame_rows", "weights_for_set", "write_frame_set",
+           "averaged_at", "with_weights", "equal_weights",
            "read_frame_set",
            "pdos",
            "outermost_move", "projects_root", "project_dir", "topic_dir",

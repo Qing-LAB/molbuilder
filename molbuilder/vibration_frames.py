@@ -621,10 +621,11 @@ def write_frame_set(path, frames=None, weights=None, *, vibration=None,
     again as a person's frames), a person's frames without their weights or
     vibration, or with as many weights or frame rows as frames not, a
     person's row -- in ``rows``, ``frame_rows`` or ``frame0_rows`` -- that
-    is no mapping or is named like one of the writer's own, a set of one
-    frame, a recipe's frames given what it brings.
-    Said, never refused: weights not summing to 1, a person's frames moving
-    a held atom, a set with no record of the relaxation its geometry came
+    is no mapping or is named like one of the writer's own, weights that
+    break the rule -- one not a finite number, a sum off 1 (`frameset`,
+    `model/structure.md` § 2.2f) -- a set of one frame, a recipe's frames
+    given what it brings.
+    Said, never refused: a person's frames moving a held atom, a set with no record of the relaxation its geometry came
     from, a person's set stating no ``assumptions`` row, a person's frame
     row absent at a prepended frame 0."""
     import numpy as np
@@ -844,6 +845,16 @@ def write_frame_set(path, frames=None, weights=None, *, vibration=None,
         built = base.with_frames(positions, frame_rows=sets)
     except ValueError as exc:
         raise FrameSetError(str(exc)) from exc
+    # THE WEIGHTS' RULE (`model/structure.md` § 2.2f), every set's: a
+    # recipe's meet it by construction, a person's are refused where they
+    # break it -- the one rule's words (`frameset.read`).
+    written = read(built)
+    if written is None or written.weights is None:
+        raise FrameSetError(
+            f"{(written.warnings if written is not None else ('',))[0]}: the "
+            f"weights given are each frame's share of the average -- one "
+            f"finite number per frame, summing to 1 (model/structure.md "
+            f"2.2f)")
 
     # WHERE THE MODES CAME FROM, AND WHAT MADE THE FRAMES (§ 5, § 5.1), in
     # the vocabulary's order, after the person's own rows.
@@ -885,10 +896,8 @@ def write_frame_set(path, frames=None, weights=None, *, vibration=None,
             "and is no transport citation -- read the run's folder, "
             "vibration(run_folder), to write one that is")
 
-    # WHAT THE WRITER CHECKS IS WHAT IT OWNS (§ 5): the weights, in the
-    # container's words, and the held atoms where frame 0 has them.
-    written_rows = read(built)
-    said.extend(written_rows.warnings if written_rows is not None else ())
+    # WHAT THE WRITER SAYS OF WHAT IT OWNS (§ 5): the held atoms where frame
+    # 0 has them -- the weights refused above where they break their rule.
     held = [i for i in range(len(v.masses_amu))
             if i not in set(v.free_atom_idxs)]
     if held:
@@ -1345,12 +1354,14 @@ def read_frame_set(path, *, vibration=None):
     motion that does not bind again is said, the set read without it.
 
     Refused by name (:class:`FrameSetError`): a pair that does not read,
-    one structure, frames that state no frame set's rows, a vibration given
-    that is no vibration or not the set's (its result's sha256 not the
-    set's), a snapshot set written by 2.82-2.84 -- its motion recorded the
-    old way, no ``background`` (the user's choice, 2026-11-26)."""
+    one structure, a set whose weights break the rule -- a frame stating
+    none, one that is no number, a sum off 1 (`frameset.weights_of`,
+    `model/structure.md` § 2.2f) -- a vibration given that is no vibration
+    or not the set's (its result's sha256 not the set's), a snapshot set
+    written by 2.82-2.84 -- its motion recorded the old way, no
+    ``background`` (the user's choice, 2026-11-26)."""
     import numpy as np
-    from .frameset import read
+    from .frameset import FrameWeightsError, read, weights_of
     from .vibration import Frames, Snapshots, Vibration
     from .workingcopy_structure import StructureCodec
     name = Path(os.fspath(path)).name
@@ -1361,14 +1372,15 @@ def read_frame_set(path, *, vibration=None):
     if struct.frames is None or struct.n_frames < 2:
         raise FrameSetError(f"{name} holds one structure: a frame set holds "
                             f"two frames or more")
+    # EVERY FRAME'S WEIGHT, THEIR SUM 1 (`model/structure.md` § 2.2f): a set
+    # that breaks the rule is refused, its frames named, the way on said.
+    try:
+        weights = np.asarray(weights_of(struct), dtype=float)
+    except FrameWeightsError as exc:
+        raise FrameSetError(f"{name}: {exc}") from exc
     rows = read(struct)
-    if rows is None:
-        raise FrameSetError(f"{name} states no frame set's rows -- frames "
-                            f"that state none")
     positions = np.asarray(struct.frames, dtype=float)
-    weights = np.asarray(rows.weights if rows.weights is not None
-                         else [np.nan] * struct.n_frames, dtype=float)
-    said: List[str] = list(rows.warnings)
+    said: List[str] = []
     provenance = _provenance(rows)
     stated_sha = (provenance or {}).get("result_sha256")
     v = vibration
@@ -1476,7 +1488,8 @@ def read_frame_set(path, *, vibration=None):
                         f"it is read without its motion")
     return Snapshots(motion, modes, q, bool(sampling.get("antithetic")),
                      int(rows.value("seed")), int(rows.value("start")),
-                     written_positions_ang=positions, read_said=tuple(said))
+                     written_positions_ang=positions, read_said=tuple(said),
+                     written_weights=weights)
 
 
 def _motion_of(v, sampling):
@@ -1538,8 +1551,9 @@ def weights_for_set(rows, chain_or_distribution):
     row is made so); a set written before 2.81.1 whose row states another
     is read the same, unsaid.
 
-    Refused by name (``ValueError``): what is no frame set's rows; no rows;
-    a snapshot set -- its frames have no single mode's coordinate and its
+    Refused by name (``ValueError``): what is no frame set's rows; no rows
+    -- one structure; rows whose weights break the rule (`frameset.read`'s
+    words, `model/structure.md` § 2.2f); a snapshot set -- its frames have no single mode's coordinate and its
     weights are equal: another motion is another set (science § 5.5); a
     set stating no mode's frequency and zero-point amplitude, or a frame
     stating no coordinate; an open start, of a set that states no
@@ -1554,10 +1568,16 @@ def weights_for_set(rows, chain_or_distribution):
             f"postprocess.frame_rows(data_file) for a transport "
             f"calculation's, frameset.read(structure) for a structure's -- "
             f"not a {type(rows).__name__}")
-    if rows is None:
-        raise ValueError("no frame set's rows -- one structure, or frames "
-                         "that state none (a family): there is no mode's "
-                         "coordinate to weight them by")
+    if rows is None or len(rows.frames) < 2:
+        raise ValueError("no frame set's rows -- one structure: there is no "
+                         "mode's coordinate to weight it by")
+    if rows.weights is None:
+        # THE SET'S OWN WEIGHTS, the ones its frames were written with: a set
+        # whose weights break the rule has none to re-weight from.
+        raise ValueError(f"{rows.warnings[0]}: every frame's weight is "
+                         f"required, their sum 1 (model/structure.md 2.2f) "
+                         f"-- the set's own weights are what its frames are "
+                         f"re-weighted from")
     if _kind_of(rows) == _SNAPSHOT_SET:
         raise ValueError(
             "a snapshot set is not re-weighted for another motion: its "

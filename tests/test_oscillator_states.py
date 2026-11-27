@@ -397,22 +397,50 @@ def test_a_paired_sets_even_and_odd_parts_are_their_spreads():
     (2, -2)``, grouped two by two by the functions themselves: pair means 0,
     half-differences 1, 3, 2, their spread 1 (``ddof`` 1); ``1, 1, 3, 3, 2,
     2`` the other way round; a value per energy kept, each energy its own;
-    an odd count refused by name (a set's frame 0 left in).  The silent
-    failure: an odd part twice its size, or the pairs taken across the
-    energies."""
-    assert sampling.even_odd_parts([1.0, -1.0, 3.0, -3.0, 2.0, -2.0]) == \
-        pytest.approx((0.0, 1.0), abs=1e-15)
-    assert sampling.even_odd_parts([1.0, 1.0, 3.0, 3.0, 2.0, 2.0]) == \
-        pytest.approx((1.0, 0.0), abs=1e-15)
+    an odd count refused by name (a set's frame 0 left in); each pair the
+    weight of its two values, its mean at them (the weights the set stores,
+    the user, 2026-11-26).  The silent failure: an odd part twice its size,
+    the pairs taken across the energies, or a pair's mean that ignores its
+    values' weights."""
+    sixth = np.full(6, 1.0 / 6.0)
+    assert sampling.even_odd_parts([1.0, -1.0, 3.0, -3.0, 2.0, -2.0],
+                                   sixth) == pytest.approx((0.0, 1.0),
+                                                           abs=1e-15)
+    assert sampling.even_odd_parts([1.0, 1.0, 3.0, 3.0, 2.0, 2.0],
+                                   sixth) == pytest.approx((1.0, 0.0),
+                                                           abs=1e-15)
     per_energy = np.array([[1.0, 10.0], [3.0, 30.0], [5.0, 50.0], [7.0, 70.0]])
-    assert sampling.pair_means(per_energy) == pytest.approx(
-        np.array([[2.0, 20.0], [6.0, 60.0]]), abs=1e-15)
+    got = sampling.pair_means(per_energy, np.full(4, 0.25))
+    assert got.means == pytest.approx(np.array([[2.0, 20.0], [6.0, 60.0]]),
+                                      abs=1e-15)
+    assert got.weights == pytest.approx([0.5, 0.5], abs=1e-15)
+    # A PAIR'S MEAN AT ITS VALUES' WEIGHTS: (0.1 * 1 + 0.3 * 3) / 0.4.
+    lopsided = sampling.pair_means([1.0, 3.0, 5.0, 7.0], [0.1, 0.3, 0.3, 0.3])
+    assert lopsided.means == pytest.approx([2.5, 6.0], abs=1e-15)
+    assert lopsided.weights == pytest.approx([0.4, 0.6], abs=1e-15)
+    # EACH SPREAD AT THE PAIRS' WEIGHTS, 0.2, 0.4, 0.4: the halves 1, 3, 2
+    # about their weighted mean 2.2, sum_j W_j (h_j - 2.2)^2 = 0.56 over
+    # 1 - sum_j W_j^2 = 0.64 -- the odd part sqrt(0.875).
+    assert sampling.even_odd_parts([1.0, -1.0, 3.0, -3.0, 2.0, -2.0],
+                                   [0.1, 0.1, 0.2, 0.2, 0.2, 0.2]) == \
+        pytest.approx((0.0, math.sqrt(0.875)), abs=1e-15)
+    assert sampling.even_odd_parts([1.0, 1.0, 3.0, 3.0, 2.0, 2.0],
+                                   [0.1, 0.1, 0.2, 0.2, 0.2, 0.2]) == \
+        pytest.approx((math.sqrt(0.875), 0.0), abs=1e-15)
+    # A PAIR OF WEIGHT 0 adds nothing -- its mean its two values' plain one
+    # (`engines/vibration-frames.md` § 9.1) -- the other two's own.
+    assert sampling.pair_means([9.0, 7.0, 1.0, 3.0], [0.0, 0.0, 0.5, 0.5]) \
+        .means == pytest.approx([8.0, 2.0], abs=1e-15)
+    assert sampling.mean_with_error(*sampling.pair_means(
+        [9.0, 9.0, 1.0, 3.0, 5.0, 7.0], [0.0, 0.0, 0.25, 0.25, 0.25, 0.25])) \
+        == pytest.approx(sampling.mean_with_error(*sampling.pair_means(
+            [1.0, 3.0, 5.0, 7.0], [0.25] * 4)), abs=1e-15)
     with pytest.raises(ValueError, match="two by two.*got 3 values$"):
-        sampling.pair_means([0.0, 1.0, 3.0])
+        sampling.pair_means([0.0, 1.0, 3.0], [1 / 3] * 3)
     with pytest.raises(ValueError, match="got 1 value$"):
-        sampling.pair_means([0.0])
+        sampling.pair_means([0.0], [1.0])
     with pytest.raises(ValueError, match="got a single number$"):
-        sampling.pair_means(3.0)
+        sampling.pair_means(3.0, [1.0])
 
 
 def test_a_states_list_cannot_be_edited():
@@ -599,24 +627,70 @@ def test_the_ladder_operators_are_the_sciences():
                                                              abs=1e-15)
 
 
-def test_a_means_error_is_the_spread_over_root_n():
-    """Science § 5.5: the error of a mean over ``N`` independent units is
-    their spread, ``ddof`` 1, over ``sqrt(N)`` -- 1, 2, 3, 4: 2.5 and
-    ``sqrt(5/3)/2``.  THE SILENT FAILURE: an error 13 % small with ``ddof``
-    0."""
-    mean, error = sampling.mean_with_error([1.0, 2.0, 3.0, 4.0])
-    assert (float(mean), float(error)) == pytest.approx(
-        (2.5, math.sqrt(5.0 / 3.0) / 2.0), abs=1e-15)
+@pytest.mark.parametrize("values, weights, expected", [
+    ([1.0, 2.0, 3.0, 4.0], [0.25] * 4, (2.5, math.sqrt(5.0 / 3.0) / 2.0)),
+    ([1.0, 2.0, 3.0, 4.0], [0.1, 0.2, 0.3, 0.4], (3.0, math.sqrt(0.3 / 0.7))),
+    ([1.0, 2.0, 3.0, 4.0], [0.0, 1 / 3, 1 / 3, 1 / 3],
+     (3.0, 1.0 / math.sqrt(3.0))),
+    ([math.nan, 2.0, 3.0, 4.0], [0.0, 1 / 3, 1 / 3, 1 / 3],
+     (3.0, 1.0 / math.sqrt(3.0))),
+], ids=["equal weights", "weights of their own", "one value at weight 0",
+        "a value missing at weight 0"])
+def test_a_means_error_is_the_spread_at_the_weights(values, weights,
+                                                    expected):
+    """Science § 5.5, `engines/vibration-frames.md` § 9.1: the mean over
+    independent units at the weights given, ``sum_i w_i v_i``, and its
+    error, ``sqrt(sum_i w_i^2)`` times their spread at the weights,
+    ``sqrt(sum_i w_i (v_i - v)^2 / (1 - sum_i w_i^2))`` -- 1, 2, 3, 4: at
+    equal weights 2.5 and ``sqrt(5/3)/2``, the spread ``ddof`` 1 over
+    ``sqrt(N)``; at 0.1 ... 0.4, 3 and ``sqrt(0.3/0.7)``; a value at weight
+    0, as a set's frame 0, adding nothing -- the other three's own, its
+    value whatever it is, a missing one too.  THE SILENT FAILURES: an error
+    13 % small with ``ddof`` 0; weights counted out by the function, not
+    the set's; a frame left out at weight 0 turning the mean into NaN."""
+    mean, error = sampling.mean_with_error(values, weights)
+    assert (float(mean), float(error)) == pytest.approx(expected, abs=1e-15)
+
+
+@pytest.mark.parametrize("weights, refused", [
+    ([0.5, 0.5, 0.5, 0.5], "the weights sum to 2.0, not 1 within 1e-06"),
+    ([0.5, 0.5], "the weights are one per value, 4 here.*got 2 values$"),
+    ([0.25, 0.25, 0.75, -0.25], "a weight is 0 or more.*got -0.25$"),
+    ([0.25, 0.25, 0.25, float("nan")], "the weights are finite numbers"),
+    ("equal", "the weights are one per value, 4 here.*got a str$"),
+], ids=["a sum off 1", "not one per value", "a weight below 0",
+        "a weight that is no number", "a word for weights"])
+def test_weights_the_statistics_cannot_take_are_refused_by_name(weights,
+                                                               refused):
+    """`engines/vibration-frames.md` § 9.1: the statistics take the weights
+    given -- one finite number per value, 0 or more, summing to 1 -- and
+    count out none of their own; any other refused by name (the user,
+    2026-11-26: "weight ... will be checked for normalization").  THE
+    SILENT FAILURE: a mean at weights that do not sum to 1, its error
+    scaled with them."""
+    with pytest.raises(ValueError, match=refused):
+        sampling.mean_with_error([1.0, 2.0, 3.0, 4.0], weights)
+
+
+def test_the_statistics_weigh_by_the_containers_rule():
+    """`model/structure.md` § 2.2f: the statistics, travelling in a job's
+    bundle without the structure, restate the container's tolerance for
+    the weights' sum -- held one here.  THE SILENT FAILURE: a set the
+    container accepts refused by its own analyses, or the reverse."""
+    from molbuilder.frameset import WEIGHT_SUM_TOLERANCE
+    assert sampling.WEIGHT_SUM_TOLERANCE == WEIGHT_SUM_TOLERANCE
 
 
 @pytest.mark.parametrize("spreads", [
-    lambda: sampling.mean_with_error([1.0])[1:],
-    lambda: sampling.even_odd_parts([1.0, -1.0]),
-], ids=["one snapshot", "one mirrored pair"])
+    lambda: sampling.mean_with_error([1.0], [1.0])[1:],
+    lambda: sampling.mean_with_error([1.0, 2.0], [0.0, 1.0])[1:],
+    lambda: sampling.even_odd_parts([1.0, -1.0], [0.5, 0.5]),
+], ids=["one snapshot", "one of weight above 0", "one mirrored pair"])
 def test_fewer_than_two_units_leave_no_spread(spreads):
-    """Science § 5.5: a spread needs two units -- one snapshot, or one pair,
-    leaves none: NaN, and no warning.  THE SILENT FAILURE: an error of 0
-    read as an exact mean."""
+    """Science § 5.5: a spread needs two units of weight above 0 -- one
+    snapshot, one beside a frame of weight 0, or one pair, leaves none:
+    NaN, and no warning.  THE SILENT FAILURE: an error of 0 read as an
+    exact mean."""
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         assert all(math.isnan(float(v)) for v in spreads())

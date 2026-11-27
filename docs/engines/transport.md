@@ -2012,10 +2012,7 @@ script, its own. **Transport reads one of them, each frame's
 `weight`** *(the user, 2026-10-18: those rows have "nothing to do with
 fucking get calculation done")* — `⅔, ⅙, ⅙` for a mode's three frames,
 $1/N$ for snapshots — and **computes with it alone** (§ 2a.12's average),
-where every frame states one; weights that do not sum to 1 are averaged as
-written, with a warning *(user, 2026-10-09: "all weights should add up to 1
-that's an explicit rule within error tolerance")*; frames that do not each
-state one have no average, said. Every other row is carried whole — name,
+the weights required by their rule (below). Every other row is carried whole — name,
 value, unit and its meaning, the row's `note` — into its record and its data
 file, as written, and shown on the pages by its stored name, value and unit,
 never interpreted (§ 3.8.1). The set's `info` keys and channels
@@ -2035,10 +2032,11 @@ focused to let user to post-process the results from different vibrational
 mode and decide how they can be weighed")*. **Frame 0 is the set's
 reference**, the geometry each frame's change is measured from (§ 2a.12) —
 the container's rule, [`model/structure.md`](?doc=model/structure.md) § 2.2f.
-Frames that do not each state a weight have no average — each frame's
-curve its own, and the record saying so; frames that state no rows at all
-are a family, said so (§ 2a.12); nothing is refused for either, since what
-the displacement means is the person's.
+**Every frame's weight is required, their sum 1** (`model/structure.md`
+§ 2.2f, the rule's home): a frame set that breaks it is refused at the
+citation (§ 3.1), naming the frames and the way on — what the displacement
+means is the person's, how much each frame counts its maker's to state,
+never transport's to assume.
 
 #### The displacement rule may be the person's own script — and the promise it makes *(user, 2026-09-23)*
 
@@ -3075,11 +3073,18 @@ beside its rows; so is **an average over another motion than the set's** —
 the motion toolkit gives a mode's own set's weights for another state from
 each frame's coordinate ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
 § 7), and **transport's own door averages its data file's frames at weights a
-caller gives**: `frame_average.averaged_at(data_file, weights)`, the
-weights any finite numbers — a list, an array, numpy's own — one per frame,
-frame 0 first, refused by name where they are not one finite number per
-frame, naming how many it was given or the kind it was given (a
-`PointWeights` handed whole, say, not its `.weights`) — each voltage by the
+caller gives**: `frame_average.averaged_at(data_file, weights)`, handed on
+by `postprocess` as `postprocess.averaged_at` — each frame's results taken
+from the data file, one per frame, and averaged at weights of the person's
+own, an analysis of the results, never written into the record *(the user,
+2026-11-26: "api should allow user to take results from individual frames
+and assign its own weight as a post-processing and analysis - this is not
+transport's own calculation")* — the weights any finite numbers — a list, an
+array, numpy's own — one per frame, frame 0 first, summing to 1 within
+`frameset.WEIGHT_SUM_TOLERANCE` (`model/structure.md` § 2.2f's rule),
+refused by name where they are not one finite number per frame — naming how
+many it was given or the kind it was given (a `PointWeights` handed whole,
+say, not its `.weights`) — or do not sum to 1, naming the sum — each voltage by the
 record's own rule (`frame_average.at_voltage`), a voltage whose points are
 not all done left out, as the record's average is — answered `{bias_v,
 energy_ev, transmission, conductance_g0, conductance_change_percent, said,
@@ -3090,13 +3095,14 @@ for
 ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 7) —
 never written into
 the record. **The weights are read as
-written** (`model/structure.md` § 2.2f): their sum and the tolerance are stated beside the average,
-and a sum off 1 by more than `10⁻⁶` is warned of in the record (`warnings`),
-never refused. Frames that do not each state a weight have no average, said
-so; frames that state no rows at all are a family, said so — *the frames
-state no rows — a family: no average; each frame's curve is its own point*
-— told apart from a composed junction that does not read, whose frames are
-counted but not read. At E_F the change in per cent is of frame 0's
+written**, every frame's required and their sum 1 within `10⁻⁶`
+(`model/structure.md` § 2.2f): their sum and the tolerance are stated beside
+the average, and a calculation cannot cite frames that break the rule
+(§ 3.1). One composed before 2.86.0 on such frames opens with every frame's
+points and no average, its `why` the rule's words and the way on — *…: no
+average; average the frames at weights of your own,
+postprocess.averaged_at(data_file, weights)* — told apart from a composed
+junction that does not read, whose frames are counted but not read. At E_F the change in per cent is of frame 0's
 conductance, none where frame 0's is zero, said (*frame 1 of 3's
 conductance is zero*); `summarize` prints each voltage's averaged
 conductance *against frame 1 of 3's*. Comparing two sets — the same mode at another rule
@@ -4901,7 +4907,10 @@ of how it ended.
 A transport calculation starts by pointing at one of two things: **a
 relaxation run of molbuilder's own that has finished** — a folder — or **a
 structure pair that records the optimization its geometry came from** — its
-`.xyz` — one frame, or a frame set (§ 2a.9). `task.json`'s `slots.junction`
+`.xyz` — one frame, or a frame set (§ 2a.9) whose every frame states its
+weight, their sum 1 — refused by name otherwise, naming the frames and the
+way on, `frameset.with_weights` or `frameset.equal_weights`
+([`model/structure.md`](?doc=model/structure.md) § 2.2f). `task.json`'s `slots.junction`
 names it by its tree-relative path; the citation door classifies it by what the
 path is (`compose.classify_citation`, its `CITATION_CONDITION`).
 
@@ -4963,8 +4972,9 @@ saying so — the one comparison of a pair with its record,
 never pinned), which the pages' frame-set card asks too, to say it (§ 3.8.1).
 A frame set's
 per-frame promises (§ 2a.9) are checked at this door, frame by frame, naming
-the frame, before anything runs; its rows are carried as written, nothing
-checked of them ([`model/structure.md`](?doc=model/structure.md) § 2.2f) —
+the frame, before anything runs; its weights held to the weights' rule
+(above), every other row carried as written, nothing checked of it
+([`model/structure.md`](?doc=model/structure.md) § 2.2f) —
 the electrode atoms' stillness is
 this door's own check (`compose.frames_moving_the_leads`, § 2a.9), said,
 never a stop. The pair's axis kinds are its own across the transport axis, and z
@@ -5512,8 +5522,10 @@ as read at the describe door, and at Task setup the frames the calculation
 composed once its first prep has (`compose.cited_frames` given its folder),
 the pair read now before it — so a pair
 moved or deleted after the calculation ran takes nothing from its card. For
-frames stating no rows, *N frames — a family: each frame's curve its own, no
-average*, and what is said of the pair beneath; for one structure, nothing.
+frames stating no rows — a calculation composed before 2.86.0, whose frames
+a citation now refuses (§ 3.1) — *N frames* alone, and what is said of the
+pair beneath, the report's average saying why it has none; for one
+structure, nothing.
 The data is each answer's `frame_set` — `{n_frames, definition, said}`, the
 definition transport's `frame_average.answer`, the rows as stored, and
 `said` the citation's words (the blueprints' one helper,
@@ -6093,7 +6105,7 @@ list must be hand-swept on every deletion.
 | Record | `transport/record.py` | TBtrans output → `<label>.transport.json` (`summarize task`); a point whose transmission has not run yet reads as **pending**, one its ended walk never started as **not run** — never as a failure |
 | The frames' post-process | `molbuilder/frame_average.py` | outside transport's execution: the frames' average at their stated weights, its summary lines, the data file's frame part, what a page is answered of the frames — every row carried as written, none said in words of its own (§ 2a.12, § 3.8.1) — and a data file's frames averaged at weights a caller gives (`averaged_at`); called by the record, the data file, the describe door and `postprocess.reaveraged`. What a set's rows mean is its maker's, stated in each row's `note` ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 5.1 for a vibration's); no transport page says it (§ 3.8.1) |
 | Data file | `transport/datafile.py` | the record's composition as `<label>.transport.nc` — every point's raw outputs beside what is derived from them, on one grid, each variable defined (§ 2a.12) — and its reader |
-| The frames' rows | `molbuilder/frameset.py` | the rows as written and each frame's weight (`model/structure.md` § 2.2f), read by the frames' post-process, the record (`transport.record`), the run's points (`transport.points`), the motion toolkit's reader (`vibration_frames`), `postprocess.frame_rows` and the report log's reader |
+| The frames' rows | `molbuilder/frameset.py` | the rows as written and each frame's weight, by the weights' rule (`model/structure.md` § 2.2f: `weights_of`, `sum_broken`), and the weights assigned (`with_weights`, `equal_weights`, handed on by `postprocess`), read by the frames' post-process, the record (`transport.record`), the run's points (`transport.points`), the citation (`transport.compose`), the motion toolkit's writer and reader (`vibration_frames`), `postprocess.frame_rows` and the report log's reader |
 
 Reading an fdf is `parse.fdf.parse_fdf_params`'s; no command compares two
 decks.

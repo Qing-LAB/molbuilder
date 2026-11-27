@@ -393,7 +393,9 @@ added to frame 0.
 | `start` | snapshots `start` … `start + n − 1` of the seed's sequence, 0 when unsaid — even with pairs | **more frames later**: the streams are drawn in blocks, so `sample(2N)` begins with `sample(N)`'s frames for every kind of mode, pairs included, and `sample(N, seed=s, start=N)` draws the next $N$, written as their own set: two sets, their two calculations' results put end to end and averaged as § 7 says (`sampling.mean_with_error`, from pair means where paired) |
 
 Each snapshot's weight is $1/N$: the probabilities are in how the
-snapshots were drawn, not in the weights. **One indexing rule**: a
+snapshots were drawn, not in the weights. The set stores them, and every
+analysis of its results reads them there (§ 7), never counting the frames
+for itself. **One indexing rule**: a
 `Snapshots`, like a `Frames`, stands for the set as written — in memory as
 read back, item $i$ is frame $i$, frame 0 the relaxed geometry at weight 0
 (§ 5) included. The snapshot drawn $j$-th (from 0) is frame $j + 1$; with
@@ -444,7 +446,9 @@ write_frame_set(topic_dir("P", "structure") / "bdt-m7xm9.xyz", grid, w, vibratio
 
 The writer adds what every set needs (§ 5) whatever made the frames: the
 provenance, the masses, frame 0's `info.calculation`, each frame's measured
-rows. Its first frame is the relaxed geometry here, so no frame 0 is added.
+rows. The weights are the person's — every frame's, summing to 1, here the
+product of two rules' — and the writer refuses any other by the weights'
+rule ([`model/structure.md`](?doc=model/structure.md) § 2.2f). Its first frame is the relaxed geometry here, so no frame 0 is added.
 
 ---
 
@@ -549,7 +553,10 @@ state — so that route needs five frames at least.
   person's set read back (a `FrameSet`: written again as a person's frames,
   its positions and weights, leaving out the writer's own rows), a
   person's frames given without their vibration or their weights, or with
-  weights or frame rows not one per frame, a row that is no mapping
+  weights or frame rows not one per frame, weights that are not every one a
+  finite number or do not sum to 1 within the container's tolerance (the
+  weights' rule, [`model/structure.md`](?doc=model/structure.md) § 2.2f,
+  asked of the rows `frameset.read` reads), a row that is no mapping
   `{name, value, unit?, note?}` (in `rows`, `frame_rows` or `frame0_rows`),
   a set of one frame (a frame set holds two frames or more,
   [`model/structure.md`](?doc=model/structure.md) § 2.2f: one frame is the
@@ -572,7 +579,7 @@ relaxed geometry first are the file's frames 1 … after the prepended one.
 |---|---|
 | **frame 0, the set's reference** ([`model/structure.md`](?doc=model/structure.md) § 2.2f) | the relaxed geometry — this rule's one home: a mode's own set with an odd rule has its node there, at the rule's weight; an even rule's set and a snapshot set get it prepended at weight 0; a person's frames keep their first frame as frame 0 where it **is** the relaxed geometry as a pair holds positions — within the structure's one rule of two places (`structure.SAME_PLACE_ANG`, $10^{-6}$ Å: a pair's six decimals, so a set read back and written again is the set it was; the user, 2026-11-24) — the relaxed geometry written there exactly, as `v.displaced({})` or a node at $Q = 0$ gives it (§ 4: every rule's middle node is 0 exactly); a first frame farther off is no frame 0 and gets it prepended at weight 0. Exact in memory; the file holds every position to $10^{-6}$ Å, as every pair does |
 | **a prepended frame 0's rows** | for a recipe, every frame row its other frames state, at its value there: `q_amu12_ang` 0 (a mode's own set's; a snapshot set's per-mode coordinates are `info.sampling`'s, frame 0's all zero), `node_sigma` 0, `displacement_ang` 0, `max_atom_displacement_ang` 0, `weight` 0; for a person's frames, the writer's own measured rows computed there, `weight` 0, and the person's `frame0_rows` — a person's frame row absent at frame 0 said |
-| **each frame's `weight`**, the one row a calculation reads | as given; weights not summing to 1 within the container's tolerance written as given and said ([`model/structure.md`](?doc=model/structure.md) § 2.2f) |
+| **each frame's `weight`**, the one row a calculation reads | as given, every frame's a finite number and their sum 1 within the container's tolerance ([`model/structure.md`](?doc=model/structure.md) § 2.2f) — a recipe's always (a rule's weights sum to 1, a snapshot's are $1/N$, a prepended frame 0's 0), a person's refused by name otherwise |
 | **each frame's measured rows**, for every set | `displacement_ang`, `max_atom_displacement_ang` — computed from the coordinates alone |
 | the provenance, as rows | `vibration_run`, `vibration_result_sha256` (the JSON's, § 1), `mass_source`, `frequency_scale` where one was applied |
 | **the maker's assumptions**, one row | `assumptions`: the harmonic modes, each mode's state, their independence, for snapshots the statistics of a finite set, and what frames of a vibration assume — the electron fast against the vibration, no inelastic step or polaron shift in a frame average, one state at every voltage — science § 7's items 1–4, the sentences it asks to be stated beside the numbers, carried as written by any calculation like every row; a person's set carries the person's own `assumptions` row, or none, said |
@@ -631,7 +638,10 @@ frequency and zero-point amplitude read, and every frame states its
 coordinate; any other — a set a person built, in the vocabulary's names or
 not — a `FrameSet`, said only where it states a mode's or a snapshot set's
 rows not written the toolkit's way. A structure of one frame is no frame set,
-refused by name. A recorded state or motion that does not bind again — a
+refused by name; so is a set whose weights break the rule — a frame stating
+none, one not a number, a sum off 1 — naming them and the way on,
+`frameset.with_weights` or `frameset.equal_weights`
+([`model/structure.md`](?doc=model/structure.md) § 2.2f). A recorded state or motion that does not bind again — a
 hand-edited step, say — is said, the set read without it. A vibration given that is no
 vibration, or not the set's — its result's sha256 not the set's
 `vibration_result_sha256` — is refused by
@@ -860,7 +870,8 @@ made so), a set written before 2.81.1 whose row states another read the
 same, unsaid. **Refused by name**:
 what is no frame set's rows (a path, say — naming what it was given by its
 type, and `postprocess.frame_rows` and `frameset.read`); no rows — one
-structure, or frames that state none (a family); a snapshot set, its frames
+structure; rows whose weights break the rule
+([`model/structure.md`](?doc=model/structure.md) § 2.2f), naming them; a snapshot set, its frames
 having no single mode's coordinate and its weights equal; a set stating no
 mode's frequency and zero-point amplitude, or a frame stating no
 coordinate; an open start, of a set that states no temperature, naming
@@ -890,37 +901,44 @@ file's values whole (§ 3.3's rule) — any trailing axes, a T(E) per frame
 giving its error per energy:
 
 - `snaps.standard_error(values)` → `Estimate(value, error, n)`: the average
-  over the snapshots, its error and the snapshots counted — for independent
-  frames from the frames, for pairs from the pair means, frame 0 left out. A
-  value missing (NaN, a frame whose calculation did not finish) drops that
-  frame — with pairs, its pair — and says it (`Estimate.said`); none left,
-  or one, is said, its error NaN;
+  at the weights the set stores (`snaps.weights`: written, or as drawn),
+  its error and the snapshots counted — for independent frames from the
+  frames, for pairs from the pair means, each pair its two frames' weight;
+  frame 0, at weight 0, adds nothing. A value missing (NaN, a frame whose
+  calculation did not finish) drops that frame — with pairs, its pair — the
+  rest's weights scaled back to sum 1, and says both (`Estimate.said`);
+  none left, or one, is said, its error NaN;
 - `snaps.parts(values)` → `Parts(even, odd, said)`: a paired set's even and
   odd shares of the spread, from the pair means and the pair
   half-differences — whether pairs helped; a pair with a value missing
   dropped and said; a set drawn without pairs refused by name;
 - the arithmetic itself is `sampling`'s (§ 9.1 module 4) —
   `mean_with_error`, `pair_means`, `even_odd_parts` — which a person's own
-  arrays take directly: **one value per snapshot, in the order the
-  snapshots were drawn, frame 0 left out**, any trailing axes kept (a value
-  per energy). With mirrored pairs each snapshot is followed by its mirror,
+  arrays take directly with **their weights, one per value, summing to 1**
+  — a data file's `weight` beside `frame`, the set's own, never counted out
+  by the function: **one value per snapshot, in the order the snapshots
+  were drawn, frame 0 left out** (its weight 0, so the rest still sum to
+  1), any trailing axes kept (a value per energy). With mirrored pairs each snapshot is followed by its mirror,
   so values 1 and 2 are the first pair, 3 and 4 the second; `pair_means`
   and `even_odd_parts` **group them two by two themselves** — the pair
   means $(v_1 + v_2)/2, (v_3 + v_4)/2, \dots$, the half-differences
   $(v_1 - v_2)/2, (v_3 - v_4)/2, \dots$ — an odd count refused by name (a
   set's frame 0 left in, most often). Two sets of one motion — the seed
   drawn further, `start=` — put end to end keep their pairs, each set
-  holding an even count:
+  holding an even count, each set's weights scaled by its share of the
+  whole, the person's to state (science § 5.5):
 
   ```python
   import numpy as np
   from molbuilder.postprocess import sampling
   g1 = s1.conductance_g0.sel(bias_v=0.0).values   # set 1: frame 0, then its 64 snapshots
   g2 = s2.conductance_g0.sel(bias_v=0.0).values   # set 2, the seed drawn further: frame 0, then 64
+  w1, w2 = s1.weight.values, s2.weight.values     # each set's stored weights: 0, then 1/64 each
   both = np.concatenate([g1[1:], g2[1:]])          # frame 0 of each left out: 128 values, 64 pairs
-  means = sampling.pair_means(both)               # (both[0]+both[1])/2, (both[2]+both[3])/2, …: 64 means
-  value, error = sampling.mean_with_error(means)  # the average and its error, from the pairs
-  even, odd = sampling.even_odd_parts(both)       # the pair means' spread, the half-differences' spread
+  w = np.concatenate([w1[1:], w2[1:]]) / 2        # each set half the whole: 1/128 each
+  pairs = sampling.pair_means(both, w)            # (both[0]+both[1])/2, …: 64 means, each pair's weight
+  value, error = sampling.mean_with_error(*pairs) # the average and its error, from the pairs
+  even, odd = sampling.even_odd_parts(both, w)    # the pair means' spread, the half-differences' spread
   ```
 
 - `read_frame_set(path)` (§ 5) gives the `Snapshots` of a set
@@ -986,6 +1004,7 @@ notebook's run (§ 6.1):
 | the binding | an open start the record's, the motion's or the set's temperature, said; a chain's own temperature `"given"`; a distribution given the person's; a record stating none, an imaginary mode and anything but a chain or a distribution refused by name; the bound distribution's moments $Q_{\mathrm{zp}}^k\langle x^k\rangle$ against the closed forms |
 | the records | a set written and read back bound again — its state, words, mean, spread and own frames; the § 5 example's `info.state` exactly; a distribution's and a chain's record made again; a set that records none read without its state, said once |
 | the indexing | every analysis on one value per frame, frame 0 first, the same in memory and read back; `standard_error` and `parts` leaving frame 0 out |
+| the weights | every analysis at the weights the set stores — a snapshot set read back weighing each frame as its file does, its average and error the statistics' own at them; the statistics' mean and error at weights of their own, a value at weight 0 adding nothing, the weights refused by name where they are not one finite number per value, 0 or more, summing to 1; the writer refusing a person's weights off 1, the reader a set whose weights break the rule, re-weighting refusing rows whose own weights break it |
 | the frame set | written and read back through the structure's door: frames, weights, every row with its meaning, a prepended frame 0's rows at 0; a person's frames whose first is the relaxed geometry written without a second copy |
 
 ---
@@ -1091,7 +1110,7 @@ flowchart LR
 
 **A first example, end to end** — one quantum added to a 200 cm⁻¹ mode at
 300 K (an absorbed photon on a warm mode). Every output in this section was
-printed by molbuilder 2.85.1; numpy prints its arrays to four decimals here.
+printed by molbuilder 2.86.0; numpy prints its arrays to four decimals here.
 
 ```python
 >>> import numpy as np
@@ -1776,7 +1795,9 @@ True
 #### 4 · `sampling` — random streams, and the statistics of results
 
 `vibration` asks it for every mode's stream and the arithmetic of
-`Snapshots.standard_error` and `parts`.
+`Snapshots.standard_error` and `parts`. **The statistics take the weights
+given, one per value, summing to 1** — a set's stored weights, never counted
+out by the function (the user, 2026-11-26; science § 5.5).
 
 ##### `normal_stream(key, size, start=0)`
 
@@ -1809,47 +1830,63 @@ array([ 0.1751, -0.5107])
 True
 ```
 
-##### `mean_with_error(units)`
+##### `mean_with_error(units, weights)`
 
-**What it is:** the mean over independent units and its statistical error,
-over the first axis, any trailing axes kept (a value per energy, say):
+**What it is:** the mean over independent units at their weights and its
+statistical error, over the first axis, any trailing axes kept (a value per
+energy, say):
 
 $$
-\bar v = \frac1N\sum_i v_i,\qquad
-\sigma_{\bar v} = \frac{s}{\sqrt N},\quad
-s^2 = \frac{1}{N-1}\sum_i (v_i - \bar v)^2 .
+\bar v = \sum_i w_i v_i,\qquad
+\sigma_{\bar v}^2 = \Big(\sum_i w_i^2\Big)\,
+\frac{\sum_i w_i\,(v_i - \bar v)^2}{1 - \sum_i w_i^2}
+\;=\; \frac{s^2}{N}\ \text{at } w_i = \tfrac1N,\quad
+s^2 = \frac{1}{N-1}\sum_i (v_i - \bar v)^2
 $$
 
-The mean is NaN with no unit, the error with fewer than two. **Refuses:**
-nothing of its own.
+(science § 5.5 derives it). The mean is NaN with no unit, the error with
+fewer than two of weight above 0. **Refuses:** weights not one finite
+number per unit, one below 0, or a sum off 1 by more than the container's
+tolerance (`frameset.WEIGHT_SUM_TOLERANCE`).
 
-##### `pair_means(values)`, `even_odd_parts(values)`
+##### `pair_means(values, weights)`, `even_odd_parts(values, weights)`
 
 **What they are:** for a set of mirrored pairs — one value per snapshot,
 each snapshot followed by its mirror, frame 0 (the relaxed geometry a
-written set starts with, at weight 0) left out — the pairs' means, the
-independent units of a paired set,
-$\big((v_1+v_2)/2,\ (v_3+v_4)/2,\ \dots\big)$; and the set's scatter split
-in two: the sample standard deviation $s$ (above) of the pair means — the
+written set starts with, at weight 0) left out, the weights one per value —
+the pairs' means and weights, the independent units of a paired set,
+`PairMeans(means, weights)`: each pair's weight its two values',
+$W_j = w_{2j-1} + w_{2j}$, its mean $(w_{2j-1}v_{2j-1} + w_{2j}v_{2j})/W_j$
+— at equal weights $\big((v_1+v_2)/2,\ (v_3+v_4)/2,\ \dots\big)$, a pair of
+weight 0 adding nothing, its mean its two values' plain one; and the
+set's scatter split in two: the spread at the pairs' weights,
+$s_W^2 = \sum_j W_j(y_j - \bar y)^2/(1 - \sum_j W_j^2)$ — the sample
+standard deviation $s$ at equal weights — of the pair means — the
 response's even part — and of the half-differences
 $(v_1-v_2)/2,\ (v_3-v_4)/2,\ \dots$ — its odd part, which the pairs cancel —
 each NaN with fewer than two pairs (science § 5.5). These are the scatter
 of the units, not the mean's error: that is
-`mean_with_error(pair_means(values))`.
-**Refuses:** an odd count of values (most often frame 0 left in).
+`mean_with_error(*pair_means(values, weights))`.
+**Refuses:** an odd count of values (most often frame 0 left in), and the
+weights as `mean_with_error` refuses them.
 
 ```python
 >>> v = np.array([1.30, 0.90, 1.12, 1.04, 0.98, 1.10])
->>> sampling.pair_means(v)
+>>> w = np.full(6, 1 / 6)                           # each snapshot's weight, as the set stores it
+>>> sampling.pair_means(v, w).means
 array([1.1 , 1.08, 1.04])
->>> mean, err = sampling.mean_with_error(sampling.pair_means(v))
+>>> mean, err = sampling.mean_with_error(*sampling.pair_means(v, w))
 >>> round(float(mean), 6), round(float(err), 6)
 (1.073333, 0.017638)
->>> even, odd = sampling.even_odd_parts(v)
+>>> even, odd = sampling.even_odd_parts(v, w)
 >>> round(float(even), 6), round(float(odd), 6)
 (0.030551, 0.131149)
->>> sampling.pair_means(v[:5])
+>>> sampling.pair_means(v[:5], w[:5])
 Traceback (most recent call last):
   ...
 ValueError: mirrored pairs come two by two -- each snapshot followed by its mirror, frame 0 left out; got 5 values
+>>> sampling.mean_with_error(v, np.full(6, 0.2))
+Traceback (most recent call last):
+  ...
+ValueError: the weights sum to 1.2000000000000002, not 1 within 1e-06 -- each value's share of the mean, summing to 1
 ```

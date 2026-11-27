@@ -906,8 +906,8 @@ No variable.
 | `template` | the calculation's `<label>.template.toml`, as text |
 | `job_request` | *JSON text*: the calculation's `job-request.json` |
 | *the frames' part*, where the cited structure states them — every other row is the maker's, carried in `/structure`'s `structure_json` (below): | |
-| `frame_warnings` | **record**: what is said of the weights — their sum off 1, frames that state none; empty where nothing is |
-| `average_assumptions` | **record**: what a frames' average assumes, where every frame states a weight — transport's own, said of frames, as [`engines/transport.md`](?doc=engines/transport.md) § 2a.12 lists them (their one home); the maker's own are its `assumptions` row, in `structure_json` |
+| `frame_warnings` | **record**: how the frames' weights break their rule ([`model/structure.md`](?doc=model/structure.md) § 2.2f) — their sum off 1, frames that state none; empty where they meet it |
+| `average_assumptions` | **record**: what a frames' average assumes, where the frames' weights meet their rule — transport's own, said of frames, as [`engines/transport.md`](?doc=engines/transport.md) § 2a.12 lists them (their one home); the maker's own are its `assumptions` row, in `structure_json` |
 
 #### `/structure` — the junction
 
@@ -926,7 +926,7 @@ its basis and its frames:
 |---|---|---|---|---|
 | `frame` | frame | coordinate | 1 | a frame of the set, by its index from 0; molbuilder's pages and messages number it from 1 ([`model/structure.md`](?doc=model/structure.md) § 2.2e). 1 long for one structure |
 | `frame_token` | frame | given | — | **label**: the frame's folder name — `f000` for frame 0 ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11); empty for one structure, which has no frame folder |
-| `weight` | frame | given | 1 | **label**: the frame's share of the frames' average, as the frame set's maker states it ([`model/structure.md`](?doc=model/structure.md) § 2.2f) — the one row transport reads; NaN where the frame states none |
+| `weight` | frame | given | 1 | **label**: the frame's share of the frames' average, as the frame set's maker states it ([`model/structure.md`](?doc=model/structure.md) § 2.2f) — the one row transport reads, every frame's required and their sum 1 (`model/structure.md` § 2.2f); NaN where a frame states none — only in a calculation composed before 2.86.0 |
 | `atom_region` | atom | given | — | **label**: the region molbuilder owns that the atom lies in — `L-electrode`, `bridge`, `R-electrode` — from the composed junction's labels; empty for an atom in none. A point's `dos_region_per_ev` sums by it |
 | `orbital` | orbital | coordinate | 1 | an orbital of the junction's basis — every atom's, in the device run's order — by its index in the geometry, from 0; a digest's `device_orbital` (9.6) names a subset of these. 0 long where `orbitals_why` says why |
 | `orbital_atom` | orbital | given | 1 | **atom indices**: the atom the orbital sits on, by user index |
@@ -1088,10 +1088,10 @@ Every raw variable here is *from the device point's SIESTA output*.
 | `average_delta_transmission` | bias_v, energy_ev | derived | 1 | ⟨T(E)⟩ − T_0(E): the average's change from frame 0's |
 | `average_conductance_g0` | bias_v | derived | G0 | ⟨G⟩/G0 = Σ_f weight_f G_f/G0, at the same weights |
 | `average_conductance_change_percent` | bias_v | derived | % | 100 (⟨G⟩ − G_f0)/G_f0, G_f0 frame 0's conductance |
-| `average_why` | bias_v | state | — | why there is no average at this voltage: one structure, frames that state no rows (a family) or not every one a weight — the same at every voltage — or the frames whose point at this voltage is not done yet |
+| `average_why` | bias_v | state | — | why there is no average at this voltage: one structure, or frames whose weights break the rule — not every frame stating one as a number, or their sum not 1 within the tolerance (`model/structure.md` § 2.2f; a calculation composed before 2.86.0, which a citation now refuses) — the same at every voltage — or the frames whose point at this voltage is not done yet |
 | `average_conductance_why` | bias_v | state | — | why the averaged conductance or its change is none: the window does not straddle E_F, or frame 0's conductance is zero |
-| `weight_sum` | — | derived | 1 | Σ_f weight_f, checked against 1 within `weight_tolerance`; NaN where the frames state no weights |
-| `weight_tolerance` | — | given | 1 | how far from 1 the weights' sum may be; NaN where the frames state no weights |
+| `weight_sum` | — | derived | 1 | Σ_f weight_f, checked against 1 within `weight_tolerance`; NaN where the frames' weights break the rule (`frame_warnings` says how) |
+| `weight_tolerance` | — | given | 1 | how far from 1 the weights' sum may be; NaN where the frames' weights break the rule (`frame_warnings` says how) |
 
 | attribute | what it says |
 |---|---|

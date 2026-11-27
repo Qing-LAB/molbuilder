@@ -161,20 +161,39 @@ re-weighted needs five frames at least, or two sets, one per state
 ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
 § 6).
 
+**Your own weights.** Each frame's results are in the file, one per frame
+— `transmission`, `conductance_g0` beside `frame` — and transport's own
+averaging takes weights you give, an analysis of the results, nothing
+written *(the user, 2026-11-26: "api should allow user to take results from
+individual frames and assign its own weight as a post-processing and
+analysis")*: one finite number per frame, frame 0 first, summing to 1
+([`model/structure.md`](?doc=model/structure.md) § 2.2f), each voltage by
+the record's own rule ([`engines/transport.md`](?doc=engines/transport.md)
+§ 2a.12):
+
+```python
+from molbuilder.postprocess import averaged_at
+g = s.conductance_g0.sel(bias_v=0.0).values          # each frame's own, frame 0 first
+mine = averaged_at("F.transport.nc", [0.0, 0.5, 0.5])  # frames 2 and 3 alike, frame 1 left out
+mine["conductance_g0"], mine["conductance_change_percent"], mine["said"]
+```
+
 **A snapshot set's average, and its error.** Every frame of a snapshot set
-weighs $1/N$ but frame 0, the relaxed geometry at weight 0. The record's
-average is the frames' average; its statistical error is read from the
-frames ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
+weighs $1/N$ but frame 0, the relaxed geometry at weight 0 — the weights the
+set stores, each frame's `weight` beside `frame`. The record's average is
+the frames' average at them; its statistical error is read from the frames
+at the same weights ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
 § 5.5) — with mirrored pairs (the set's `antithetic` row 1: frames
 $2j-1$ and $2j$ a pair), the spread of the pair means over $\sqrt{N/2}$:
 
 ```python
 from molbuilder.postprocess import sampling
 g = s.conductance_g0.sel(bias_v=0.0).values       # frame 0 first, the relaxed geometry
-means = sampling.pair_means(g[1:])                # frame 0 left out; values 1,2 a pair, 3,4 the next:
+w = s.weight.values                               # the set's stored weights: 0, then 1/N each
+pairs = sampling.pair_means(g[1:], w[1:])         # frame 0 left out; values 1,2 a pair, 3,4 the next:
                                                   # (g[1]+g[2])/2, (g[3]+g[4])/2, ... -- grouped two by two by the function
-mean, error = sampling.mean_with_error(means)     # the average and its error, from the pair means
-# independent snapshots (antithetic 0): sampling.mean_with_error(g[1:])
+mean, error = sampling.mean_with_error(*pairs)    # the average and its error, from the pair means
+# independent snapshots (antithetic 0): sampling.mean_with_error(g[1:], w[1:])
 ```
 
 The motion toolkit gives the same from the data file's values whole, one
@@ -183,8 +202,10 @@ per frame, frame 0 first — the set read back leaving frame 0 out itself
 an `Estimate`, and `parts` for the even and odd shares, [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
 § 3.3, § 7). **More frames** are the same seed drawn further, or another seed,
 written as a set of their own: the two calculations' results put end to end,
-each set's frame 0 left out, are averaged with their error from all their
-pairs together (`sampling.mean_with_error` over `sampling.pair_means`,
+each set's frame 0 left out, each set's stored weights scaled by its share
+of the whole (science § 5.5; [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
+§ 7's worked lines), are averaged with their error from
+all their pairs together (`sampling.mean_with_error` over `sampling.pair_means`,
 [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 3.3,
 § 9.1). **How many frames**: the error falls as $1/\sqrt N$, so a small
 effect needs many — how many, independent or paired, and the worked count,
@@ -209,8 +230,9 @@ says ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md
 ```python
 d = xr.load_dataset("D.transport.nc", group="summary").conductance_g0.sel(bias_v=0.0).values
 b = xr.load_dataset("B.transport.nc", group="summary").conductance_g0.sel(bias_v=0.0).values
-diff = sampling.pair_means(d[1:] - b[1:])     # frame 0 left out; pairs, as above
-change, error = sampling.mean_with_error(diff)
+w = xr.load_dataset("B.transport.nc", group="summary").weight.values   # the same in both sets
+diff = sampling.pair_means(d[1:] - b[1:], w[1:])   # frame 0 left out; pairs, as above
+change, error = sampling.mean_with_error(*diff)
 ```
 
 ### 3.3 The convergence

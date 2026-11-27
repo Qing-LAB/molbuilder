@@ -33,7 +33,8 @@ one (frame 0 the pair, frames at +/-sqrt(3) sigma, the mode's definition
 stated in full, `model/structure.md` § 2.2f); and a second transport
 calculation citing the set, its two-point self-consistent sweep at every
 frame: a point per frame and voltage, the record's average over the frames,
-and the data file; and the same frames stating no rows, a family.
+and the data file; and the same frames stating no rows -- no weight among
+them -- which the Transport tab refuses to cite.
 
 THE TRANSPORT RUNS RESTRICTED because a polarized moment that floats, as
 every transport rung's does, starts each atom at its full moment, aligned
@@ -245,9 +246,9 @@ def _highest_mode(tree: Path, run: str) -> int:
     return int(parse_spectra_json(result).modes[-1].index_1based)
 
 
-def _family_of(built):
-    """The same frames stating no rows and no mass channel -- each frame its
-    own curve (`model/structure.md` § 2.2f)."""
+def _stripped_of_rows(built):
+    """The same frames stating no rows and no mass channel -- no weight
+    among them, so a citation refuses them (`model/structure.md` § 2.2f)."""
     from molbuilder.vibration_frames import MASS_CHANNEL
     bare = built.with_frames(np.asarray(built.frames, dtype=float))
     for row in list(bare.customized_rows()):
@@ -688,12 +689,13 @@ def junction(tmp_path_factory):
                   "device", "--mode", "direct", "--foreground", "--yes")
         run.walk_stopped = copy_of(run, "walk-stopped", walk_stopped)
 
-        # THE SAME FRAMES STATING NO ROWS -- a family, each frame its own
-        # curve (`model/structure.md` § 2.2f).
-        run.family = "P/structure/family.xyz"
+        # THE SAME FRAMES STATING NO ROWS -- no weight among them, which a
+        # citation refuses (`model/structure.md` § 2.2f).
+        run.unweighted = "P/structure/unweighted.xyz"
         StructureCodec().write(
-            _family_of(StructureCodec().load(tree / frame_set, frames=True)),
-            tree / run.family)
+            _stripped_of_rows(StructureCodec().load(tree / frame_set,
+                                                    frames=True)),
+            tree / run.unweighted)
         # THE SPECTRUM VIEWER'S DOOR to the same doors' set
         # (`web/spectra.md` § 4.3), asked with the paths the page sends --
         # the result's folder and the tree picker's choice, each absolute:
@@ -720,7 +722,7 @@ def junction(tmp_path_factory):
         # shared panel asks a pseudopotential directory of the person.
         run.tab_said = {}
         for kind, cited in (("run", cite), ("mode's set", frame_set),
-                            ("family", run.family)):
+                            ("frames stating no weight", run.unweighted)):
             d = client.get(f"/api/transport/describe_attempt?path={cited}&engine=siesta")
             s = client.get(f"/api/transport/schema?engine=siesta"
                            f"&surface=shared&junction={cited}")
@@ -3278,17 +3280,21 @@ def test_the_frames_are_reaveraged_at_another_state(junction):
     assert hot["weights"].beyond > 0.0
     assert any("beyond the outermost frames" in s for s in hot["said"])
     with pytest.raises(ValueError,
-                       match="one structure, or frames that state none"):
+                       match="no frame set's rows -- one structure"):
         reaveraged(data_file_path(junction.bundle, "T"),
                    states.thermal(temperature_k=_TEMPERATURE_K))
     # TRANSPORT'S OWN DOOR takes any numbers, one per frame, frame 0 first,
-    # and refuses another count by name.
+    # summing to 1, and refuses another count or sum by name.
     from molbuilder.frame_average import AverageError, averaged_at
     again = averaged_at(path, np.asarray(_WEIGHTS, dtype=np.float32))
     assert np.allclose(again["conductance_g0"], S["average_conductance_g0"],
                        rtol=1e-6, atol=0, equal_nan=True)
     with pytest.raises(AverageError, match="one finite number per frame"):
         averaged_at(path, list(_WEIGHTS)[:-1])
+    with pytest.raises(AverageError,
+                       match="the frames' weights sum to 1.5, not 1 within "
+                             "1e-06"):
+        averaged_at(path, [0.5, 0.5, 0.5])
     # WHAT THE NUMBERS ASSUME stands beside them: transport's own, then the
     # set's own row (science § 7, "never dropped").
     from molbuilder.frame_average import ASSUMPTIONS
@@ -3296,6 +3302,79 @@ def test_the_frames_are_reaveraged_at_another_state(junction):
     assert own["assumptions"] == [
         *ASSUMPTIONS, f"the set's own, for the state it was written for: "
                       f"{rows.value('assumptions')}"], own["assumptions"]
+
+
+def test_a_persons_own_weights_average_each_frames_results(junction):
+    """`engines/transport.md` § 2a.12, `engines/transport-postprocessing.md`
+    § 3.2 (the user, 2026-11-26: "api should allow user to take results from
+    individual frames and assign its own weight as a post-processing and
+    analysis"): each frame's results, read from the data file one per
+    frame, averaged at weights a person gives by `postprocess.averaged_at`
+    -- at each voltage the sum of the frames' own conductances at those
+    weights, nothing written.  The silent failure: a person's weights put
+    on another frame than the one they name, or the record's weights used
+    instead."""
+    from molbuilder.postprocess import averaged_at
+    from molbuilder.task import of as task_of
+    from molbuilder.transport.datafile import data_file_path, read_data_file
+    run = junction.from_pair
+    path = data_file_path(run.bundle, task_of(run.bundle).label)
+    before = path.read_bytes()
+    g = np.asarray(read_data_file(path)["groups"]["summary"]["variables"][
+        "conductance_g0"]["data"], dtype=float)
+    mine = averaged_at(path, [0.0, 0.5, 0.5])
+    assert np.allclose(mine["conductance_g0"], 0.5 * g[1] + 0.5 * g[2],
+                       rtol=1e-12, atol=0, equal_nan=True)
+    assert path.read_bytes() == before
+
+
+def test_a_frame_set_cited_without_its_weights_is_refused_and_assigned(
+        junction, tmp_path):
+    """`engines/transport.md` § 3.1, `model/structure.md` § 2.2f (the user,
+    2026-11-26: "weight is explicitly calculated and saved with multiframe
+    data, and is required, and will be checked for normalization"; "if
+    there is no weight then the user need to call a function to assign
+    equal weight"): the road's frame set, its weights taken out, is refused
+    as a citation by name -- the frames' weights named and the way on, the
+    weights assigned; its weights made off 1, refused the same; given equal
+    weights by `postprocess.equal_weights`, cited -- 1/3 on every frame,
+    frame 0 included.  The silent failures: frames averaged at weights
+    nobody stated, or at weights that do not sum to 1."""
+    from molbuilder.postprocess import equal_weights
+    from molbuilder.transport.compose import ComposeError, classify_citation
+    from molbuilder.workingcopy_structure import StructureCodec
+    frames = StructureCodec().load(junction.tree / "P/structure/frames.xyz",
+                                   frames=True)
+    stripped = frames.copy()
+    for f in range(stripped.n_frames):
+        stripped.remove_customized("weight", frame=f)
+    bare = StructureCodec().write(stripped, tmp_path / "bare.xyz")
+    with pytest.raises(ComposeError, match=(
+            "bare.xyz is a frame set whose weights break the rule: no frame "
+            "states a weight: every frame's weight is required, their sum 1 "
+            "-- assign them: postprocess.with_weights")):
+        classify_citation(bare)
+    off = StructureCodec().write(_weights_as_given(stripped, [0.5] * 3),
+                                 tmp_path / "off.xyz")
+    with pytest.raises(ComposeError, match="the frames' weights sum to 1.5, "
+                                           "not 1 within 1e-06"):
+        classify_citation(off)
+    equal = equal_weights(stripped)
+    cited = classify_citation(StructureCodec().write(equal,
+                                                     tmp_path / "equal.xyz"))
+    assert cited.n_frames == stripped.n_frames == 3
+    from molbuilder.frameset import read
+    assert read(cited.structure).weights == pytest.approx((1 / 3,) * 3)
+
+
+def _weights_as_given(structure, weights):
+    """``structure`` with each frame's weight row set as given, past the
+    rule -- as a person's own script writes rows, `Structure.set_customized`
+    -- for the citation to refuse."""
+    out = structure.copy()
+    for f, w in enumerate(weights):
+        out.set_customized("weight", w, unit="1", frame=f)
+    return out
 
 
 def test_the_data_file_holds_every_runs_convergence_on_its_grid(junction):
@@ -3793,8 +3872,11 @@ def test_the_tab_cites_a_frame_set_and_answers_its_rows_as_stored(junction):
     pair the describe door answers its frames as the set stores them: a
     mode's set its rows by name, value and unit and its weights
     (transport's `frame_average.answer`), none interpreted -- no words, no
-    meaning, nothing of what made the frames (the user, 2026-11-26); a
-    family its count and no rows; a run one structure.  The shared panel
+    meaning, nothing of what made the frames (the user, 2026-11-26); a run
+    one structure; and the same frames stating no weight refused by name,
+    the describe door's answer the refusal with the way on, the shared
+    panel answering none (`model/structure.md` § 2.2f; the user,
+    2026-11-26: "weight ... is required").  The shared panel
     asks the pseudopotential directory of the person exactly for a pair,
     which brings none; Task setup's folder answer and the Results tab's
     record answer echo the frame-set calculation's frames as the describe
@@ -3872,18 +3954,26 @@ def test_the_tab_cites_a_frame_set_and_answers_its_rows_as_stored(junction):
     assert stated("max_displacement_ang") == pytest.approx(
         np.linalg.norm(xyz - xyz[0], axis=2).max(), abs=2e-6)
     fields = {}
+    described, schema = junction.tab_said["frames stating no weight"]
+    assert described["ok"] and described["citation"] is None, described
+    assert "unweighted.xyz is a frame set whose weights break the rule: no " \
+        "frame states a weight: every frame's weight is required, their " \
+        "sum 1 -- assign them: postprocess.with_weights" in \
+        described["summary"], described["summary"]
+    assert not schema["ok"] and "no frame states a weight" in \
+        schema["error"], schema
     for kind, (described, schema) in junction.tab_said.items():
+        if kind == "frames stating no weight":
+            continue
         assert described["ok"] and described["citation"], (kind, described)
         assert schema["ok"], (kind, schema)
         fields[kind] = {f["name"] for sec in schema["schema"]["sections"]
                         for f in sec["fields"]}
     assert junction.tab_said["mode's set"][0]["frame_set"] == {
         "n_frames": _N_FRAMES, "definition": expect, "said": []}
-    assert junction.tab_said["family"][0]["frame_set"] == {
-        "n_frames": _N_FRAMES, "definition": None, "said": []}
     assert junction.tab_said["run"][0]["frame_set"] == {
         "n_frames": 1, "definition": None, "said": []}
-    assert "psml_lib" in fields["mode's set"] and "psml_lib" in fields["family"]
+    assert "psml_lib" in fields["mode's set"]
     assert "psml_lib" not in fields["run"]
     # TASK SETUP, THE RESULTS TAB AND THE TAB'S REUSE ANSWER ECHO THE SAME
     # FRAMES, through the same helper (`web/task-setup.md` § 3,
