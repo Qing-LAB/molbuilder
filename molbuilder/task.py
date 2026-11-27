@@ -66,11 +66,18 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from .identity import migrate_as_typed, normalise_id, run_id, stage_key
 from .units import volts_words
-from .persist import (RecordRefusals, check_schema, object_of, read_object,
-                      write_json)
+from .persist import (RecordRefusals, RecordUnreadable, check_schema,
+                      object_of, read_object, write_json)
 
 
 SCHEMA = "molbuilder/task@2"
+#: THE DESCRIPTION'S SCHEMA BEFORE ITS JOB REQUEST WAS A RECORD OF ITS OWN
+#: (2.27.0): read by `jobset migrate`, which rewrites it.
+SCHEMA_BEFORE_SPLIT = "molbuilder/task@1"
+#: THE VERSIONS `jobset migrate` TRANSLATES (`execution/job-request.md`
+#: § 8): a description of any other is refused by both, its way on the
+#: calculation described again (`calcdirs.DESCRIBE_AGAIN`).
+MIGRATES = (SCHEMA_BEFORE_SPLIT, SCHEMA)
 #: Its name is the catalogue's (`runfiles.WRITTEN`, `job-contracts.md` § 2.2).
 from .runfiles import TASK_FILE as FILENAME  # noqa: E402
 from .runfiles import JOB_REQUEST_FILE  # noqa: E402
@@ -639,7 +646,12 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
     if not isinstance(obj, Mapping):
         _refuse(f"expected a JSON object, got {type(obj).__name__}")
 
-    check_schema(str(obj.get("schema") or ""), SCHEMA, label=FILENAME)
+    # ANOTHER VERSION, refused with the family's way on (`job-contracts.md`
+    # § 6.1): an older one belongs to a calculation described before the
+    # setup this molbuilder reads, a later one to a later molbuilder.
+    from .calcdirs import DESCRIBE_AGAIN
+    check_schema(str(obj.get("schema") or ""), SCHEMA, label=FILENAME,
+                 way=DESCRIBE_AGAIN)
     # 2.5.0'S CENTRING CHOICE IS RETIRED: a transport junction enters its
     # calculation centred (`model/structure-periodicity.md` § 6.0).
     if "centre_junction" in obj:
@@ -899,7 +911,7 @@ def of(base) -> Optional[Task]:
     try:
         obj = read_object(path)
     except ValueError as exc:
-        raise ValueError(f"{path}: {exc}") from None
+        raise RecordUnreadable(f"{path}: {exc}") from None
     return _from_obj(obj, said_as=str(path), base=Path(base))
 
 
@@ -913,7 +925,7 @@ def from_text(text: str, said_as: str = FILENAME) -> Task:
         try:
             obj = object_of(text.encode("utf-8"))
         except ValueError as exc:
-            raise ValueError(f"{said_as}: {exc}") from None
+            raise RecordUnreadable(f"{said_as}: {exc}") from None
         return _from_obj(obj, said_as=said_as, base=None)
     finally:
         _SOURCE.reset(token)
@@ -923,7 +935,7 @@ def _from_obj(obj, *, said_as: str, base: Optional[Path]) -> Task:
     refuse_another_layout(obj)
     before = _written_before(obj) if isinstance(obj, Mapping) else []
     if before:
-        raise ValueError(
+        raise RecordUnreadable(
             f"{said_as} was written before every description stated "
             f"{' and '.join(before)}: "
             f"`{migrate_as_typed(base)}` rewrites it, "
@@ -947,9 +959,16 @@ def _written_before(obj: Mapping[str, Any]) -> List[str]:
     groups' older rules with it, which the same rewrite settles), no
     `calculation` (2026-10-06), a stage's `enabled` (2026-10-03),
     `centre_junction` (retired 2.6.0), a transport description stating no
-    voltages (2.16.3) -- or ``[]``."""
+    voltages (2.16.3) -- or ``[]``.  A description of a version `jobset
+    migrate` does not translate (:data:`MIGRATES`) answers ``[]``: no rule
+    it was written before is migrate's to settle, and its reader refuses
+    it with its own way on."""
     out: List[str] = []
-    if str(obj.get("schema") or "") == "molbuilder/task@1":
+    try:
+        check_schema(str(obj.get("schema") or ""), MIGRATES)
+    except ValueError:
+        return out
+    if str(obj.get("schema") or "") == SCHEMA_BEFORE_SPLIT:
         out.append(f"how it runs -- its queue, its run cards, its groups, a "
                    f"benchmark's plan, its reports -- in its job request, "
                    f"{JOB_REQUEST_FILE} (2.27.0)")

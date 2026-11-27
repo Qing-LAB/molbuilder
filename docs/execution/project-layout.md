@@ -347,7 +347,10 @@ empty `__pycache__` reads as a calculation in progress.
 **The missing relation is said, never guessed around.** A reader that finds no
 record says *this directory is not marked as part of a calculation, so only what
 is in it can be shown* — a sentence a person can act on by preparing the
-calculation again.
+calculation again. A record that is there and does not read is said as that, in
+its reader's words (`calcdirs.unread`: *its record, …/calcdir.json, does not
+read: …*), never as one nothing marks
+([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1).
 
 ### 1.5 A run is immutable
 
@@ -1200,10 +1203,10 @@ pair's sidecar, never in a file of its own
 | `STAGE-PLAN.md` | the plan in reading order | prep, whole at each prep | none | derived |
 | `jobset-decisions.log` | one line per decision of every verb | prep, launch and `jobset migrate`, each decision as it is made, and a stop of a job | none | record |
 | `<species>.psml` *(SIESTA)* | a pseudopotential: the calculation's one copy in `pseudos/`, and a real copy beside every deck — SIESTA opens only its working directory | `molbuilder describe --psml-lib`, loose at the calculation root; the first prep moves them into `pseudos/` -- a transport calculation's first prep copies those of the run it cites, or of the calculation it extends -- and prep copies one beside each deck | `pseudos.psml_sources` | input |
-| `junction.xyz` *(transport)* | the composed junction | the prep that composes the junction, or records an older one's order | `transport.compose.recorded_junction` | derived |
-| `junction.molstruct.json` *(transport)* | its cell, its region labels and the citation's record | the prep that composes the junction, or records an older one's order | `transport.compose.recorded_junction` | derived |
-| `junction.cited.fdf` *(transport)* — only: a run is cited | the deck the junction was cited from, as it was | the prep that composes the junction, or records an older one's order | `transport.compose.load_compose_record` | derived |
-| `slot-provenance.json` *(transport)* | where each part of the junction came from, with hashes | the prep that composes the junction, or records an older one's order | `transport.compose.read_provenance` | record |
+| `junction.xyz` *(transport)* | the composed junction | the prep that composes the junction | `transport.compose.recorded_junction` | derived |
+| `junction.molstruct.json` *(transport)* | its cell, its region labels and the citation's record | the prep that composes the junction | `transport.compose.recorded_junction` | derived |
+| `junction.cited.fdf` *(transport)* — only: a run is cited | the deck the junction was cited from, as it was | the prep that composes the junction | `transport.compose.load_compose_record` | derived |
+| `slot-provenance.json` *(transport)* | where each part of the junction came from, with hashes | the prep that composes the junction | `transport.compose.read_provenance` | record |
 | `.gitignore` | which files the saved states keep by content in `.binsnapshots/` rather than in git, and the engines' scratch, which they keep nowhere | `checkpoint.Repo` -- `checkpoint init` and `save`, the panel, and `save_before` before every prep that writes, Save and a group's first launch | `checkpoint.Repo` | record |
 | `.git/` | the folder's saved states | `checkpoint.Repo` -- `checkpoint init` and `save`, the panel, and `save_before` before every prep that writes, Save and a group's first launch | `checkpoint.Repo` | record |
 | `.binsnapshots/` | the big files of each saved state, by content | `checkpoint.Repo` -- `checkpoint init` and `save`, the panel, and `save_before` before every prep that writes, Save and a group's first launch | `checkpoint.Repo` | record |

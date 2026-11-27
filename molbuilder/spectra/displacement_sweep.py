@@ -132,7 +132,6 @@ def collect_sweep(calc, *,
     from .. import __version__ as _mb_version
     from ..runrecord import stamp
     from ..constants import HARTREE_BOHR_EV_ANGSTROM_ASE
-    from .results import mass_of
     from ..engine_atom_index import convert_from_engine_numbering
     from ..jobset.commands import block, launch_lines, rollback
     from ..jobset.materialize import newest_on_label
@@ -309,9 +308,9 @@ def collect_sweep(calc, *,
                                      typed=(("--from",
                                              attempt_of[ref_name]),))))
 
-    # WHICH MODE IS WHICH, by shape, against the first stage with a result.
-    masses = [mass_of(i, ref.equilibrium_elements, ref.equilibrium_masses_amu)
-              for i in ref.free_atom_idxs]
+    # WHICH MODE IS WHICH, by shape, against the first stage with a result
+    # -- its free atoms weighted by the masses the result states.
+    masses = ref.atoms_weighted(ref.free_atom_idxs)[1]
     matched = {name: match_modes(ref, res, masses)
                for name, res, _f, _m in loaded}
     modes: List[Dict[str, Any]] = []

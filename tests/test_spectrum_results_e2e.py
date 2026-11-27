@@ -9,13 +9,14 @@ while it went, the version of it kept as the run wrote it
 (`RealRun.versions`).
 
 The reader's refusals of a file edited by hand are not asked (`process/
-testing.md` § 3b, § 6): the one rule shown is a file of another version, what
-the writer writes with its version moved
+testing.md` § 3b, § 6): the one rule shown is a file of another version --
+the result, its data file and the optical calls' file -- what the writer
+wrote with its version set
 (:func:`test_a_file_of_another_version_is_refused_by_that_version`).  What the
 rest of `engines/vibration.md` § 6.7 refuses is asked from the other side: what
 the writers write is what those rules call correct.  WHAT NO RUN WRITES GOES
 UNSEEN HERE: those refusals themselves; modes with no geometry, which the load
-door would serve without their shares; a file older than this release's writers.
+door would serve without their shares.
 
 What the runs' science says -- frequencies, intensities against their windows,
 the bends' degeneracy, the thermochemistry -- is `test_vibration_e2e.py`'s and
@@ -37,8 +38,8 @@ import numpy as np
 import pytest
 
 from molbuilder.postprocess import states as chains
-from molbuilder.runfiles import (ROLE_SPECTRA, ROLE_SPECTRA_DATA, compose,
-                                 stem_before)
+from molbuilder.runfiles import (ROLE_OPTICAL, ROLE_SPECTRA,
+                                 ROLE_SPECTRA_DATA, compose, stem_before)
 from molbuilder.runs import on_label_at
 from molbuilder.sidecars.spectra import (SpectraJsonSchemaError,
                                          dump_spectra_json, parse_spectra_json,
@@ -728,32 +729,107 @@ def test_a_raman_spectrums_bands_are_each_modes_activity(real_water_vibration,
                                [m["raman_activity_a4_amu"] for m in d["modes"]])
 
 
+#: A FILE OF ANOTHER VERSION, a row each (`engines/vibration.md` § 6.1,
+#: § 6.10.5, § 5.11 § 8): which of a vibration's files, the version it is
+#: given -- what the run wrote, written again by the file's one writer with
+#: its version set -- and the words its refusal says it in: the version it
+#: states, the one this molbuilder reads, and the way on.  The JSON's own
+#: rows by the version number it states, a data file's by its schema.
+_ANOTHER_VERSION = {
+    "a result a later molbuilder wrote": (
+        ROLE_SPECTRA, 16,
+        ("is schema 16", "written by a later molbuilder",
+         "reads schema 15 alone", "open it with the molbuilder that wrote it")),
+    "a result written before 2.79.0": (
+        ROLE_SPECTRA, 14,
+        ("is schema 14", "written by a molbuilder before 2.79.0 (2026-11-23)",
+         "reads schema 15 alone", "run the vibration again")),
+    "its data file, written before 2.79.0": (
+        ROLE_SPECTRA_DATA, "molbuilder/spectra-data@10",
+        ("molbuilder/spectra-data@10", "reads molbuilder/spectra-data@11",
+         "run the vibration again")),
+    "its optical calls' file, written before 2.72.3": (
+        ROLE_OPTICAL, "molbuilder/optical-data@4",
+        ("molbuilder/optical-data@4", "reads molbuilder/optical-data@5",
+         "run the vibration again")),
+}
+
+
+@pytest.mark.parametrize("row", list(_ANOTHER_VERSION))
 def test_a_file_of_another_version_is_refused_by_that_version(
-        real_water_probed, web_client, tmp_path, monkeypatch):
-    """`engines/vibration.md` § 6.7, § 6.1, K2674-3: what the writer writes, its
-    version moved, is refused by name -- `SpectraJsonSchemaError`, carrying the
-    two versions -- and the load door answers 422 `schema_mismatch` with them,
-    which the page reads to say *update molbuilder* without parsing a sentence.
-    THE SILENT FAILURE: the reader's own gate gone, so the typed decoder's
-    second one answers instead, and the page is told a field is malformed
-    (400 `field`) about a file only a newer molbuilder can read.  One rule, one
-    example (`process/testing.md` § 3b)."""
+        row, real_co2_vibration, web_client, tmp_path, monkeypatch):
+    """`engines/vibration.md` § 6.1, § 6.7, § 6.10.5, § 5.11 § 8: each of a
+    vibration's files reads its own version alone (the user's decision,
+    2026-11-26: every result before 2.79.0 stops opening, its run made
+    again).  What the run's writer wrote, its version set, is refused by
+    name, in words naming its version, the one this molbuilder reads and the
+    way on -- the result through the load door, a 422 `schema_mismatch`
+    carrying the two versions and the sentence the page prints, and through
+    the atom index door (`postprocess.atom_index_map`, `molbuilder
+    atom-index`); its data file and the optical calls' file through the
+    readers a person's script takes (`postprocess.read_spectra_data`,
+    `read_optical_data`).  A data file's version is set where its one writer
+    states it (`DATA_SCHEMA`), the payload the run's own: a file the writer
+    builds in memory does not open again to be edited.  THE SILENT FAILURE:
+    a file an older molbuilder
+    wrote read as if it were this one's -- its numbers taken, a block it
+    lacks read as not computed -- or refused without saying what to do; and
+    a result only a newer molbuilder reads refused as a malformed field
+    (400 `field`), the reader's own gate gone.  One rule, a row per file and
+    direction (`process/testing.md` § 3b, § 6)."""
     from conftest import point_the_one_door_at
-    moved = SCHEMA_VERSION + 1
-    final = _final(real_water_probed)
-    path = point_the_one_door_at(tmp_path, monkeypatch.setenv) / final.name
-    path.write_text(json.dumps({**_read(final), "schema_version": moved}),
-                    encoding="utf-8")
-    with pytest.raises(SpectraJsonSchemaError) as refused:
-        parse_spectra_json(path)
-    assert (refused.value.expected, refused.value.actual) == (SCHEMA_VERSION,
-                                                              moved)
-    r = web_client.post("/api/spectra/load", json={"path": str(path)})
-    said = r.get_json()
-    assert r.status_code == 422, said
-    assert (said["ok"], said["kind"]) == (False, "schema_mismatch"), said
-    assert (said["expected_version"], said["actual_version"]) == (SCHEMA_VERSION,
-                                                                  moved), said
+    from molbuilder.postprocess import read_optical_data
+    from molbuilder.postprocess import read_spectra_data as script_reads
+    from molbuilder.spectra import datafile, optical_data
+    from molbuilder.spectra.datafile import SpectraDataError
+    from molbuilder.spectra.optical_data import OpticalDataError
+    role, version, words = _ANOTHER_VERSION[row]
+    final = _final(real_co2_vibration)
+    written = {ROLE_SPECTRA: final, ROLE_SPECTRA_DATA: _data_file(final),
+               ROLE_OPTICAL: on_label_at(final.parent, ROLE_OPTICAL)}[role]
+    path = point_the_one_door_at(tmp_path, monkeypatch.setenv) / written.name
+    if role == ROLE_SPECTRA:
+        path.write_text(json.dumps({**_read(written),
+                                    "schema_version": version}),
+                        encoding="utf-8")
+        with pytest.raises(SpectraJsonSchemaError) as refused:
+            parse_spectra_json(path)
+        assert (refused.value.expected, refused.value.actual) == (
+            SCHEMA_VERSION, version)
+        r = web_client.post("/api/spectra/load", json={"path": str(path)})
+        said = r.get_json()
+        assert r.status_code == 422, said
+        assert (said["ok"], said["kind"]) == (False, "schema_mismatch"), said
+        assert (said["expected_version"], said["actual_version"]) == (
+            SCHEMA_VERSION, version), said
+        # THE ATOM INDEX DOOR reads it by the same version, in the same
+        # words (`model/overview.md` § 2.2b).
+        from molbuilder.postprocess import atom_index_map
+        with pytest.raises(ValueError) as by_index:
+            atom_index_map(path)
+        for word in words:
+            assert word in str(by_index.value), (word, str(by_index.value))
+        sentence = said["error"]
+    elif role == ROLE_SPECTRA_DATA:
+        monkeypatch.setattr(datafile, "DATA_SCHEMA", version)
+        write_spectra_payload(_read(final), path.with_name(final.name))
+    else:
+        # THE OPTICAL CALLS' PAYLOAD, as its reader gives it back, and the
+        # engine the run's result states (the file says it in its source).
+        payload = {**optical_data.read_optical_data(written),
+                   "engine": _read(final)["engine"]}
+        monkeypatch.setattr(optical_data, "DATA_SCHEMA", version)
+        optical_data.write_optical_data(payload, path)
+    if role != ROLE_SPECTRA:
+        reader, error = {ROLE_SPECTRA_DATA: (script_reads, SpectraDataError),
+                         ROLE_OPTICAL: (read_optical_data, OpticalDataError)
+                         }[role]
+        with pytest.raises(error) as refused:
+            reader(path)
+        sentence = str(refused.value)
+    assert path.name in sentence, sentence
+    for word in words:
+        assert word in sentence, (word, sentence)
 
 
 # --------------------------------------------------------------------- #

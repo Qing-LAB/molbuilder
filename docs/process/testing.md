@@ -957,7 +957,10 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   working with old files … very soon we won't have anything to migrate.
   Having it or not doesn't impact our work. This is design")*: `jobset
   migrate` and the readers of an older release's records stay as they are,
-  and no work goes into them. One exception, the user's choice at 2.81.1's
+  and no work goes into them — save the files the user dropped at 2.87.0
+  ([`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 6.1, the
+  one list), each refused by name, which a test holds by stating the version
+  it is refused at. One exception, the user's choice at 2.81.1's
   commit: `tests/test_row_units.py` hands today's doors a row an earlier
   molbuilder wrote — a count stating no unit, the one row no door makes now
   — to show the save, the download, the hand-over and the codec's write

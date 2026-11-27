@@ -79,6 +79,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from .identity import MODULE
+from .persist import FileRefused
 
 #: What the kernel is asked to send the shepherd when its parent dies.
 #: Linux-only, which matches this project's stated platform.
@@ -416,8 +417,9 @@ def _stop_own_group() -> None:
 #  The settings, as DATA -- `data/jupyter.toml` and the one reader        #
 # --------------------------------------------------------------------- #
 
-class JupyterRulesError(Exception):
-    """`data/jupyter.toml` is missing, malformed, or names nothing usable."""
+class JupyterRulesError(FileRefused):
+    """`data/jupyter.toml` is missing, malformed, of another schema, or names
+    nothing usable -- every refusal of :func:`load_rules`, the file named."""
 
 
 #: The sections the file may carry, closed by contract.  A typo in a settings
@@ -476,7 +478,8 @@ def load_rules() -> JupyterRules:
     except tomllib.TOMLDecodeError as exc:
         raise JupyterRulesError(f"{path}: not valid TOML -- {exc}") from exc
 
-    check_schema(str(raw.get("schema", "")), SCHEMA, label=str(path))
+    check_schema(str(raw.get("schema", "")), SCHEMA, label=str(path),
+                 error=JupyterRulesError)
     said = unknown_keys(raw, _SECTIONS)
     if said:
         raise JupyterRulesError(f"{path}: {said}.")

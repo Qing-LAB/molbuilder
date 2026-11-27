@@ -14,10 +14,14 @@ Envelope per web-api.md § 1 (four-bucket rule):
                                           errors_only[]
                                           (web-api.md § 1 canonical shape)
   * protocol error (bad path, missing
-    param, unknown state)              -> HTTP 4xx + ok:false +
+    param, unknown state), and an
+    archive that does not verify -- a
+    file its reader cannot read, said
+    at the edge (`web/app.py`)         -> HTTP 4xx + ok:false +
                                           error: "..."
   * server fault (crash, IO error,
-    archive integrity failure)         -> HTTP 5xx + ok:false +
+    git missing, a copy corrupt as
+    it is made)                        -> HTTP 5xx + ok:false +
                                           error: "..."
 
 All operations go through the in-process ``Repo`` class (same code
@@ -34,6 +38,7 @@ from flask import Blueprint, jsonify, request
 from ._shared import err
 
 from molbuilder import calcdirs
+from molbuilder.persist import FileRefused
 
 from molbuilder.checkpoint import (
     Repo,
@@ -167,6 +172,12 @@ def api_checkpoint_state():
             "ignore_edited": status.ignore_edited,
             "checked":       "content" if deep else "size+timestamp",
         })
+    except FileRefused:
+        # A FILE ITS READER CANNOT READ, met on the way -- an archive that
+        # does not verify among them (`checkpoint.ArchiveUnreadable`) -- is
+        # the edge's refusal, a 400 in its words (`web/app.py`), before any
+        # answer of this route's own.
+        raise
     except CheckpointError as exc:
         return err(str(exc), 500)
     except Exception as exc:                       # noqa: BLE001
@@ -213,6 +224,12 @@ def api_checkpoint_list():
             "tags":        [{"name": t.name, "state": t.state, "note": t.note}
                             for t in repo.tags()],
         })
+    except FileRefused:
+        # A FILE ITS READER CANNOT READ, met on the way -- an archive that
+        # does not verify among them (`checkpoint.ArchiveUnreadable`) -- is
+        # the edge's refusal, a 400 in its words (`web/app.py`), before any
+        # answer of this route's own.
+        raise
     except CheckpointError as exc:
         return err(str(exc), 500)
     except Exception as exc:                       # noqa: BLE001
@@ -240,8 +257,15 @@ def api_checkpoint_init():
                           calculation=body.get("calculation"))
     # TWO advisories, named by class rather than caught as a group.  These are
     # the only two failures here a person resolves -- the folder holds several
-    # calculations or lies inside one, or the name needs repair.  Git missing from PATH or a
-    # corrupt archive is a server fault.
+    # calculations or lies inside one, or the name needs repair.  An archive
+    # that does not verify is the edge's refusal; git missing from PATH is a
+    # server fault.
+    except FileRefused:
+        # A FILE ITS READER CANNOT READ, met on the way -- an archive that
+        # does not verify among them (`checkpoint.ArchiveUnreadable`) -- is
+        # the edge's refusal, a 400 in its words (`web/app.py`), before any
+        # answer of this route's own.
+        raise
     except NestedRepoRefusedError as exc:
         return _advisory(str(exc), where="path")
     except CalculationNameError as exc:
@@ -285,14 +309,20 @@ def api_checkpoint_save():
             "not a checkpoint folder; run init first", code=409)
     try:
         state = repo.save(note)
+    except FileRefused:
+        # A FILE ITS READER CANNOT READ, met on the way -- an archive that
+        # does not verify among them (`checkpoint.ArchiveUnreadable`) -- is
+        # the edge's refusal, a 400 in its words (`web/app.py`), before any
+        # answer of this route's own.
+        raise
     except CalculationNameError as exc:
         # A save validates the calculation's name too (L3), because a folder
         # somebody `git init`-ed by hand never passed through `init`'s gate.
         # A name needing repair is the person's to fix, not a server fault.
         return _advisory(str(exc), where="calculation")
     except CheckpointError as exc:
-        # Everything else here is the machine: git gone, a corrupt copy, an
-        # unreadable archive.  Reporting those as HTTP 200 "ok:false" would put
+        # Everything else here is the machine: git gone, a copy corrupt as it
+        # is made.  Reporting those as HTTP 200 "ok:false" would put
         # integrity failures in the bucket meant for questions.
         return err(str(exc), 500)
     except Exception as exc:                       # noqa: BLE001
@@ -324,6 +354,12 @@ def api_checkpoint_tag():
             "not a checkpoint folder; run init first", code=409)
     try:
         tag = repo.tag(name, note, at=body.get("at"))
+    except FileRefused:
+        # A FILE ITS READER CANNOT READ, met on the way -- an archive that
+        # does not verify among them (`checkpoint.ArchiveUnreadable`) -- is
+        # the edge's refusal, a 400 in its words (`web/app.py`), before any
+        # answer of this route's own.
+        raise
     except NoSuchRefError as exc:
         return err(str(exc), code=404)
     except GitNotInstalledError as exc:
@@ -370,6 +406,12 @@ def api_checkpoint_restore():
             "not a checkpoint folder; run init first", code=409)
     try:
         target = repo.restore(state, force=bool(body.get("force")))
+    except FileRefused:
+        # A FILE ITS READER CANNOT READ, met on the way -- an archive that
+        # does not verify among them (`checkpoint.ArchiveUnreadable`) -- is
+        # the edge's refusal, a 400 in its words (`web/app.py`), before any
+        # answer of this route's own.
+        raise
     except DirtyWorkingTreeError as exc:
         return _advisory(str(exc), where="unsaved")
     except NoSuchRefError as exc:

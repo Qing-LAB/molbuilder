@@ -1411,7 +1411,11 @@ def read_template(text: str) -> Template:
     except tomllib.TOMLDecodeError as exc:
         _refuse(f"not valid TOML -- {exc}")
 
-    check_schema(str(raw.get("schema") or ""), SCHEMA, label="template")
+    # ANOTHER VERSION, refused with the family's way on (`job-contracts.md`
+    # § 6.1).
+    from .calcdirs import DESCRIBE_AGAIN
+    check_schema(str(raw.get("schema") or ""), SCHEMA, label="template",
+                 way=DESCRIBE_AGAIN)
 
     # § 3 at @2: `engines` is a LIST -- a template describes a CALCULATION and
     # a calculation may run on more than one engine (§ 6.3).  A @1 file names

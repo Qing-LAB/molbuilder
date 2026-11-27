@@ -14,7 +14,6 @@ frozen-atom indices that XYZ can't represent.  We pin three contracts:
 from __future__ import annotations
 
 import json as _json
-import re
 from pathlib import Path
 
 import numpy as np
@@ -428,21 +427,89 @@ class TestSchemaVersioning:
     """``READABLE_VERSIONS`` is the single source of truth for which on-disk
     schemas this build accepts (`structure-molstruct.md` § 2)."""
 
-    def test_a_version_this_build_does_not_read_is_refused(self, tmp_path):
-        """One gate, one answer: a pair as the writer writes it, stating a
-        version this build does not read, is refused, naming the ones it does.
-        """
+    @pytest.mark.parametrize("door", [
+        "the codec's read", "molbuilder validate", "molbuilder modify"])
+    def test_a_version_this_build_does_not_read_is_refused(self, tmp_path,
+                                                           door):
+        """`structure-molstruct.md` § 2 (the user, 2026-11-26: "Drop all as
+        asked" -- told that every pair saved before 2026-11-04 stops opening,
+        with no rewrite command): a pair as the writer writes it, stating a
+        version other than the one this build reads -- the one before it --
+        is refused by name at each door a person opens it by: its version,
+        the date before which such pairs were saved, the one version read,
+        and the way on: the pair made again, or its geometry opened alone.
+        The silent failure: an older pair read as a v17 one, a field it keeps
+        elsewhere quietly missing; or a command dying of a Python error."""
+        from molbuilder.structure_pair import MolstructVersionError
         from molbuilder.workingcopy_structure import StructureCodec
+        from support.road import molbuilder
         pair = tmp_path / "pair.xyz"
         StructureCodec().write(Structure.from_xyz(_toy_xyz_text(3)), pair)
         side = msj.sidecar_path_for(pair)
         payload = _json.loads(side.read_text(encoding="utf-8"))
-        payload["schema_version"] = 99
+        payload["schema_version"] = 16
         side.write_text(_json.dumps(payload), encoding="utf-8")
-        # The set is `READABLE_VERSIONS`' to state; the message names it.
-        with pytest.raises(MolstructJsonError, match=re.escape(
-                f"reads versions {sorted(msj.READABLE_VERSIONS)} only")):
-            msj.load(side)
+        words = ("schema_version is 16 -- a pair saved before 2026-11-04 -- "
+                 "and this molbuilder reads version 17 alone. Make the pair "
+                 "again: save the structure from the calculation it came "
+                 "from, or build it again; its .xyz opens alone with this "
+                 ".molstruct.json moved aside, its labels, cell and rows "
+                 "gone.")
+        if door == "the codec's read":
+            with pytest.raises(MolstructVersionError) as refused:
+                StructureCodec().load(pair)
+            said = str(refused.value)
+        else:
+            r = molbuilder(*{
+                "molbuilder validate": ("validate", pair),
+                "molbuilder modify": ("modify", pair, tmp_path / "out.xyz",
+                                      "--delete", "0")}[door])
+            assert r.exit_code != 0, r.output
+            # A REFUSAL, never a Python error the command line dies of.
+            assert isinstance(r.exception, SystemExit), repr(r.exception)
+            said = r.output
+        assert words in " ".join(said.split()), said
+        # THE WAY ON, followed: the sidecar moved aside, the geometry opens.
+        side.rename(side.with_name("pair.molstruct.json.aside"))
+        assert StructureCodec().load(pair).n_atoms == 3
+
+    @pytest.mark.parametrize("door", [
+        "the codec's read", "molbuilder validate"])
+    def test_a_version_a_later_molbuilder_wrote_is_refused_as_that(
+            self, tmp_path, door):
+        """`structure-molstruct.md` § 2, `execution/job-contracts.md` § 6.1
+        (*The versions' words*): a pair stating a version above the one this
+        build reads is refused by name as a later molbuilder's -- its
+        version, that a later molbuilder wrote it, the version read, and the
+        way on: the molbuilder that wrote it.  The silent failure: a later
+        pair called one saved before 2026-11-04, and told to be made
+        again."""
+        from molbuilder.structure_pair import MolstructJsonError
+        from molbuilder.workingcopy_structure import StructureCodec
+        from support.road import molbuilder
+        pair = tmp_path / "pair.xyz"
+        StructureCodec().write(Structure.from_xyz(_toy_xyz_text(3)), pair)
+        side = msj.sidecar_path_for(pair)
+        payload = _json.loads(side.read_text(encoding="utf-8"))
+        payload["schema_version"] = msj.SCHEMA_VERSION + 1
+        side.write_text(_json.dumps(payload), encoding="utf-8")
+        if door == "the codec's read":
+            with pytest.raises(MolstructJsonError) as refused:
+                StructureCodec().load(pair)
+            said = str(refused.value)
+        else:
+            r = molbuilder("validate", pair)
+            assert r.exit_code != 0, r.output
+            assert isinstance(r.exception, SystemExit), repr(r.exception)
+            said = r.output
+        said = " ".join(said.split())
+        for words in (f"schema_version is {msj.SCHEMA_VERSION + 1}",
+                      "written by a later molbuilder than this one",
+                      f"this molbuilder reads version {msj.SCHEMA_VERSION}",
+                      "open it with the molbuilder that wrote it"):
+            assert words in said, (words, said)
+        for words in ("before 2026-11-04", "Make the pair again"):
+            assert words not in said, (words, said)
 
     def test_writes_the_reserved_label_into_the_one_label_store(self, tmp_path):
         """Canonical write: the reserved label is a label, and no top-level
@@ -590,8 +657,7 @@ class TestAnUnknownKeyIsRefused:
                          axis_kind=("periodic", "periodic", "transport"))
 
     def test_a_key_that_was_never_ours_is_still_refused(self, tmp_path):
-        """RETIRED is not the same as UNKNOWN, and the difference is the
-        user's file. A key this project never wrote is a fact they believe
+        """A key this project never wrote is a fact the person believes
         they stored and this build cannot honour -- named and refused, not
         dropped.
 
@@ -617,22 +683,3 @@ class TestAnUnknownKeyIsRefused:
         side.write_text(json.dumps(payload))
         with pytest.raises(MolstructJsonError, match="invented_by_nobody"):
             StructureCodec().load(xyz)
-
-    def test_a_typo_is_never_steered_to_a_retired_key(self, tmp_path):
-        """A RETIRED key is read and never applied, so the refusal of a typo
-        names the keys a sidecar carries without it (`job-contracts.md`
-        § 6.1: each with the known key it is close to).  THE SILENT FAILURE:
-        the refusal named `title` among the keys a sidecar carries, and the
-        one sentence would offer it as the typo's match -- so a person writes
-        a title the structure then drops without a word."""
-        from molbuilder.workingcopy_structure import StructureCodec
-
-        xyz = tmp_path / "j.xyz"
-        StructureCodec().write(self._current(), xyz)
-        side = tmp_path / "j.molstruct.json"
-        payload = _json.loads(side.read_text())
-        payload["titel"] = "water"
-        side.write_text(_json.dumps(payload))
-        with pytest.raises(MolstructJsonError, match="titel") as said:
-            StructureCodec().load(xyz)
-        assert not re.search(r"\btitle\b", str(said.value)), str(said.value)

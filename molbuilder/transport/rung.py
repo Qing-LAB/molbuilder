@@ -283,8 +283,7 @@ def junction_record(calc):
                 and read_provenance(base) is None and not _launched(calc)):
             return _finished_junction(calc, root=root, why=why), why, root
         composed = load_compose_record(base, citation=citation_of(task),
-                                       engine=task.engine, tree_root=root,
-                                       why=why,
+                                       tree_root=root, why=why,
                                        swap_electrodes=task.swap_electrodes)
     except compose_refusals() as exc:
         raise PrepError(str(exc)) from exc
@@ -370,8 +369,7 @@ def written_and_read_back(base, composed, plan, *, root, task):
     with tempfile.TemporaryDirectory(prefix="molbuilder-compose-") as tmp:
         names = write_compose_record(tmp, composed)
         back = load_compose_record(tmp, citation=citation_of(task),
-                                   engine=task.engine, tree_root=root,
-                                   why=why,
+                                   tree_root=root, why=why,
                                    swap_electrodes=task.swap_electrodes)
         if back is None:
             raise PrepError(

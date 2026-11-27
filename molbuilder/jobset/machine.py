@@ -91,10 +91,15 @@ def _no_record() -> PrepError:
     have none: a named target's record is there, or `machine_for` refuses
     the name itself.  A record there that does not read is said as that --
     an older molbuilder's among them -- with the probe that writes it
-    again."""
-    from ..scheduler.record import machine_scope_path, probe_line, why_unread
+    again; one a later molbuilder wrote in its words alone, whose way on is
+    that molbuilder (`job-contracts.md` § 6.1)."""
+    from ..scheduler.record import (machine_scope_path, probe_line,
+                                    record_written_later, why_unread)
     here = machine_scope_path()
     why = why_unread(here)
+    if why and record_written_later(here):
+        return PrepError(f"this machine's record, {here}, does not read -- "
+                         f"{why}.")
     if why:
         return PrepError(
             f"this machine's record, {here}, does not read -- {why}.\n"

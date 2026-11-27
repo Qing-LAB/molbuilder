@@ -491,6 +491,7 @@ def views_of(folder) -> Dict[str, Any]:
     ``{"unread": ...}`` for the ladder, the view ``unreadable``."""
     from .. import calcdirs
     from ..calculation import open as open_calculation
+    from ..persist import FileRefused
     from .points import point_of
     out: Dict[str, Any] = {"ladder": None, "points": None, "point": None}
     folder = Path(folder)
@@ -500,9 +501,13 @@ def views_of(folder) -> Dict[str, Any]:
     of_points = (at.run_folder is not None and at.trial is None
                  and at.what in (calcdirs.ATTEMPT, calcdirs.POINT)
                  and calcdirs.where(at.run_folder).of_points)
+    # WHAT ITS READERS REFUSE -- a file that does not read, whatever its own
+    # type (`persist.FileRefused`: the calculation's copy of its machine's
+    # record among them) -- said where the view would be; a defect in this
+    # code is not one of them.
     try:
         calc = open_calculation(at.root)
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, FileRefused) as exc:
         if at.what == calcdirs.CALCULATION:
             out["ladder"] = {"unread": str(exc)}
         if of_points:
@@ -512,7 +517,7 @@ def views_of(folder) -> Dict[str, Any]:
     if at.what == calcdirs.CALCULATION:
         try:
             out["ladder"] = ladder_view(calc)
-        except (OSError, ValueError) as exc:
+        except (OSError, ValueError, FileRefused) as exc:
             out["ladder"] = {"unread": str(exc)}
     if of_points:
         out["points"] = points_view(calc, at.run_folder)
@@ -801,6 +806,27 @@ def jobset_status(calc, *, sweep=None, state=None) -> JobSetStatus:
         offer=(offer if task is not None else []),
         steps=(steps if task is not None else []),
     )
+
+
+def unreadable_status(calc, words: str) -> JobSetStatus:
+    """THE STATUS DOOR'S ANSWER WHEN A FILE IT READS DOES NOT READ -- the
+    calculation's copy of its machine's record among them, which the next
+    step's launch lines are composed from (`commands.takes_a_queue`):
+    every stage of the description *unreadable*, in that file's ``words``,
+    no next step -- for a view that opens the calculation all the same and
+    says the file where each stage's state would be, a gentler door by
+    design (`job-contracts.md` § 6.1): the transport report
+    (`transport.record.collect_record`).  :func:`jobset_status` itself
+    refuses, so a command says the file at its edge."""
+    from .naming import described_refs
+    base, task = Path(calc.base), calc.task
+    stages = [StageStatus(ref=ref, dir=None, state="unreadable",
+                          detail=words)
+              for ref in described_refs(base, task)]
+    return JobSetStatus(
+        name=task.label, engine=str(task.engine), stages=stages,
+        first_incomplete=(stages[0].name if stages else None),
+        complete=not stages, base=str(base))
 
 
 #: A RUN'S STATES that leave its group needing a launch again
@@ -1265,9 +1291,12 @@ def _member_said(calc, unread: Optional[str], stage: str,
                  run: Path) -> str:
     """One member's state, in the status door's words -- its run's, the
     run in ``run``, read through its launch record's door
-    (`runrecord.launch_record`; :func:`job_members`)."""
+    (`runrecord.launch_record`; :func:`job_members`).  A launched run that
+    is no run of ours because a file it is read with does not read -- its
+    calculation's description (``unread``), its own record -- is
+    *unreadable*, in that file's words (`runs.place_of`'s ``problem``)."""
     from ..runrecord import launch_record
-    from ..runs import run_of, state_of
+    from ..runs import place_of, run_of, state_of
     try:
         launched = launch_record(run) is not None
     except LaunchRecordError as exc:
@@ -1279,7 +1308,10 @@ def _member_said(calc, unread: Optional[str], stage: str,
     # WHERE ITS RUN'S FOLDER IS (`calcdirs.where`): a run of points' run, a
     # container.
     if not where(run).of_points:
-        return ("its run is not on disk" if not launched
+        if not launched:
+            return "its run is not on disk"
+        problem = unread or place_of(run).problem
+        return (_said("unreadable", problem) if problem
                 else "its launch record names no run of ours")
     # A RUN OF POINTS: THAT RUN, by the one door for a run's state whichever
     # kind (`continuation.stage_run_state`) -- never its stage's newest.
@@ -1348,7 +1380,8 @@ def scratch_answer(calc) -> ScratchAnswer:
     return ScratchAnswer(found, kept, free)
 
 
-__all__ = ["StageStatus", "JobSetStatus", "jobset_status", "JobAnswer",
+__all__ = ["StageStatus", "JobSetStatus", "jobset_status", "unreadable_status",
+           "JobAnswer",
            "job_members",
            "run_folders", "every_run", "points_view", "ladder_view",
            "views_of", "run_answer",

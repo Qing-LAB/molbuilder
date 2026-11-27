@@ -113,8 +113,8 @@ Two special cases are worth knowing:
   picks the mode exactly as on a spectrum. One sentence above the lines says
   which of four cases it is, read from the result's own record on both
   engines: **the run asked for none** (its infrared not asked — the load
-  door's `infrared_asked`, one reading of the result's own facts, older
-  files included ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11
+  door's `infrared_asked`, one reading of the result's own facts
+  ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.11
   § 8) — and `phase_raman` *not requested*: *Compute IR* and *Compute
   Raman* off); **a strength
   waits for you, or says why it is not there** (a SIESTA result, whose
@@ -304,10 +304,9 @@ pressure entered. The phase indicator has a **Relaxation** dot (off
 `phase_relaxation`) and an **Infrared** dot (off `phase_ir`); it shows no dot for a
 strength or the probe the run did not ask for, by its own record on either
 engine — `not requested`: *Compute IR* or *Compute Raman* off, the probe at
-`skip` or on SIESTA — nor for one with no record (`""`, a file written
-before its flag); the **Relaxation** dot shows always, *not requested* where
-the structure was stated relaxed; a v4 file simply shows it empty and hides
-the thermo tab.
+`skip` or on SIESTA; the **Relaxation** dot shows always, *not requested*
+where the structure was stated relaxed; the thermo tab stays hidden until the
+run's thermochemistry is in the file.
 
 ### 3.2 The infrared of a SIESTA result — the free atoms'
 
@@ -405,10 +404,11 @@ restored only where its control holds it (§ 7), so a stored value the door
 would refuse never reaches it. A SIESTA result that states no charges
 shows no infrared choice, and one line in the bar's place says why, in the
 door's words from the result's own facts (`infrared_absent`,
-`spectra.infrared.no_charges_reason`): written before 2.36.0, which first
-keeps the charges, and how to run the stage again — or *Compute IR* was
-off. The run summary's infrared line says the same case: *not requested*
-only where the run asked for none.
+`spectra.infrared.no_charges_reason`): the run has not computed its
+infrared yet; *Compute IR* was off; or the run recorded none, its log saying
+why. The run
+summary's infrared line says the same case: *not requested* only where the
+run asked for none.
 
 **A PySCF result's infrared is its own** — the whole system's dipole change,
 every atom's, the held ones' included, computed by PySCF
@@ -417,17 +417,13 @@ column *(the user, 2026-10-24)*: nothing held, the file's
 `ir_intensity_km_mol`, the orientation average, as before, and no choice;
 atoms held, *Light along* alone in the bar — no partition — and the column
 the strength along that direction, from the vector the file keeps
-(`dipole_derivative_d_per_ang_amu12`, schema 12), named *IR\* (km/mol)*, its
+(`dipole_derivative_d_per_ang_amu12`), named *IR\* (km/mol)*, its
 note saying it plainly:
 
 > \* **IR** — how strongly this vibration absorbs infrared light polarized
 > along z. It is the square of how much the whole system's dipole along z
 > changes as the vibration moves it, held atoms included, as PySCF computes
 > it. Zero means light along z does not see this vibration.
-
-A held PySCF result written before schema 12 keeps no vector: the column
-stays the orientation average, and the bar's line says the direction cannot
-be applied to it.
 
 ### 3.3 The Raman of a SIESTA result, at a laser
 
@@ -586,8 +582,8 @@ $$
 **The tab does not compute this number.** Every mode in the file carries it
 as `zero_point_amplitude_amu12_ang`, derived from the one constant in
 `constants.py` by the one function both engines write it with, and checked on
-read ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.3, § 6.6; a file
-before schema 7 gains it on read); the animation reads it. The thermal factor
+read ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.3, § 6.6); the
+animation reads it. The thermal factor
 below is served the same way: the load door derives each mode's
 `thermal_spread_amu12_ang` at the temperature the tab sends with its ask
 (`temperature_k`, the request's), from the one function
@@ -724,32 +720,26 @@ not get wrong about a number quoted from this panel.
 **Each atom's share in the file, the element sums on the server** — in
 `/api/spectra/load`, never in the browser.
 
-The share needs atomic masses, and the browser has none. **A result from
-schema 7 states its own** — `equilibrium.masses_amu`, the masses its analysis
-weighted by ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.2, I3);
-an older result states none, and its share is computed from
-`chemistry.atomic_mass`, the name for ASE's IUPAC standard weights, the table
-`prep` states every deck's masses from. Typing 118 masses into this program —
-in Python or, worse, into JavaScript — would have been a second source of
-truth that no test would notice going stale.
+The share needs atomic masses, and the browser has none. **The result
+states its own** — `equilibrium.masses_amu`, the masses its analysis
+weighted by ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.2, I3),
+stated by `prep` from `chemistry.atomic_mass`, the name for ASE's IUPAC
+standard weights. Typing 118 masses into this program — in Python or, worse,
+into JavaScript — would have been a second source of truth that no test
+would notice going stale.
 
-**Each free atom's share is the result's own**: `motion_share`, stored from
-schema 15 beside the mode it is derived from, checked on read against the one
-derivation and worked out again by it — and for a result written before it,
-worked out on read ([`engines/vibration.md`](?doc=engines/vibration.md)
-§ 6.6, § 6.11 § 3); the panel's sums are of those shares — so
-every result on disk shows the line the moment it is opened, and a person
-reads each atom's share from the file without molbuilder. **The element
+**Each free atom's share is the result's own**: `motion_share`, stored
+beside the mode it is derived from, checked on read against the one
+derivation and worked out again by it
+([`engines/vibration.md`](?doc=engines/vibration.md) § 6.6, § 6.11 § 3);
+the panel's sums are of those shares — so every result shows the line the
+moment it is opened, and a person reads each atom's share from the file
+without molbuilder. **The element
 sums are a view, made at load**: each free atom's share summed by its
 element, its species label's name (`SpectraResults.atoms_weighted`,
 `Structure.chemical_symbols` — `Au` for `Au1`, a label's name taken as
 written). Grouped another way — by species label, by region — they are the
 script door's (`engines/vibration.md` § 6.11 § 6), not the panel's.
-
-A mode that states no shares is served without the field, and the panel
-simply drops that clause: a result with no stored geometry yet, or one written
-before schema 7 — which states no masses — whose label names no element the
-mass table knows.
 
 The sentence is assembled in `lib/spectra/core.js :: _reportSwing`.
 
@@ -917,15 +907,16 @@ the run's root, so the launch is the last step on both engines
 
 ## 6. The API door
 
-Three spectra routes — the ARTIFACT reader, the export and the frame-set door (full shape in
-[`web-api.md`](?doc=web/web-api.md)); the compute half goes through the
-catalogue schema + hand-over doors (§ 5):
+Four spectra routes — the ARTIFACT reader, the export, the frame-set door and the
+displacement sweep's reader (full shape in [`web-api.md`](?doc=web/web-api.md)); the
+compute half goes through the catalogue schema + hand-over doors (§ 5):
 
 | Route | Does | Returns |
 |---|---|---|
 | `POST /api/spectra/load` | parses an existing `.spectra.json` into display data, with the page's constants beside it — among them `engine_words`, each engine as the engine table names it, which the run summary's *Engine* line says the result's engine by (a file naming an engine the table does not hold, by the file's own word) — and with `temperature_k`, each mode's thermal spread at it (§ 4.1); with `frameset_state` — the frame-set dialog's state, `{temperature_k?, quanta?, mean_quanta?}`, the thermal state at the record's temperature when not asked, said back as `results.frameset_state` — each mode's `frameset`, the motion toolkit's readout: its mean number of quanta, its spread and that spread against its zero-point one, and the outermost frames' largest atom move for three, five and seven frames, the state in the set's words, what it holds in the command line's words (`holds`), and the words said where its quanta put more than 1 eV into the mode (§ 4.3); with `infrared: {direction, partition}`, the free atoms' infrared at those choices — along z by Hirshfeld charges when not asked, and derived with every load of a result that states its charges (§ 3.2); with `raman: {laser_nm, broaden_ev?}`, the Raman at that laser (§ 3.3) | `{ok, results}`, `results.infrared` the infrared view where the result has one, `results.raman` the Raman view when asked, `infrared_said` and `raman_said` the door's reason where it could not give one — or a **typed** error carrying a `kind` string (missing → 404, wrong schema version → 422, malformed or bad-field → 400) so the UI can react without reading the message |
 | `GET /api/export` | `?path=` the result the viewer shows, `format=` `netcdf` or `csv`, `laser_nm=` and `broaden_ev=` the view's — the calculation's vibration data files and the Raman view, one zip (§ 3.3) | the zip, its name the server's, a sentence beside it in `X-Molbuilder-Said` — or `{ok: false, error}`, 400 naming what is refused, 404 for nothing there |
 | `POST /api/spectra/frameset` | `{path, mode, nodes, out}` and the state's argument — `temperature_k` or `quanta` as the dialog names the state, or `mean_quanta`, which the doors' set takes too — the loaded result, whose folder the server takes as its run's, the frame count one of the load's `constants.frameset_nodes` (`vibration_frames.OFFERED_NODES`; § 4.3), and the pair to write (the tree picker's choice), each fenced inside the tree as `/api/spectra/load`'s path is — through the motion toolkit's doors' set, `vibration_frames.frameset_from_mode` (`engines/vibration-frames.md` § 4, § 5, § 6: a mode's own set, its state asked every time) | `{ok, path, written, frames: [{q_sigma, max_atom_displacement_ang, weight}], lines, holds, said}` — each frame's line and what the state holds in the words the command line prints, the pair's full path the folder announced (§ 4.3) — or the writer's refusal in its words |
+| `GET /api/spectra/sweep` | `?path=` a SIESTA vibration's `<label>.fc-sweep.json` — read through its reader, the registry's `fc-sweep-json`, for the Results tab's sweep page (`results.md` § 0.2) | `{ok, record}`; a record of another version, or one that does not read, its reader's refusal, a 400 in its words with its way on |
 
 Each follows the app's `{ok: …}` envelope convention, the export's file
 aside. The form schema comes

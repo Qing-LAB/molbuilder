@@ -76,14 +76,15 @@ except ImportError:                         # beside a job: it travels too
 
 # TWO WAYS, because this module travels beside the job.
 try:                                        # inside molbuilder
-    from .persist import check_schema
+    from .persist import SchemaMismatch, check_schema
     from .structure import Structure
     from .atom_permutation import (ATOM_INDEX_BASE, FIELD_BASE, FIELD_ENGINE,
                                    FIELD_LISTED_BY, FIELD_USER, FIELD_WHY,
                                    AtomIndexMap)
     from .persist import json_safe
 except ImportError:                         # beside a job, in a bundle
-    from persist import check_schema  # type: ignore[no-redef]
+    from persist import (SchemaMismatch,  # type: ignore[no-redef]
+                         check_schema)
     from structure import Structure  # type: ignore[no-redef]
     from atom_permutation import (  # type: ignore[no-redef]
         ATOM_INDEX_BASE, FIELD_BASE, FIELD_ENGINE, FIELD_LISTED_BY,
@@ -135,9 +136,6 @@ class Var:
     #: record's keys its own contract (`model/datafiles.md` § 9); a dotted
     #: key a path through the record's nested blocks (``negf.contour.poles``).
     key: str = ""
-    #: The names earlier schemas wrote it under, newest first: an older
-    #: file read as it is (§ 2a rule 5).
-    earlier: Tuple[str, ...] = ()
 
 
 #: The map's two columns as variables on the atom axis -- labels of its
@@ -259,19 +257,18 @@ def coordinate(axis: str, *, more: str = "", source: str = "") -> "Var":
 
 
 def scf_cycles_var(over: Tuple[str, ...], *, whose: str, prefix: str = "",
-                   key: Optional[str] = None,
-                   earlier: Tuple[str, ...] = ()) -> "Var":
+                   key: Optional[str] = None) -> "Var":
     """HOW MANY SCF ROWS ``whose`` SCF HOLDS, at each point of ``over`` --
     one declaration wherever a file counts an SCF's rows, its history beside
-    it (:func:`scf_history_vars`) or alone (the optical calls'); ``key`` and
-    ``earlier`` the record key and older names of a file that keeps them."""
+    it (:func:`scf_history_vars`) or alone (the optical calls'); ``key`` the
+    record key of a file that keeps them."""
     return Var(f"{prefix}scf_cycles", tuple(over), "state", "1",
                f"how many SCF rows {whose} holds",
                "each row its output printed that its reader read -- a row "
                "whose values do not read as numbers is not among them; where "
                "the rows are held, a row past it the fill; -1 where none "
                "ran, 0 being a count",
-               dtype="i4", fill=-1, key=key, earlier=earlier)
+               dtype="i4", fill=-1, key=key)
 
 
 def scf_history_vars(columns, over: Tuple[str, ...], *, whose: str,
@@ -692,21 +689,6 @@ def state(ds, *, title: str, schema: str, molbuilder_version: str,
                   "Conventions": CONVENTIONS})
 
 
-def named_now(held: Mapping[str, Any],
-              earlier: Mapping[str, Sequence[str]]) -> Dict[str, Any]:
-    """``held`` -- a group's variables or attributes, or the names a file
-    lists -- with each name of ``earlier`` it holds only under one of that
-    name's earlier names (newest first) put under the name now: THE ONE
-    DOOR an older file's names are read through, so a reader asks only for
-    the names its schema writes (`model/datafiles.md` § 2a rule 5)."""
-    out = dict(held)
-    for name, olds in earlier.items():
-        old = next((n for n in olds if n in out), None)
-        if name not in out and old is not None:
-            out[name] = out.pop(old)
-    return out
-
-
 def key_of(var: "Var") -> str:
     """The record key ``var`` is written from: its ``key``, else its name."""
     return var.key or var.name
@@ -747,7 +729,7 @@ def groups(group, path: str = ""):
 
 
 @contextlib.contextmanager
-def checked(path, *, schemas: Sequence[str], error=ValueError,
+def checked(path, *, schemas: Sequence[str], error=SchemaMismatch,
             way: str = "", data: Optional[bytes] = None):
     """A DATA FILE OPENED TO BE READ through the one door (:func:`reading`,
     § 4; ``data`` its bytes already in hand), its schema one of ``schemas``
@@ -761,7 +743,7 @@ def checked(path, *, schemas: Sequence[str], error=ValueError,
         yield ds, attrs
 
 
-def read_file(path, *, schemas: Sequence[str], error=ValueError,
+def read_file(path, *, schemas: Sequence[str], error=SchemaMismatch,
               way: str = "", records: Sequence[str] = ()
               ) -> Dict[str, Any]:
     """A DATA FILE READ BACK WHOLE (:func:`checked`): ``{"attrs": the
@@ -848,16 +830,11 @@ def read_atom_index_map(group, *, source: str,
                                   source=source, said=said)
 
 
-def read_variables(group, variables: Sequence["Var"] = ()
-                   ) -> Dict[str, Dict[str, Any]]:
+def read_variables(group) -> Dict[str, Dict[str, Any]]:
     """Every variable of ``group`` as ``{name: {"dims", "data", "attrs"}}``
     -- its values as a numpy array (the fill value as written; a record's
     the records it holds, its fill ``None``, § 3a), its attributes but the
-    fill value; each of ``variables`` an older file holds otherwise under
-    its name now (:func:`named_now`, `model/datafiles.md` § 2a rule 5) --
-    under an earlier name, or, a number of no dimension, as the group's
-    attribute of its name or an earlier one, as every file before 2.47.0
-    stated a number."""
+    fill value."""
     group.set_auto_mask(False)
     out = {}
     for name, v in group.variables.items():
@@ -869,15 +846,6 @@ def read_variables(group, variables: Sequence["Var"] = ()
             data = _records(data)
         out[name] = {"dims": tuple(v.dimensions), "data": data,
                      "attrs": attrs}
-    earlier = {v.name: v.earlier for v in variables}
-    out = named_now(out, earlier)
-    numbers = [v for v in variables if not v.dims and v.name not in out]
-    if numbers:
-        attrs = named_now({k: group.getncattr(k) for k in group.ncattrs()},
-                          earlier)
-        out.update({v.name: {"dims": (), "data": np.asarray(attrs[v.name]),
-                             "attrs": {}}
-                    for v in numbers if v.name in attrs})
     return out
 
 
@@ -1126,13 +1094,17 @@ def write_structure_group(ds, structure, atoms: AtomIndexMap, *,
 
 def read_structure_group(group, *, source: str) -> Dict[str, Any]:
     """``/structure`` read back: ``structure`` (the dict, or ``None``),
-    ``atoms`` (its atom index map, or ``None`` for a file written before
-    one), ``held`` (each atom's flag) and ``masses`` (each atom's, or
-    ``None`` where the file states not every one)."""
+    ``atoms`` (its atom index map, which every file of one geometry states
+    -- :func:`write_structure_group` writes it; one stating none refused,
+    naming ``source``), ``held`` (each atom's flag) and ``masses`` (each
+    atom's, or ``None`` where the file states not every one)."""
     sv = read_variables(group)
     masses = np.asarray(sv["mass_amu"]["data"], dtype=float)
+    atoms = read_atom_index_map(group, source=source)
+    if atoms is None:
+        raise ValueError(f"{source} states no atom index map")
     return {"structure": unjson_attr(group.getncattr(STRUCTURE_JSON)),
-            "atoms": read_atom_index_map(group, source=source),
+            "atoms": atoms,
             "held": sv["held"]["data"],
             "masses": ([float(m) for m in masses]
                        if masses.size and np.isfinite(masses).all()
@@ -1258,7 +1230,7 @@ __all__ = ["Var", "Axis", "AXES", "CONVENTIONS", "ROOT_FACTS",
            "as_bytes", "read_variables", "EXPORT_FORMATS", "ExportError",
            "coordinate", "axis_values", "scf_cycles_var", "scf_history_vars",
            "scf_history_values", "groups", "checked", "read_file",
-           "named_now", "key_of", "stated", "copy_stated", "json_attrs",
+           "key_of", "stated", "copy_stated", "json_attrs",
            "STRUCTURE_JSON",
            "structure_vars", "structure_values", "structure_attrs",
            "write_structure_group", "read_structure_group",

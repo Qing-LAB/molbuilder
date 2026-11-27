@@ -365,10 +365,11 @@ class TestErrorStatusesSharedBySurfaces:
         element, `Au1.psml` + `Au2.psml` exited 1 telling the person to
         rename them both to `Au.psml`."""
         from click.testing import CliRunner
-        from molbuilder.cli import pseudo_group
+        from molbuilder.cli import cli
         _write_folder(tmp_path, files)
+        # `molbuilder pseudo check <folder>`, as a person types it.
         res = CliRunner().invoke(
-            pseudo_group, ["check", str(tmp_path), *options])
+            cli, ["pseudo", "check", str(tmp_path), *options])
         assert res.exit_code == code, res.output
         for line in lines:
             assert re.search(line, res.output), (line, res.output)

@@ -19,8 +19,10 @@ from typing import Callable, List, Optional, Tuple
 # package or from beside the job, as `wrapper_log` is.
 try:                                        # inside molbuilder
     from . import runfiles as _rf
+    from .persist import FileRefused
 except ImportError:                         # beside a job, as the monitor's
     import runfiles as _rf
+    from persist import FileRefused  # type: ignore[no-redef]
 
 
 def _persist():
@@ -43,7 +45,7 @@ def _persist():
 RUN_LAUNCH_SCHEMA = "molbuilder/run-launch@1"
 
 
-class LaunchRecordError(ValueError):
+class LaunchRecordError(ValueError, FileRefused):
     """A run's record of its launch that is there and does not read -- its
     launch record, neither JSON nor a ``molbuilder/run-launch`` record, or
     a run of points' index (`runpoints.read_index`).  Never *launched* or

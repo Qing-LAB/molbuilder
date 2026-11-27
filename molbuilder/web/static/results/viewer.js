@@ -276,7 +276,8 @@
     //: WHAT THE EMPTY STATE SAYS OF A FOLDER: the server's sentence for what
     //: the folder is (`place.says`, `runs.PLACE_SAYS`), in the same response
     //: the menu is built from.  No role is not "neither" -- it is *unknown*,
-    //: and says so.
+    //: and says so; unless the server says why none is known, a record of
+    //: the folder's that does not read (`place.says`, its words).
     const PLACE_NOTE_UNKNOWN =
         "This directory is not marked as part of a calculation, so only "
         + "what is in it can be shown \u2014 nothing about what it belongs to.";
@@ -292,7 +293,7 @@
             && els.fallback.querySelector(".results-place-note");
         if (!el) return;
         const role = place && place.role;
-        el.textContent = !role ? PLACE_NOTE_UNKNOWN
+        el.textContent = !role ? ((place && place.says) || PLACE_NOTE_UNKNOWN)
             : points ? PLACE_NOTE_POINTS
             : (place.says || "");
         el.hidden = !el.textContent;

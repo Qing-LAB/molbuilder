@@ -23,6 +23,7 @@ from molbuilder.parse.types import SidecarResult
 # surfaces stay in lock-step; the pair's refusals are `structure_pair`'s.
 from molbuilder.sidecars.molstruct import (
     READABLE_VERSIONS,
+    SCHEMA_SINCE,
     SCHEMA_VERSION,
     is_sidecar,
     load,
@@ -30,8 +31,9 @@ from molbuilder.sidecars.molstruct import (
     unread_keys,
 )
 from molbuilder.atom_permutation import MAP_KEY
-from molbuilder.persist import object_of
-from molbuilder.structure_pair import MolstructJsonError
+from molbuilder.persist import LATER_WAY, object_of
+from molbuilder.structure_pair import (MolstructJsonError, MolstructUnreadable,
+                                       MolstructVersionError)
 
 from ._helpers import build_sidecar_result
 
@@ -40,32 +42,20 @@ from ._helpers import build_sidecar_result
 # imported above and used by `load_record` below.
 
 
-def load_record(data: bytes, *, source: str = "<sidecar>",
-                retired_out: "Dict[str, Any] | None" = None,
-                stated_out: "set | None" = None) -> Dict[str, Any]:
+def load_record(data: bytes, *, source: str = "<sidecar>") -> Dict[str, Any]:
     """Parse + validate a sidecar's **bytes** -- what the read door
     (``sidecars.molstruct.load``) read from the file -- through the one
     record reader (`persist.object_of`: UTF-8 text, one JSON object).  Returns the
     normalised dict, built by the payload's one builder
-    (``sidecars.molstruct.to_dict``) with the version the file STATES,
-    never this build's (`model/overview.md` § 2.2b, F4), so an on-disk
-    sidecar that snuck past with hand-edited indices fails loudly here, with
-    the file named, rather than at engine-load time.  ``source`` names the
-    origin for error messages (the path the read door read).
+    (``sidecars.molstruct.to_dict``), so an on-disk sidecar that snuck past
+    with hand-edited indices fails loudly here, with the file named, rather
+    than at engine-load time.  ``source`` names the origin for error messages
+    (the path the read door read).
 
-    ``retired_out``, when a dict is passed, receives each retired key the file
-    carried WITH A VALUE (``structure.RETIRED_METADATA_KEYS``): read and
-    ignored, never applied -- and a door that opens the file for a person can
-    say so (the load door names a dropped ``cell_origin``, plan § 5q D14).
-
-    ``stated_out``, when a set is passed, receives every metadata field the
-    file STATES, a null one among them -- what a reader asks to know whether
-    a file was written with a field at all, by its format, never its version
-    (`model/overview.md` § 2.2a: a junction whose sidecar states no
-    ``atom_order``).
-
-    Validation is strict: missing required fields, wrong types, out-of-range
-    indices, and unknown schema version all raise :class:`MolstructJsonError`.
+    Validation is strict: a version this build does not read -- every
+    sidecar saved before 2026-11-04 (the user, 2026-11-26: "Drop all as
+    asked"), and one a later molbuilder wrote -- missing required fields, wrong types, out-of-range indices and
+    a key the version does not carry all raise :class:`MolstructJsonError`.
     Region overlap (one atom in two regions) is INTENTIONALLY permitted --
     the model is multi-label freeform tagging.  ``regions`` / ``frozen_atoms``
     are permissive (missing == empty); everything else is required.
@@ -73,53 +63,52 @@ def load_record(data: bytes, *, source: str = "<sidecar>",
     try:
         data = object_of(data)
     except ValueError as exc:
-        raise MolstructJsonError(f"sidecar {source}: {exc}") from exc
+        raise MolstructUnreadable(f"sidecar {source}: {exc}") from exc
 
     sv = data.get("schema_version")
+    if (isinstance(sv, int) and not isinstance(sv, bool)
+            and sv > max(READABLE_VERSIONS)):
+        # A LATER MOLBUILDER'S PAIR: its way on is that molbuilder, never
+        # this one's for a pair saved before the version it reads
+        # (`job-contracts.md` § 6.1, *The versions' words*).
+        fact = (f"its sidecar is version {sv!r}, written by a later "
+                f"molbuilder than this one, and this molbuilder reads "
+                f"version {SCHEMA_VERSION}")
+        raise MolstructVersionError(
+            f"sidecar {source}: schema_version is {sv!r}, written by a "
+            f"later molbuilder than this one -- this molbuilder reads "
+            f"version {SCHEMA_VERSION} -- {LATER_WAY}.",
+            fact=fact, later=True)
     if sv not in READABLE_VERSIONS:
-        # REFUSED, NOT READ PARTIALLY.  An older sidecar does not store the same
-        # facts in the same places, so reading it here would not recover them --
-        # it would return a payload that LOOKS complete and quietly is not.
-        raise MolstructJsonError(
-            f"sidecar {source}: schema_version is {sv!r}, but this molbuilder "
-            f"build reads versions {sorted(READABLE_VERSIONS)} only (v8 "
-            f"added only the OPTIONAL identity columns, so a v7 file reads "
-            f"whole; older versions do not).\n"
-            f"Older sidecars are NOT read: they store the same facts in "
-            f"different places (before v7, frozen atoms sat in a "
-            f"top-level 'frozen_atoms' key rather than in 'regions'), so reading "
-            f"one would silently drop what it cannot map.\n"
-            f"Re-export it: open the structure in Modify and save it, which "
-            f"writes a v{SCHEMA_VERSION} pair. Check the labels afterwards -- "
-            f"anything the old format kept elsewhere has to be applied again."
-        )
+        # REFUSED, NOT READ PARTIALLY -- one version read (`structure-
+        # molstruct.md` § 2), the way on said: the pair made again, or its
+        # geometry opened alone (metadata is never required).
+        raise MolstructVersionError(
+            f"sidecar {source}: schema_version is {sv!r} -- a pair saved "
+            f"before {SCHEMA_SINCE} -- and this molbuilder reads version "
+            f"{SCHEMA_VERSION} alone.  Make the pair again: save the "
+            f"structure from the calculation it came from, or build it again; "
+            f"its .xyz opens alone with this .molstruct.json moved aside, its "
+            f"labels, cell and rows gone.",
+            fact=(f"its sidecar is version {sv!r}, saved before "
+                  f"{SCHEMA_SINCE}, and this molbuilder reads version "
+                  f"{SCHEMA_VERSION} alone"))
 
     # A KEY NOBODY READS IS METADATA THE WRITER THINKS IT SAVED.  Checked
     # HERE, where the payload is still whole: this function reads the keys it
     # NAMES, so a stray one would be dropped before ``apply_to_structure``
-    # could refuse it.
-    # Refused by the list's owner (`sidecars.molstruct.unread_keys`): the
-    # retired keys are accepted and ignored rather than refused -- a key
-    # this project used to write is not a key nobody reads, and the files
-    # carrying it are the user's (`structure.RETIRED_METADATA_KEYS`).
-    from molbuilder.structure import (ATOM_COLUMNS, FILE_FIELDS,
-                                      RETIRED_METADATA_KEYS)
+    # could refuse it (`sidecars.molstruct.unread_keys`, the list's owner).
+    from molbuilder.structure import ATOM_COLUMNS, FILE_FIELDS
     said = unread_keys(data)
     if said:
-        raise MolstructJsonError(f"sidecar {source}: {said}.")
-    if retired_out is not None:
-        retired_out.update({k: data[k] for k in RETIRED_METADATA_KEYS
-                            if data.get(k) is not None})
-    if stated_out is not None:
-        stated_out.update(k for k in data if k in FILE_FIELDS)
+        raise MolstructUnreadable(f"sidecar {source}: {said}.")
 
-    # The payload through its ONE BUILDER, with the file's version and its
-    # envelope as it states it -- the builder holds which envelope keys a
-    # version states and every check of them and of the fields.  This
-    # catches malformed user-edited JSON BEFORE any consumer tries to
-    # apply the data to a Structure (where the same checks would run
-    # but with a less specific error message that doesn't mention
-    # which file is at fault).
+    # The payload through its ONE BUILDER, its envelope as the file states
+    # it -- the builder holds every check of the envelope and the fields.
+    # This catches malformed user-edited JSON BEFORE any consumer tries to
+    # apply the data to a Structure (where the same checks would run but
+    # with a less specific error message that doesn't mention which file is
+    # at fault).
     try:
         return to_dict(
             # SPREAD, never listed: every field the Structure names, read by
@@ -133,10 +122,10 @@ def load_record(data: bytes, *, source: str = "<sidecar>",
             created_by     = data.get("created_by", "unknown"),
             created_at     = data.get("created_at"),
             atom_index_map = data.get(MAP_KEY),
-            schema_version = sv,
         )
     except MolstructJsonError as exc:
-        raise MolstructJsonError(f"sidecar {source}: {exc}") from exc
+        # THE FILE'S CONTENT its one builder refuses: the file does not read.
+        raise MolstructUnreadable(f"sidecar {source}: {exc}") from exc
 
 
 class MolstructSidecarFileParser(FileParser):

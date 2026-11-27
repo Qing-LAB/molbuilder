@@ -75,11 +75,7 @@ def job_lines(output: str, job: str) -> list:
 def jobset(*args, input=None):
     """`molbuilder jobset <args>`, as typed -- with ``input`` as what the
     person types at its questions, when it asks any."""
-    from click.testing import CliRunner
-
-    from molbuilder.jobset._cli import jobset_group
-    return CliRunner().invoke(jobset_group, [str(a) for a in args],
-                              input=input)
+    return molbuilder("jobset", *args, input=input)
 
 
 #: molbuilder's command as a person types it, word for word as
@@ -842,7 +838,9 @@ def calls_made(calls: Path):
 # `{atom, line}`: the calculation's structure file edited by hand after it was
 # described, its `atom`-th atom line replaced by `line`, its sidecar
 # untouched; `held_edited` -- its held atoms set anew after it was
-# described, written back through the codec; `shipped_before` -- a release,
+# described, written back through the codec; `source_sidecar_version` -- the
+# version its structure copy's sidecar states, set as an older molbuilder
+# wrote it (`_road_source_sidecar_version`); `shipped_before` -- a release,
 # `"2.77.19"`: the stage's newest run made as one that release launched would
 # hold it (`_road_shipped_before`); `own_warm_files` -- the calculation's own restart-file
 # list, the engine's
@@ -887,7 +885,7 @@ def calls_made(calls: Path):
 # its ledger holds (`ledger_holds` -- a decision, or a verb's, `"launch
 # continues"`, or a table naming one with its facts, `{decision = "launch
 # launched", time = "3h"}`);
-# a prep that was not refused says nothing of `said_lacks`, and each of
+# a prep, refused or not, says nothing of `said_lacks`, and each of
 # `said_once` once.  `both_doors`: the page's prep door on the same folder as it
 # stood serves the lines the terminal printed (`_road_both_doors`:
 # `preview_said`, `preview_lacks`, `preview_group_header`, `page_found_once`,
@@ -1104,6 +1102,19 @@ def _road_source_edited(edit, bundle) -> None:
     lines = src.read_text().split("\n")
     lines[2 + edit["atom"]] = edit["line"]
     src.write_text("\n".join(lines))
+
+
+def _road_source_sidecar_version(version, bundle) -> None:
+    """The sidecar of the calculation's structure copy stating ``version``,
+    the rest as its writer wrote it -- a calculation described by an older
+    molbuilder (`structure-molstruct.md` § 2)."""
+    import json
+    from molbuilder.sidecars.molstruct import sidecar_path_for
+    from molbuilder.task import of as task_of
+    sidecar = sidecar_path_for(
+        bundle / Path(task_of(bundle).structure.source).name)
+    sidecar.write_text(json.dumps({**json.loads(sidecar.read_text()),
+                                   "schema_version": version}))
 
 
 def _road_shipped_before(version, bundle, stage) -> None:
@@ -1936,6 +1947,8 @@ def run_road_case(table, case, tmp_path, monkeypatch, *, ran=None) -> None:
         _road_source_edited(case["source_edited"], bundle)
     if "held_edited" in case:
         _road_held_edited(case["held_edited"], bundle)
+    if "source_sidecar_version" in case:
+        _road_source_sidecar_version(case["source_sidecar_version"], bundle)
     if "shipped_before" in case:
         _road_shipped_before(case["shipped_before"], bundle,
                              case.get("stage", "coarse"))
@@ -1968,6 +1981,8 @@ def run_road_case(table, case, tmp_path, monkeypatch, *, ran=None) -> None:
         assert r.exit_code != 0, _one_line(r)
         for words in ([said] if isinstance(said, str) else said):
             assert words in r.output, _one_line(r)
+        for words in case.get("said_lacks", []):
+            assert words not in r.output, _one_line(r)
         if "restores_state" in case:
             _restores_by_id(case, bundle, r.output)
         _road_after_prep(case, bundle)

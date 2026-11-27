@@ -330,8 +330,7 @@ def vibration_of_run(run_folder):
     one form it reads -- the command line and the page ask it: no run of
     ours -- or a calculation whose description does not read, in its
     reader's words -- no result in it, and what the result's reader refuses
-    (a result before schema 7 is read as that reader reads it, with the
-    table's masses)."""
+    (a result of an older schema among it)."""
     return _vibration_of_run(run_folder, both_forms=False)
 
 
@@ -347,10 +346,11 @@ def _vibration_of_run(run_folder, *, both_forms: bool):
     place = place_of(folder)
     if not place.ours or place.problem:
         # WHY IT IS NO RUN, in the run door's words: a calculation whose
-        # description does not read says so, naming its way out.
+        # description does not read says so, naming its way out -- and so
+        # does a folder whose own record does not read (`runs.place_of`).
         raise FrameSetError(
-            f"{run_folder}: its calculation's description does not read -- "
-            f"{place.problem}" if place.problem else
+            f"{run_folder}: no run can be read here -- {place.problem}"
+            if place.problem else
             f"{run_folder}: no run of ours -- "
             + (TWO_FORMS if both_forms else
                "name the folder of the vibration run whose modes are read "
@@ -375,7 +375,8 @@ def _vibration_of_run(run_folder, *, both_forms: bool):
     try:
         res = parse_spectra_json(result)
     except SpectraJsonError as exc:
-        raise FrameSetError(f"{result.name}: {exc}") from exc
+        # THE READER'S WORDS, which name the file once.
+        raise FrameSetError(str(exc)) from exc
     try:
         v = res.vibration(read_path=os.fspath(run_folder),
                           result_sha256=result_sha256_of(result))
@@ -400,6 +401,7 @@ def _relaxation_record(run, res) -> Tuple[Optional[Dict[str, Any]], str]:
     from .identity import as_typed
     from .jobset.rung import structure_path
     from .runs import view_of
+    from .structure_pair import MolstructVersionError
     from .workingcopy_structure import StructureCodec
     if not (res.relaxation or {}).get("already_relaxed"):
         own = (view_of(run).info or {}).get("calculation")
@@ -408,8 +410,19 @@ def _relaxation_record(run, res) -> Tuple[Optional[Dict[str, Any]], str]:
                      f"states none), so the set states no info.calculation "
                      f"and is no transport citation")
     path = structure_path(run.place.task, run.place.root)
-    stated = (StructureCodec().load(path).info or {}).get("calculation") \
-        if path is not None else None
+    try:
+        stated = (StructureCodec().load(path).info or {}).get(
+            "calculation") if path is not None else None
+    except MolstructVersionError as exc:
+        # A CALCULATION DESCRIBED BEFORE THE ONE VERSION READ, or by a later
+        # molbuilder, keeps a copy this molbuilder does not read
+        # (`structure-molstruct.md` § 2): its run is current, so no record,
+        # and why -- the version's fact, which says which.
+        return None, (
+            f"the structure {run.label} measured was stated already relaxed, "
+            f"and the copy of it its calculation keeps, {path.name}, does "
+            f"not read -- {exc.fact} -- so the set states no info.calculation "
+            f"and is no transport citation")
     if stated is None:
         return None, (
             f"the structure {run.label} measured was stated already relaxed "

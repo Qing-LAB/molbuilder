@@ -7,7 +7,7 @@ from typing import Optional
 
 import numpy as np
 
-from molbuilder.parse.errors import ParseError
+from molbuilder.parse.errors import FileUnreadable
 from molbuilder.parse.types import ParseResult, StructureResult
 from molbuilder.structure import Structure
 
@@ -27,7 +27,7 @@ def read_through_the_codec(path, *, frames: bool = False) -> Structure:
     try:
         return StructureCodec().load(p, frames=frames)
     except (OSError, ValueError, TypeError) as exc:
-        raise ParseError(f"{p.name}: {exc}") from exc
+        raise FileUnreadable(f"{p.name}: {exc}") from exc
 
 
 def build_structure_result(structure: Structure,

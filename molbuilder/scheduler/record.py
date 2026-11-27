@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Any, ClassVar, Dict, List, Mapping, Optional, Tuple
 
 from ..identity import JOBSET_PROG, checkpoint_words, migrate_as_typed
+from ..persist import FileRefused
 
 SCHEMA = "molbuilder/environment@3"
 
@@ -1100,11 +1101,15 @@ def known_machines() -> List[Dict[str, object]]:
             fix = (f"`{probe_command(None)}` here" if kind == "local"
                    else f"`{probe_command(name)}` {probe_steps(name)}")
             why = why_unread(path)
+            # A LATER MOLBUILDER'S RECORD is said in its words alone: their
+            # way on is that molbuilder (`job-contracts.md` § 6.1).
             return {"name": name, "kind": kind, "path": str(path),
                     "readable": False, "detected_at": "", "domains": [],
                     "mem_total_gb": None, "gpus_per_node": None,
                     "gpu_type": None,
-                    "summary": ((f"cannot be read -- {why} -- write it "
+                    "summary": (f"cannot be read -- {why}"
+                                if why and record_written_later(path) else
+                                (f"cannot be read -- {why} -- write it "
                                  f"again with " if why
                                  else "no record here yet -- write one with ")
                                 + fix)}
@@ -1295,36 +1300,46 @@ def why_unread(path) -> Optional[str]:
     return _unread(path)[0]
 
 
-def _unread(path) -> Tuple[Optional[str], bool]:
-    """``(why it does not read, whether an older molbuilder wrote it)`` --
-    :func:`why_unread`'s answer, and whether its way out is `jobset
-    migrate`, read once."""
-    from ..persist import check_schema, read_object
+def record_written_later(path) -> bool:
+    """Whether the record at ``path`` is one a later molbuilder than this
+    one wrote (`persist.written_later`): its words already say its way on,
+    that molbuilder, so a caller appends no way of its own -- never the
+    probe, a migration or a mend, which would write over what only a newer
+    molbuilder reads (`job-contracts.md` § 6.1, *The versions' words*)."""
+    return _unread(path)[2]
+
+
+def _unread(path) -> Tuple[Optional[str], bool, bool]:
+    """``(why it does not read, whether an older molbuilder wrote it,
+    whether a later one did)`` -- :func:`why_unread`'s answer, and whether
+    its way out is `jobset migrate` or the molbuilder that wrote it, read
+    once."""
+    from ..persist import SchemaMismatch, read_object, written_later
     p = Path(path)
     if not p.exists():
-        return None, False
+        return None, False, False
     # NO SCHEMA ASKED OF THE READ: an older molbuilder's record is named as
     # that below, with its way out.
     try:
         raw = read_object(p)
     except OSError:
-        return "it cannot be read here (permissions)", False
+        return "it cannot be read here (permissions)", False, False
     except ValueError as exc:
-        return str(exc), False
+        return str(exc), False, False
     got = str(raw.get("schema", ""))
     if older_record(raw):
         return (f"an older molbuilder wrote it ({got}; this one reads "
-                f"{SCHEMA})"), True
+                f"{SCHEMA})"), True, False
     try:
         Environment.from_dict(raw)
+    except SchemaMismatch as exc:
+        # ANOTHER ARTIFACT, OR A LATER MOLBUILDER'S: the versions' words --
+        # what it says, what this molbuilder reads, a later one's way on
+        # (`persist.check_schema`, `job-contracts.md` § 6.1).
+        return str(exc).rstrip("."), False, written_later(got, SCHEMA)
     except (ValueError, TypeError, KeyError) as exc:
-        try:
-            check_schema(got, SCHEMA)
-        except ValueError:
-            return (f"it is not a machine record this molbuilder reads "
-                    f"({got})"), False
-        return str(exc), False
-    return None, False
+        return str(exc), False, False
+    return None, False, False
 
 
 def older_record(raw) -> bool:
@@ -1355,7 +1370,9 @@ def write_environment(env: "Environment", path, *, plan=None) -> Path:
 
 class UnknownTarget(Exception):
     """``--target NAME`` cannot be honoured — unknown, or contradicted by the
-    record this calculation was already prepared against."""
+    record this calculation was already prepared against; or a record it
+    would be read from does not read, its own kind
+    (:class:`MachineRecordUnreadable`)."""
 
     def __init__(self, name: str, known):
         self.name, self.known = name, sorted(known)
@@ -1374,13 +1391,16 @@ class UnknownTarget(Exception):
         the next scope": the user named this machine, so silently preparing
         for a different one is the mistake the flag exists to catch.
         """
-        exc = cls.__new__(cls)
+        exc = MachineRecordUnreadable.__new__(MachineRecordUnreadable)
         exc.name, exc.known = name, []
+        why, _older, later = _unread(path)
+        # A LATER MOLBUILDER'S RECORD is told its way on by its words alone.
+        way = ("" if later else
+               f"\n  Re-write it with `{probe_command(name)}` "
+               f"{probe_steps(name)}.")
         Exception.__init__(exc, (
             f"--target {name!r} names a record that cannot be read: {path} "
-            f"-- {why_unread(path) or 'it is not there'}.\n"
-            f"  Re-write it with `{probe_command(name)}` "
-            f"{probe_steps(name)}."))
+            f"-- {why or 'it is not there'}." + way))
         return exc
 
     @classmethod
@@ -1392,22 +1412,26 @@ class UnknownTarget(Exception):
         (`configuration.md` § 5 M-3): two stages of one calculation cannot
         disagree about their own target.
         """
-        exc = cls.__new__(cls)
+        exc = MachineRecordUnreadable.__new__(MachineRecordUnreadable)
         exc.name, exc.known = None, []
         path = calculation_record(bundle_dir)
-        why, older = _unread(path)
+        why, older, later = _unread(path)
         if older:
             # AN OLDER MOLBUILDER'S COPY is rewritten by the command that
             # rewrites what an older molbuilder wrote (`jobset migrate`).
             way = (f"`{migrate_as_typed(Path(bundle_dir).resolve())}` "
                    f"rewrites it, the old file kept beside the new.")
+        elif later:
+            # A LATER MOLBUILDER'S COPY: its words say its way on, that
+            # molbuilder (`job-contracts.md` § 6.1).
+            way = ""
         else:
             way = (f"Fix it by hand -- or go back to the state saved before "
                    f"the calculation's first prep "
                    f"({checkpoint_words(bundle_dir)}) and prep anew.")
         Exception.__init__(exc, (
             f"this calculation's record of its machine cannot be read: "
-            f"{path} -- {why}.\n  {way}"))
+            f"{path} -- {why}." + (f"\n  {way}" if way else "")))
         return exc
 
     @classmethod
@@ -1447,7 +1471,7 @@ class UnknownTarget(Exception):
         copy says which machine it describes, so no rewrite can name one:
         the way on is the prep that names it, from the state saved before
         the first."""
-        exc = cls.__new__(cls)
+        exc = MachineRecordUnreadable.__new__(MachineRecordUnreadable)
         exc.name, exc.known = None, []
         Exception.__init__(exc, (
             f"this calculation's copy of its machine's record "
@@ -1458,6 +1482,17 @@ class UnknownTarget(Exception):
             f"({checkpoint_words(bundle_dir)}) and prep again, naming its "
             f"machine with --target."))
         return exc
+
+
+class MachineRecordUnreadable(UnknownTarget, FileRefused):
+    """A MACHINE'S RECORD THAT DOES NOT READ, where a target is read from --
+    a named target's (:meth:`UnknownTarget.unreadable`), or the
+    calculation's own copy, unreadable or naming no machine
+    (:meth:`UnknownTarget.unreadable_copy`, :meth:`UnknownTarget.unnamed_copy`):
+    a file molbuilder keeps that its reader cannot read, carrying the mark
+    the two edges say (`persist.FileRefused`, `job-contracts.md` § 6.1).
+    An unknown name, or one the calculation's first prep did not name, is
+    no file's refusal and carries none."""
 
 
 class AmbiguousTarget(Exception):
@@ -1484,21 +1519,38 @@ class AmbiguousTarget(Exception):
         listed += f"\n    --target {LOCAL_TARGET}   # this machine"
         # "NOTHING NEEDS PROBING" ONLY WHEN IT IS SO: with no record of its
         # own, `--target this` is refused next, and the probe it needs is the
-        # one command that helps.
-        here = read_environment(machine_scope_path()) is not None
+        # one command that helps -- and with one on file that does not read,
+        # its words, and the probe that writes it again (`configuration.md`
+        # § 5), never *no record yet*.
+        own = machine_scope_path()
+        here = read_environment(own) is not None
         # ...and a NAMED record that does not read needs probing again: it
         # is listed, so it is said.
-        dead = sorted(n for n, path in named_environments().items()
+        named = named_environments()
+        dead = sorted(n for n, path in named.items()
                       if n in self.choices and read_environment(path) is None)
         tail = ("  These records already exist -- nothing needs probing."
                 if here and not dead else "")
-        if not here:
+        unread = None if here else why_unread(own)
+        if unread and record_written_later(own):
+            # A LATER MOLBUILDER'S RECORD: its words say its way on, never
+            # the probe that would write over it (`job-contracts.md` § 6.1).
+            tail = f"  this machine's record does not read: {own} -- {unread}."
+        elif unread:
+            tail = (f"  this machine's record does not read: {own} -- "
+                    f"{unread}.  Write it again, on this machine, so "
+                    f"`--target {LOCAL_TARGET}` can be taken:\n    "
+                    + probe_command(None))
+        elif not here:
             tail = ("  This machine has no record yet, so `--target "
                     f"{LOCAL_TARGET}` needs one first:\n    "
                     + probe_command(None))
         for n in dead:
-            tail += (f"\n  {n}'s record does not read: re-write it with "
-                     f"`{probe_command(n)}` {probe_steps(n)}.")
+            tail += (f"\n  {n}'s record does not read: "
+                     + (f"{why_unread(named[n])}."
+                        if record_written_later(named[n]) else
+                        f"re-write it with `{probe_command(n)}` "
+                        f"{probe_steps(n)}."))
         super().__init__(
             "several machines could be meant and none was named.  Say which "
             "this calculation is for:\n" + listed +
@@ -1679,6 +1731,7 @@ __all__ = [
     "record_scopes",
     "topology_field_types",
     "read_environment", "write_environment", "why_unread", "older_record",
-    "machine_for", "UnknownTarget",
+    "record_written_later",
+    "machine_for", "UnknownTarget", "MachineRecordUnreadable",
     "AmbiguousTarget",
 ]

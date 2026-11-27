@@ -297,7 +297,7 @@ def _stated(p: Path) -> Optional[AtomIndexMap]:
     """What ``p`` states of itself, by its kind -- ``None`` where it states
     nothing (an engine's file, a file written before the rule, a file in a
     run folder its run's deck answers)."""
-    from .runfiles import ROLE_MOLWATCH, deck_roles, role_of
+    from .runfiles import ROLE_MOLWATCH, ROLE_SPECTRA, deck_roles, role_of
     from .sidecars import molstruct
     name = p.name
     if molstruct.is_sidecar(p):
@@ -311,11 +311,19 @@ def _stated(p: Path) -> Optional[AtomIndexMap]:
         return _of_nc(p)
     if p.suffix == ".json":
         d = read_json(p) if p.stat().st_size else None
+        if role_of(name) == ROLE_SPECTRA and isinstance(d, dict):
+            # A VIBRATION RESULT, read at its one version
+            # (`engines/vibration.md` § 6.1): one of another refused in the
+            # result reader's words, never answered by its run.
+            from .spectra.results import readable_version
+            try:
+                readable_version(d.get("schema_version"))
+            except ValueError as exc:
+                raise AtomIndexUnknown(f"{name}: {exc}") from None
         block = d.get(MAP_KEY) if isinstance(d, dict) else None
         if isinstance(block, dict):
             return replace(map_of_block(block, name), stated_by=str(p))
-        return _of_older_result(
-            p, d.get("n_atoms_total") if isinstance(d, dict) else None)
+        return None
     if role_of(name) == ROLE_MOLWATCH:
         return _of_log(p)
     if role_of(name) in deck_roles():
@@ -323,46 +331,16 @@ def _stated(p: Path) -> Optional[AtomIndexMap]:
     return None
 
 
-def _of_older_result(p: Path, n) -> Optional[AtomIndexMap]:
-    """A file of ours listed by user index that states no map -- a result
-    written before 2.32.0, its ``.json`` or its ``.nc`` (F3): its rows are
-    the user order (I1), so it states its user column itself; its engine
-    column is its run's deck's where the deck answers -- and where it does
-    not (no run of ours holds it, its deck states no atom count or no order,
-    I9) not known, said.  ``None`` for any other file."""
-    from .runs import atom_index_map_of, catalogue_row, run_of
-    row = catalogue_row(p)
-    if (row is None or row.listed_by != LISTED_BY_USER
-            or not isinstance(n, int)):
-        return None
-    run = run_of(read_with(p.parent))
-    why = ("written before 2.32.0, and no run of ours holds it: its engine "
-           "index is not known")
-    if run is not None:
-        try:
-            atoms = atom_index_map_of(run)
-            if atoms.n_atoms == n and atoms.user is not None:
-                return replace(atoms.as_listed_by_user(), stated_by=str(p))
-            why = (f"written before 2.32.0: its run's deck is over "
-                   f"{atoms.n_atoms} atoms, so its engine index is not known")
-        except (AtomIndexError, ValueError) as exc:
-            why = f"written before 2.32.0: its engine index is not known -- {exc}"
-    return replace(AtomIndexMap.of_user_structure(n, why), stated_by=str(p))
-
-
 def _of_pair(geometry: Path,
              sidecar: Optional[Path]) -> Optional[AtomIndexMap]:
     """A structure pair's map (F4), as the codec's read answers it
-    (`workingcopy_structure.pair_atom_index_map`), stated by its sidecar;
-    a pair the catalogue lists by engine index whose sidecar states no
-    order is refused (I9).  A geometry file with no sidecar (``sidecar``
-    ``None``, `molstruct.paired_sidecar`) is the user's own, unless a run of
-    ours holds it (``None``: its run answers)."""
+    (`workingcopy_structure.pair_atom_index_map`), stated by its sidecar.
+    A geometry file with no sidecar (``sidecar`` ``None``,
+    `molstruct.paired_sidecar`) is the user's own, unless a run of ours
+    holds it (``None``: its run answers)."""
     from .runs import run_of
     from .sidecars import molstruct
-    from .workingcopy_structure import (pair_atom_index_map,
-                                        pair_engine_listing,
-                                        pair_order_unstated_said)
+    from .workingcopy_structure import pair_atom_index_map
     if sidecar is None or not sidecar.is_file():
         if run_of(read_with(geometry.parent)) is not None:
             return None
@@ -379,13 +357,7 @@ def _of_pair(geometry: Path,
     if geometry.is_file() and molstruct.is_geometry(geometry):
         StructureCodec().load(geometry, frames=True, said_out=[],
                               opened=(ORDER_UNSTATED,))
-    stated: set = set()
-    payload = molstruct.load(sidecar, stated_out=stated)
-    atoms = pair_atom_index_map(geometry, payload,
-                                listing=pair_engine_listing(sidecar),
-                                states_order="atom_order" in stated)
-    if atoms is None:
-        raise AtomIndexUnknown(pair_order_unstated_said(sidecar.name))
+    atoms = pair_atom_index_map(geometry, molstruct.load(sidecar))
     return replace(atoms, stated_by=str(sidecar))
 
 
@@ -424,10 +396,8 @@ def _of_deck(deck: Path) -> Optional[AtomIndexMap]:
 def _of_nc(p: Path) -> Optional[AtomIndexMap]:
     """A NetCDF file's map -- the group of it that states one (a vibration
     result's and the transport data file's ``/structure``; a digest's
-    root); ``None`` where none does (an engine's ``.TBT.nc``, an older
-    file)."""
-    from .ncdata import ATOM_AXIS, groups, read_atom_index_map, reading
-    n = None
+    root); ``None`` where none does (an engine's ``.TBT.nc``)."""
+    from .ncdata import groups, read_atom_index_map, reading
     with reading(p) as ds:
         # THE FILE'S GROUPS by the one walk (`ncdata.groups`): every group
         # that states a map states the file's one.
@@ -435,10 +405,7 @@ def _of_nc(p: Path) -> Optional[AtomIndexMap]:
             if FIELD_LISTED_BY in g.ncattrs():
                 return replace(read_atom_index_map(g, source=p.name),
                                stated_by=str(p))
-            if n is None and ATOM_AXIS in g.dimensions:
-                n = len(g.dimensions[ATOM_AXIS])
-    # A FILE OF OURS WRITTEN BEFORE IT SAID SO, by its catalogue row (F3).
-    return _of_older_result(p, n)
+    return None
 
 
 def _of_log(p: Path) -> Optional[AtomIndexMap]:

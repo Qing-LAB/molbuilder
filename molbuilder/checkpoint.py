@@ -52,7 +52,7 @@ from molbuilder.runfiles import find_by_role as _rf_find_by_role
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from .calcdirs import calculation_above, described
-from .persist import sha256_of, sha256_of_bytes
+from .persist import FileRefused, sha256_of, sha256_of_bytes
 from .task import FILENAME as _TASK_FILENAME
 from .runfiles import (GITIGNORE_FILE, HISTORY_DIR, NAME_CHARS, NAME_TOKEN,
                        SNAPSHOT_DIR)
@@ -229,6 +229,18 @@ from .runfiles import prepared_roles as _prepared_roles  # noqa: E402
 
 class CheckpointError(Exception):
     """Base class for every refusal this module raises."""
+
+
+class ArchiveUnreadable(CheckpointError, FileRefused):
+    """AN ARCHIVE OR A STATE'S RECORD OF ONE THAT DOES NOT READ -- a MANIFEST
+    that is not the canonical form, one that does not hash to the name it
+    is stored under, a file it lists missing or of other bytes, a state
+    naming no archive or one that is gone: a file molbuilder keeps that its
+    reader cannot read, carrying the mark the two edges say
+    (`persist.FileRefused`, `execution/job-contracts.md` § 6.1) -- a 400 at
+    every route that reads it, never a server's fault (the user,
+    2026-11-27: "A refusal, like the rest").  Every other refusal here
+    keeps its own answer: git missing, a dirty tree, a tag's name."""
 
 
 class InputError(CheckpointError):
@@ -646,9 +658,9 @@ _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _SIZE_RE   = re.compile(r"^(0|[1-9][0-9]*)$")
 _SEP       = "\t"
 
-def _bad(where: str, why: str) -> "CheckpointError":
-    return CheckpointError(f"malformed MANIFEST in {where}: {why}"
-                           f".")
+def _bad(where: str, why: str) -> "ArchiveUnreadable":
+    return ArchiveUnreadable(f"malformed MANIFEST in {where}: {why}"
+                             f".")
 
 
 def format_manifest(entries: Sequence[Tuple[str, int, str]]) -> bytes:
@@ -680,26 +692,28 @@ def format_manifest(entries: Sequence[Tuple[str, int, str]]) -> bytes:
     return ("".join(ln + "\n" for ln in lines)).encode("ascii")
 
 
-def _check_key(key: str, prefix: str) -> None:
-    """A key must never steer a restore out of the folder (job-contracts § 6.1)."""
+def _check_key(key: str, prefix: str, *, error=CheckpointError) -> None:
+    """A key must never steer a restore out of the folder (job-contracts § 6.1).
+    ``error`` is the refusal's type: a MANIFEST read back refuses its key as
+    an archive that does not read (:class:`ArchiveUnreadable`)."""
     if not key:
-        raise CheckpointError(f"{prefix}: an empty key is not a path.")
+        raise error(f"{prefix}: an empty key is not a path.")
     if any(ord(c) < 0x20 or ord(c) > 0x7E for c in key):
-        raise CheckpointError(
+        raise error(
             f"{prefix}: {key!r} contains non-printable or non-ASCII "
             f"characters.")
     if key.startswith("/") or "\\" in key:
-        raise CheckpointError(
+        raise error(
             f"{prefix}: {key!r} must be a repo-relative POSIX path"
             f".")
     for part in key.split("/"):
         if part in ("", ".", ".."):
-            raise CheckpointError(
+            raise error(
                 f"{prefix}: {key!r} has an empty or dot component, which "
                 f"could steer a restore outside the folder"
                 f".")
         if part in NEVER_STORED:
-            raise CheckpointError(
+            raise error(
                 f"{prefix}: {key!r} names a store ({part}), and a restore "
                 f"writing there would corrupt the history it is restoring "
                 f"from.")
@@ -743,7 +757,8 @@ def parse_manifest(raw: bytes, where: str) -> Dict[str, Tuple[str, int]]:
         if not _SIZE_RE.fullmatch(size_s):
             raise _bad(where, f"line {idx}: {size_s!r} is not a decimal "
                               f"integer without leading zeros")
-        _check_key(key, f"malformed MANIFEST in {where}, line {idx}")
+        _check_key(key, f"malformed MANIFEST in {where}, line {idx}",
+                   error=ArchiveUnreadable)
         if key in out:
             raise _bad(where, f"line {idx}: {key!r} appears more than once")
         out[key] = (sha256, int(size_s))
@@ -766,7 +781,7 @@ def manifest_digest(raw: bytes) -> str:
 def archive_dir(root: Path, digest: str) -> Path:
     """``<root>/.binsnapshots/<digest>/`` — named by content, not by state."""
     if not _SHA256_RE.fullmatch(digest):
-        raise CheckpointError(
+        raise ArchiveUnreadable(
             f"archive name {digest!r} is not a sha256 digest; an archive is "
             f"named by its MANIFEST's content.")
     return root / ARCHIVE_DIR / digest
@@ -952,7 +967,7 @@ def publish_archive(root: Path, big: Sequence[Path]) -> str:
         try:
             verify_archive(root, digest, deep=False)
         except CheckpointError as exc:
-            raise CheckpointError(
+            raise ArchiveUnreadable(
                 f"the archive this save would reuse is damaged, so the state "
                 f"would not be restorable: {exc}\n\n"
                 f"Nothing was saved.  The archive is named by its content, so "
@@ -1069,13 +1084,13 @@ def verify_archive(root: Path, digest: str, *, deep: bool = True
     adir = archive_dir(root, digest)
     man = adir / MANIFEST_NAME
     if not man.is_file():
-        raise CheckpointError(
+        raise ArchiveUnreadable(
             f"archive {digest[:12]}… is missing: no {MANIFEST_NAME} at {adir}. "
             f"The state that names it recorded this archive, so it was lost"
             f".")
     raw = man.read_bytes()
     if manifest_digest(raw) != digest:
-        raise CheckpointError(
+        raise ArchiveUnreadable(
             f"archive {digest[:12]}…: its {MANIFEST_NAME} does not hash to the "
             f"name it is stored under.  The record was modified"
             f".")
@@ -1086,11 +1101,11 @@ def verify_archive(root: Path, digest: str, *, deep: bool = True
     for key, (sha256, size) in expected.items():
         src = adir / key
         if not src.is_file():
-            raise CheckpointError(
+            raise ArchiveUnreadable(
                 f"archive {digest[:12]}…: {MANIFEST_NAME} lists {key!r} but "
                 f"the file is missing; refusing to restore.")
         if src.stat().st_size != size:
-            raise CheckpointError(
+            raise ArchiveUnreadable(
                 f"archive {digest[:12]}…: {key!r} is {src.stat().st_size} "
                 f"bytes, the record says {size}; refusing to restore.")
     if deep:
@@ -1098,12 +1113,12 @@ def verify_archive(root: Path, digest: str, *, deep: bool = True
         try:
             got = sha256_all([adir / key for key in keys])
         except OSError as exc:
-            raise CheckpointError(
+            raise ArchiveUnreadable(
                 f"archive {digest[:12]}…: {exc.filename or 'a file'} cannot "
                 f"be read: {exc}; refusing to restore.") from exc
         for key, sha in zip(keys, got):
             if sha != expected[key][0]:
-                raise CheckpointError(
+                raise ArchiveUnreadable(
                     f"archive {digest[:12]}…: {key!r} does not match its "
                     f"recorded sha256; refusing to restore.")
     return expected
@@ -1376,7 +1391,7 @@ class Repo:
         verification matches or it is refused, and there is no third answer.
         """
         if not state.archive:
-            raise CheckpointError(
+            raise ArchiveUnreadable(
                 f"state {state.short} carries no archive digest, so what it "
                 f"held cannot be read.  Every state carries one from the first "
                 f"onwards — including states that archived nothing — so this "
@@ -1385,7 +1400,7 @@ class Repo:
         adir = archive_dir(self.root, state.archive)
         man = adir / MANIFEST_NAME
         if not man.is_file():
-            raise CheckpointError(
+            raise ArchiveUnreadable(
                 f"the archive for state {state.short} is missing: no "
                 f"{MANIFEST_NAME} at {adir}.  The state records that archive, "
                 f"so it was lost rather than never written, and nothing here "
@@ -1400,7 +1415,7 @@ class Repo:
                 f"        leaves this state, accepting whatever is here.\n")
         raw = man.read_bytes()
         if manifest_digest(raw) != state.archive:
-            raise CheckpointError(
+            raise ArchiveUnreadable(
                 f"state {state.short}: its {MANIFEST_NAME} does not hash to "
                 f"the name it is stored under.  The record was modified"
                 f".")
@@ -1881,7 +1896,7 @@ class Repo:
         sha = self.resolve(state)                     # refusal 1: unknown
         target = self._state_from(sha)
         if not target.archive:
-            raise CheckpointError(
+            raise ArchiveUnreadable(
                 f"state {target.short} carries no archive digest, so what it "
                 f"held cannot be checked.  Refusing to restore from a record "
                 f"that cannot be verified.")

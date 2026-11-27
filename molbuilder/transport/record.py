@@ -40,7 +40,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple
 
 from ..calcdirs import RunPlace
 from ..constants import BOLTZMANN_EV_K, CONDUCTANCE_QUANTUM_S
-from ..persist import json_safe
+from ..persist import FileRefused, json_safe
 from ..runpoints import FAILED, NOT_RUN
 from ..identity import COMPUTES_PRODUCT
 from ..task import LOW_BIAS_APPROXIMATION, SELF_CONSISTENT, SINGLE_BIAS
@@ -108,6 +108,16 @@ class RecordError(Exception):
     fix first, ready to surface verbatim."""
 
 
+class RecordFileUnreadable(RecordError, FileRefused):
+    """THE RECORD'S READING OF A FILE THAT DOES NOT READ -- a point's
+    TBtrans averages or data file, the composed junction a selection's
+    atoms are named in -- in its reader's words: a file its reader cannot
+    read, carrying the mark the two edges say (`persist.FileRefused`,
+    `execution/job-contracts.md` § 6.1).  Every other refusal of the record
+    -- nothing to report yet, a point or a frame that is not one, a
+    selection that names no atom -- carries none."""
+
+
 def record_path(base_dir, label: str) -> Path:
     """The ONE spelling of the record's location -- composed, not concatenated.
 
@@ -154,7 +164,7 @@ def point_transmission(where, label: str, spin: str, *,
         try:
             av = point_averages_of(where, label)
         except (OSError, ValueError) as exc:
-            raise RecordError(str(exc)) from exc
+            raise RecordFileUnreadable(str(exc)) from exc
     from .energies import same_grid
     curves = {c: a["transmission"] for c, a in av.items()
               if "transmission" in a}
@@ -1057,9 +1067,16 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
                                      task.calculation, window_rung())
                       if junction is not None else None)
     # WHERE EACH RUNG STANDS, the status door's one answer, read once for
-    # every part of the record (`runstatus.jobset_status`).
-    from ..jobset.runstatus import jobset_status
-    status = jobset_status(calc)
+    # every part of the record (`runstatus.jobset_status`) -- or, a file it
+    # reads not reading (the calculation's copy of its machine's record
+    # among them), every rung *unreadable* in that file's words: the report
+    # opens all the same, a gentler door by design (`job-contracts.md`
+    # § 6.1; `runstatus.unreadable_status`).
+    from ..jobset.runstatus import jobset_status, unreadable_status
+    try:
+        status = jobset_status(calc)
+    except FileRefused as exc:
+        status = unreadable_status(calc, str(exc))
     stages = _stage_facts(calc, status=status)
     # A POINT NOT OPENED stands where its rung does -- the ready door's
     # `ready` / `waiting` and what for, on the rung's row (prep opens every
@@ -1363,13 +1380,6 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
         # ...OR WHY IT DOES NOT READ, in its reader's words, where the
         # report would draw it; ``None`` when it reads or none is composed.
         "junction_unread": junction_unread,
-        # WHEN ITS ORDER IS NOT RECORDED -- a junction whose sidecar states
-        # none (I9) -- the sentence the report says beside the drawing, which
-        # then lists the atoms as TranSIESTA does; ``None`` otherwise.
-        "order_unstated": order_unstated_said(base, recorded),
-        # ITS WAY ON ALONE, for the report, whose drawing states the fact
-        # itself (MolView's notice); ``None`` where the order is recorded.
-        "order_way": order_way_said(base, recorded),
         "polarized": polarized,
         "points": points_out,
         # THE I-V: each point's own TBtrans current -- or, under the low-bias
@@ -1433,27 +1443,6 @@ def collect_record(calc, *, partial: bool = False) -> Dict:
     record["not_run"] = not_run
     record["failed"] = failed
     return record
-
-
-def order_unstated_said(base: Path, recorded) -> Optional[str]:
-    """What the record, its data file and a selection's PDOS say of a
-    junction whose sidecar states no order record (`model/overview.md`
-    § 2.2a, I9) -- the fact (`compose.RecordedJunction.order_unstated`) and
-    its way on, `prep task` (`engines/transport.md` § 1.1) -- or ``None``.
-    ``recorded`` is `compose.recorded_junction`'s answer, ``None`` before
-    anything was composed."""
-    way = order_way_said(base, recorded)
-    return None if way is None else f"{recorded.order_unstated}.  {way}"
-
-
-def order_way_said(base: Path, recorded) -> Optional[str]:
-    """The way on alone for a junction whose sidecar states no order
-    record -- `prep task` (`jobset.commands.order_recorded`) -- or
-    ``None`` where the order is recorded."""
-    if recorded is None or not recorded.order_unstated:
-        return None
-    from ..jobset.commands import order_recorded
-    return order_recorded(base=base)
 
 
 def device_orbital_index(calc) -> Optional[Path]:
@@ -1537,8 +1526,7 @@ def selection_pdos(calc, bias_v: float, atoms, orbitals: str,
         raise RecordError(f"no transmission point at {volts_words(bias_v)}")
     # THE SELECTION CROSSES INTO THE JUNCTION'S ORDER through its own order
     # record, and the answer's atoms back (`model/overview.md` § 2.2a, I3):
-    # the runs list the atoms as the composed junction does.  A record that
-    # states no order names no atom in the user order (I9).
+    # the runs list the atoms as the composed junction does.
     from .compose import recorded_junction
     from .rung import compose_refusals
     try:
@@ -1546,15 +1534,12 @@ def selection_pdos(calc, bias_v: float, atoms, orbitals: str,
     except compose_refusals() as exc:
         # A JUNCTION THAT DOES NOT READ names no atom: the selection's
         # refusal, in its reader's words (F12's review, E-D1).
-        raise RecordError(str(exc)) from None
+        raise RecordFileUnreadable(str(exc)) from None
     if recorded is None:
         from ..runfiles import JUNCTION_FILE
         raise RecordError(f"the composed junction, {JUNCTION_FILE}, is not in "
                           f"the calculation's folder, so no atom of it can "
                           f"be named")
-    unstated = order_unstated_said(base, recorded)
-    if unstated:
-        raise RecordError(unstated)
     read_at, where = _transmission_at()
     if where is None:
         raise RecordError(f"no transmission point at {said}")
@@ -1594,12 +1579,12 @@ def selection_pdos(calc, bias_v: float, atoms, orbitals: str,
     except TbtError as exc:
         # THE READER'S REFUSAL, in its words -- naming its file where a
         # file is what it is about.
-        raise RecordError(str(exc)) from exc
+        raise RecordFileUnreadable(str(exc)) from exc
     except (OSError, ValueError) as exc:
         # A FILE THAT DOES NOT READ is a refusal in its words, as the record
         # says every other one.
-        raise RecordError(f"{', '.join(p.name for p in ncs.values())}: "
-                          f"{exc}") from exc
+        raise RecordFileUnreadable(
+            f"{', '.join(p.name for p in ncs.values())}: {exc}") from exc
 
 
 def _iv(base: Path, task, treatment: str, points_out: List[Dict],

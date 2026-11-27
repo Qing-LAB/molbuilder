@@ -5,21 +5,22 @@ question); the index's own shape is `runpoints`'s, which writes and reads
 it (`execution/runs-of-points.md` § 2.3).  `/api/results/dir` asks the
 registry what reads each file and offers only what something reads, so
 without this reader the index would sit in the run unoffered.  It claims a
-file by its role in the catalogue AND by the schema its writer stamps,
-never by the suffix alone -- one reader for every kind's run of points.
+file by its role in the catalogue and refuses on parse (`model/parse.md`
+§ 6) -- an index of another version listed as this parser's and, opened,
+refused in its reader's words -- one reader for every kind's run of points.
 """
 from __future__ import annotations
 
 from pathlib import Path
 
 from ..base import FileParser
-from ..errors import ParseError
+from ..errors import FileUnreadable
 from ..types import SidecarResult
 from ...runfiles import ROLE_POINTS, role_of
 from ._helpers import build_sidecar_result
 
 
-class RunPointsError(ParseError):
+class RunPointsError(FileUnreadable):
     """A ``.points.json`` that is not one, or is not this version."""
 
 
@@ -38,14 +39,8 @@ class RunPointsFileParser(FileParser):
 
     @classmethod
     def can_parse(cls, path: Path) -> bool:
-        from molbuilder.runpoints import read_index
-        if role_of(Path(path).name) != ROLE_POINTS:
-            return False
-        try:
-            read_index(Path(path))
-        except (ValueError, OSError):
-            return False
-        return True
+        # BY ITS ROLE: the version is the parse's to refuse.
+        return role_of(Path(path).name) == ROLE_POINTS and Path(path).is_file()
 
     @classmethod
     def parse(cls, path: Path) -> SidecarResult:

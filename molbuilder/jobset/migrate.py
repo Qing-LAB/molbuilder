@@ -298,8 +298,6 @@ _SPLIT = "2.27.0"
 #: THE RELEASE RUN SETTINGS LEFT THE TEMPLATE (`engines/template.md` § 2):
 #: the rule a template holding one, valueless or not, was written before.
 _RUN_OUT = "2.28.0"
-#: The description's schema before the split.
-_TASK_AT_1 = "molbuilder/task@1"
 #: The keys of the job request a description held before it.
 _JOB_KEYS = ("allocation", "execution", "bench", "notify")
 #: What a run card held before that says what is computed: moved off the
@@ -358,17 +356,53 @@ def _refused_rewrite(path: Path, exc: Exception) -> "MigrateError":
 _UNDECIDED = object()
 
 
-def _read_raw(path: Path) -> dict:
+def _read_raw(path: Path, translates=()) -> dict:
     """A record's JSON as it lies, for a rewrite -- one that does not read
     as one JSON object is no older molbuilder's, and is the migration's
-    refusal, never a traceback.  No schema is asked: an older major is what
-    a migration reads."""
+    refusal, never a traceback.  No schema is asked of the read: an older
+    major is what a migration reads -- the ones it ``translates``, each
+    record's, asked after it (:func:`_translated`)."""
     from ..persist import read_object
     try:
-        return read_object(path)
+        got = read_object(path)
     except (OSError, ValueError) as exc:
-        raise MigrateError(f"{path} does not read ({exc}); nothing was "
-                           f"written.") from None
+        raise _unreadable(path, exc) from None
+    if translates:
+        _translated(path, got.get("schema"), translates)
+    return got
+
+
+def _translated(path: Path, got, translates) -> None:
+    """A record of a version this migration translates (``translates``, its
+    owner's schemas) -- any other refused by name before anything is
+    decided, nothing written: `jobset migrate` does not translate it, and
+    its way on is its family's (`execution/job-contracts.md` § 6.1) -- an
+    older one belongs to a calculation described before the setup this
+    molbuilder reads, and is described again; a later one is opened with
+    the molbuilder that wrote it.  Never *current*, and never a rewrite its
+    reader *would still refuse*: no rewrite of it is this migration's."""
+    from ..calcdirs import DESCRIBE_AGAIN
+    from ..persist import check_schema
+    try:
+        check_schema(str(got or ""), translates, label=path.name,
+                     way=DESCRIBE_AGAIN)
+    except ValueError as exc:
+        raise _not_translated(path, exc) from None
+
+
+def _unreadable(path: Path, exc: Exception) -> "MigrateError":
+    """A record this migration cannot read at all, in its reader's words --
+    said once (:func:`_read_raw`, :func:`_own_warm_files_translated`)."""
+    return MigrateError(f"{path} does not read ({exc}); nothing was "
+                        f"written.")
+
+
+def _not_translated(path: Path, exc: "Exception | str") -> "MigrateError":
+    """A file of a version this migration does not translate, in its
+    reader's words -- said once (:func:`_translated`, :func:`_template_read`,
+    :func:`_migrate_machine_record`, :func:`_what_it_does_not_translate`)."""
+    return MigrateError(f"`jobset migrate` does not translate {path.name}, "
+                        f"so nothing was written: {exc}")
 
 
 @dataclass
@@ -417,10 +451,11 @@ class _Records:
         from .. import task as _task
         from ..calculation import refusal
         from .materialize import sweep_set_dirs
+        from .model import SCHEMA as JOBSET_SCHEMA
         from .model import JobSet
         if not calcdirs.described(base):
             raise MigrateError(refusal(base))
-        obj = _read_raw(_task.path_of(base))
+        obj = _read_raw(_task.path_of(base), _task.MIGRATES)
         # ANOTHER LAYOUT, refused before any rule is asked: a layout is
         # never rewritten (`engines/stages.md` § 6.7).
         try:
@@ -431,7 +466,8 @@ class _Records:
         for folder in [base, *sweep_set_dirs(base)]:
             path = JobSet.path_of(folder)
             if path.is_file():
-                jobsets[folder] = _read_raw(path)
+                jobsets[folder] = _read_raw(path, (JOBSET_SCHEMA,))
+        _own_warm_files_translated(base)
         return cls(base=base, task=obj, jobsets=jobsets, from_card={})
 
     def template_for(self, label: str) -> Optional["TemplateFile"]:
@@ -450,13 +486,38 @@ class _Records:
 def _template_read(template: "TemplateFile"):
     """The template's items, read against its own declarations -- or refused by
     name, nothing written (`job-request.md` § 8): every step that reads it asks
-    here, so a template that does not read never ends in a Python traceback."""
+    here, so a template that does not read never ends in a Python traceback.
+    One of a version this migration does not translate -- every version but
+    the one its reader reads -- says so, with its family's way on
+    (:func:`_translated`)."""
     from .. import template as _T
+    from ..persist import SchemaMismatch
     try:
         return _T.read_template(template.text)
+    except SchemaMismatch as exc:
+        raise _not_translated(template.path, exc) from None
     except ValueError as exc:
         raise MigrateError(f"{template.path.name} does not read, so nothing "
                            f"was written: {exc}") from exc
+
+
+def _own_warm_files_translated(base: Path) -> None:
+    """The calculation's own warm-file list, when it keeps one
+    (`job-contracts.md` § 4.2a): no step rewrites it, so one of a version
+    this migration does not translate -- every version but the one its
+    reader reads -- is refused by name (:func:`_translated`), never left
+    for a calculation called *current*."""
+    import tomllib
+
+    from ..warmfiles import SCHEMA, path_of
+    path = path_of(base)
+    if not path.is_file():
+        return
+    try:
+        raw = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise _unreadable(path, exc) from None
+    _translated(path, raw.get("schema"), (SCHEMA,))
 
 
 def _migrate_groups(rec: "_Records", obj: dict) -> List[str]:
@@ -749,7 +810,8 @@ def _migrate_description(rec: "_Records", said: List[str], writes: "_Writes"):
     import json
 
     from ..task import FILENAME as TASK_FILENAME
-    from ..task import Task, never_as_zero, path_of, write_task
+    from ..task import (SCHEMA_BEFORE_SPLIT, Task, never_as_zero, path_of,
+                        write_task)
     base = rec.base
     task_path = path_of(base)
     obj = rec.task
@@ -757,7 +819,7 @@ def _migrate_description(rec: "_Records", said: List[str], writes: "_Writes"):
     # WRITTEN BEFORE THE SPLIT (`task@1`): the calculation's card's
     # `restart` and `density_fit` are taken off it FIRST, for the
     # template's decision every later step asks.
-    before_split = str(obj.get("schema") or "") == _TASK_AT_1
+    before_split = str(obj.get("schema") or "") == SCHEMA_BEFORE_SPLIT
     if before_split:
         card = obj.get("execution")
         if isinstance(card, dict):
@@ -961,7 +1023,7 @@ def _migrate_request(rec: "_Records", task, request_body, said: List[str],
         # what every later step composes the calculation with -- and the
         # template's run-setting values onto its card, by what the template
         # holds (`execution/job-request.md` § 8).
-        body = _read_raw(jr_path)
+        body = _read_raw(jr_path, (_jr.SCHEMA,))
         card = dict(body.get("execution") or {})
         moved = _onto_the_card(rec, task, card)
         # EACH CHANGE UNDER ITS OWN RULE: the run settings' move is 2.28.0's,
@@ -1156,7 +1218,11 @@ def _migrate_machine_record(rec: "_Records", said: List[str],
     from PATH as before (`scheduler/kinds.toml`); and how a shell there
     enters its environment, written ``script_generation`` before
     2026-10-02, under its name now, ``env_init`` -- one block at two values
-    refused by name.  Nothing for a copy that reads, or none."""
+    refused by name.  Nothing for a copy that reads, or none.  Any other --
+    a later molbuilder's, or one that does not read as this molbuilder's --
+    is a file this migration does not translate, refused by name in its
+    reader's words (:func:`_not_translated`), never left for a calculation
+    called *current* (`job-contracts.md` § 6.1)."""
     from ..scheduler.kinds import KindError, kind
     from ..scheduler.record import (SCHEMA, Environment, calculation_record,
                                     older_record, write_environment)
@@ -1165,6 +1231,10 @@ def _migrate_machine_record(rec: "_Records", said: List[str],
         return
     raw = _read_raw(path)
     if not older_record(raw):
+        try:
+            Environment.from_dict(raw)
+        except (ValueError, TypeError, KeyError) as exc:
+            raise _not_translated(path, exc) from None
         return
     word = raw.get("scheduler")
     try:
@@ -1195,6 +1265,90 @@ def _migrate_machine_record(rec: "_Records", said: List[str],
     said += [f"{path.name}: scheduler {word!r} -> {env.scheduler.said()} "
              f"(2.10.1: the kind and where its commands are; each run "
              f"from PATH, as before)"] + renamed
+
+
+def _what_it_does_not_translate(base: Path, task) -> List[str]:
+    """THE CALCULATION'S FILES THIS MIGRATION READS AND DOES NOT TRANSLATE --
+    the copy of its structure it keeps beside it (through the codec), its
+    composition record and its composed junction (`transport.compose`'s
+    readers) -- each asked of its own reader before anything is written:
+    one of a version this molbuilder does not read is refused by name, in
+    its reader's words and its family's way on (:func:`_not_translated`);
+    one that does not read otherwise, in its reader's words
+    (:func:`_unreadable`) -- `job-contracts.md` § 6.1, `job-request.md`
+    § 8.  A composed junction that does not read -- an older molbuilder's,
+    one edited since prep, one whose sidecar does not parse -- is answered by
+    the calculation's state, as its next prep answers it
+    (:func:`_junction_by_state`): what is said of it is returned, a line,
+    never a calculation called *current*; one a later molbuilder wrote is
+    refused, its way on that molbuilder."""
+    from ..persist import RecordUnreadable, SchemaMismatch
+    from ..sidecars.molstruct import SCHEMA_SINCE, sidecar_path_for
+    from ..structure_pair import MolstructVersionError
+    from ..transport.compose import (JUNCTION_GEOMETRY, PROVENANCE_FILE,
+                                     ComposeError, JunctionOfAnotherVersion,
+                                     read_provenance, recorded_junction)
+    from ..workingcopy_structure import StructureCodec
+    from .rung import copy_of_another_version, structure_path
+    copy = structure_path(task, base)
+    if copy is not None and copy.parent == base:
+        try:
+            StructureCodec().load(copy)
+        except MolstructVersionError as exc:
+            raise _not_translated(sidecar_path_for(copy),
+                                  copy_of_another_version(copy, exc)) from None
+        except (OSError, ValueError) as exc:
+            raise _unreadable(copy, exc) from None
+    try:
+        read_provenance(base)
+    except SchemaMismatch as exc:
+        raise _not_translated(base / PROVENANCE_FILE, exc) from None
+    except RecordUnreadable as exc:
+        raise _unreadable(base / PROVENANCE_FILE, exc) from None
+    try:
+        recorded_junction(base)
+    except JunctionOfAnotherVersion as exc:
+        side = sidecar_path_for(base / JUNCTION_GEOMETRY)
+        if exc.later:
+            raise _not_translated(side, exc) from None
+        return _junction_by_state(
+            base, side, f"{side.name}: composed before {SCHEMA_SINCE} "
+            f"({exc.fact})", exc)
+    except ComposeError as exc:
+        path = base / JUNCTION_GEOMETRY
+        return _junction_by_state(
+            base, path, f"{path.name} does not read "
+            f"({getattr(exc, 'fact', None) or exc})", exc)
+    return []
+
+
+def _junction_by_state(base: Path, path: Path, fact: str, exc) -> List[str]:
+    """A COMPOSED JUNCTION THAT DOES NOT READ (``exc``, the junction's reader's
+    refusal, ``fact`` it said of ``path`` without a way on), answered by the
+    calculation's state as its next prep answers it -- the one composer of
+    that answer, `transport.gather.no_usable_record` (`engines/transport.md`
+    § 1.1): none of its stages launched, its next prep composes the
+    junction again from its citation -- said, a line, nothing written; one
+    launched, refused in the junction's words and the way back to a state
+    before that launch, as prep refuses it.  A calculation whose records do
+    not open as they stand -- rewritten by this migration -- has its state
+    asked by the next prep: the rule is said."""
+    from ..calculation import NotACalculation, open as open_calculation
+    from ..persist import FileRefused
+    from ..projects import find_projects_root
+    from ..transport.gather import no_usable_record
+    try:
+        calc = open_calculation(base)
+    except (NotACalculation, OSError, ValueError, FileRefused):
+        return [f"{fact} -- left as it is: its next prep composes the "
+                f"junction again while none of the calculation's stages is "
+                f"launched, and refuses it, naming the way back, once one is"]
+    refused = no_usable_record(calc, [str(exc)], root=find_projects_root(base),
+                               afresh=True)
+    if refused is not None:
+        raise _not_translated(path, refused)
+    return [f"{fact} -- none of its stages is launched, so its next prep "
+            f"composes the junction again from its citation"]
 
 
 @dataclass(frozen=True)
@@ -1341,6 +1495,7 @@ def migrate_state(base) -> List[str]:
     rec = _Records.read(base)
     said, writes, task = _migrate_records(rec)
     _migrate_machine_record(rec, said, writes)
+    j_said = _what_it_does_not_translate(base, task)
     try:
         decision = _migrate_template(rec, task)
     except MigrateError:
@@ -1366,12 +1521,17 @@ def migrate_state(base) -> List[str]:
                        decision.task_rules)
     if not writes and not moves:
         # NOTHING TO MIGRATE is an answer, not a refusal -- a run left as it
-        # is said all the same, and written down.
+        # is said all the same, and written down; so is a composed junction
+        # its next prep composes again (:func:`_junction_by_state`).
+        from . import ledger
+        if j_said:
+            ledger.record(base, "migrate", "a composed junction an older "
+                          "molbuilder wrote, left for the next prep",
+                          changes=j_said)
         if r_said:
-            from . import ledger
             ledger.record(base, "migrate", "runs an older molbuilder named, "
                           "left as they are", changes=r_said)
-        return r_said
+        return j_said + r_said
     # A KEPT FILE IS NEVER WRITTEN OVER: it is the only copy of what the
     # file was before an earlier migration.
     # A NEW FILE -- the job request a split writes -- keeps nothing.
@@ -1412,7 +1572,7 @@ def migrate_state(base) -> List[str]:
                  "says where it stopped")
     said += [f"{path.relative_to(base)} kept as {kept[path].name}"
              for path in writes if path in kept]
-    said += t_said + r_said
+    said += t_said + j_said + r_said
     ledger.record(base, "migrate", "a calculation an older molbuilder "
                   "wrote, rewritten -- each change with its reason",
                   changes=said)

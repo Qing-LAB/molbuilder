@@ -248,11 +248,56 @@ def test_a_run_folder_reads_as_its_vibration_and_writes_its_set(
     back = read_frame_set(written.path)
     assert back.mode_distribution is not None
     assert back.mode_distribution.mode.vibration.run == run
+
     # ANY STATE'S OUTERMOST MOVE, from the run's folder (§ 4): the mode's
     # state's own, one rule at two doors.
     two = states.level(2)
     assert outermost_move(run, mode=1, chain_or_distribution=two,
                           nodes=5) == v.mode(1).bind(two).outermost_move(5)
+
+
+def test_a_set_of_a_run_stated_relaxed_whose_calculation_keeps_an_older_pair_says_why(
+        real_water_linear, tmp_path):
+    """`engines/vibration-frames.md` § 1, `engines/vibration.md` § 5.10 ③
+    (the user, 2026-11-26: "Everything before 2026-11-04"): a vibration
+    stated already relaxed takes the record of its relaxation from the copy
+    of its structure its calculation keeps; a calculation described before
+    2026-11-04 keeps a pair this molbuilder does not read, so its run, a
+    current result, is read with no record and its set written stating no
+    info.calculation, saying why -- the copy, its version, the one read.
+    THE SILENT FAILURE: the spectrum tab's frame set a server error, the
+    command line's and a script's a Python error, on a current result.  The
+    run is the road's water stated relaxed (`support.real_runs.water_linear`)
+    -- a copy of it, its structure copy's sidecar stating version 16 as an
+    older molbuilder wrote it."""
+    from pathlib import Path
+    from molbuilder.postprocess import states, vibration, write_frame_set
+    from molbuilder.sidecars.molstruct import sidecar_path_for
+    from molbuilder.task import of as task_of
+    from molbuilder.workingcopy_structure import StructureCodec
+
+    def described_before(copy):
+        side = sidecar_path_for(
+            copy.bundle / Path(task_of(copy.bundle).structure.source).name)
+        side.write_text(json.dumps({**json.loads(side.read_text()),
+                                    "schema_version": 16}))
+
+    run = _real_runs.copy_of(real_water_linear, "described-before",
+                             described_before).attempt("freq")
+    v = vibration(run)
+    assert v.relaxation_calculation is None
+    for words in ("was stated already relaxed", "does not read",
+                  "its sidecar is version 16, saved before 2026-11-04, and "
+                  "this molbuilder reads version 17 alone",
+                  "states no info.calculation"):
+        assert words in v.relaxation_said, (words, v.relaxation_said)
+    # ITS SET, WRITTEN, saying why -- of its real stretch, the last mode.
+    written = write_frame_set(
+        tmp_path / "w.xyz", v.mode(v.modes[-1].index_1based).bind(
+            states.thermal(temperature_k=300.0)).frames(3))
+    assert "calculation" not in (
+        StructureCodec().load(written.path, frames=True).info or {})
+    assert v.relaxation_said in written.said
 
 
 #: EACH STATE THE DOORS ASK (`engines/vibration-frames.md` § 6), as typed on

@@ -1512,23 +1512,86 @@ is decided at its launch. A set missing a key, or holding a run setting a
 release retired, is refused naming `jobset migrate`
 ([`job-request.md`](?doc=execution/job-request.md) § 8).
 
-**Older versions still read.** Every other reader takes its current version
-only: an older `task.json`, `job-set.json` or calculation's copy of
-`environment.json` is refused naming `jobset migrate`; an older record of this
-machine or of a named target is refused naming the probe that writes it again
-([`configuration.md`](?doc=configuration.md) § 5); an older transport data
-file is refused naming the
-command that writes it again; an older transmission digest is not a kept
-reading, and the point's data file is read again. These five read older
-versions as they are:
+**A file a reader cannot read is refused by name, in one kind.** Each reader
+reads the versions it lists — its own, and an older one only where it
+translates it — and refuses every other file it cannot read, a version or a
+content: what it found, what this molbuilder reads, and the way on, **the
+family's** (below). The refusal carries one mark beside its own type,
+`persist.FileRefused` (`persist.SchemaMismatch` is `check_schema`'s), **on a
+file's refusal alone**: a reader's own error type carries it where every
+refusal of that type is a file's, and where a type is broader its file
+refusals are a marked type of their own — a parser's,
+`parse.errors.FileUnreadable` (the registry's *no parser claims it* and *two
+do* carry none); a checkpoint's, `checkpoint.ArchiveUnreadable`, an archive
+or a state's record of one that does not verify (git missing, a dirty tree, a
+tag's name keep their own answers); a machine record's,
+`scheduler.record.MachineRecordUnreadable` (an unknown `--target` carries
+none); the composition's, `transport.compose.ComposeFileUnreadable` — the
+composed junction, a cited pair or a cited run's own records (a citation it
+cannot honour carries none); the transport record's,
+`transport.record.RecordFileUnreadable` (a point or a frame that is not one
+carries none); a vibration result's, `sidecars.spectra.SpectraJsonUnreadable`
+(a result not written yet carries none); and alike a data file's read back
+(`stepsdata`, `transport.datafile`, `spectra.datafile`, `spectra.optical_data`:
+each `…Unreadable`, the Raman view's `spectra.raman.RamanDataUnreadable`), a
+structure pair's (`structure_pair.MolstructUnreadable`), the report cards'
+layout (`report_cards.LayoutUnreadable`), a job's address
+(`joblist.JobFileUnreadable`) and a sequence's launch record
+(`jobset.sequence.SequenceRecordUnreadable`) — a writer's check, a request
+the reader refuses and a file that is not there carry none. **The command line and the web server say it at their edge**:
+`Error: <the words>`, exit 1; a 400 `{ok: false, error}` — so no command and
+no page dies of a file it cannot read, a command or page added later
+included *(the user, 2026-11-27: "generic is the correct way - with only
+exceptions where we know some versions can be translated as needed")*. Two
+answers differ by design: `molbuilder.json` that does not read is
+`RuntimeConfigError`, exit 2 ([`configuration.md`](?doc=configuration.md)
+§ 4), and `/api/spectra/load` answers a result of another version 422, its
+two versions beside the words ([`engines/vibration.md`](?doc=engines/vibration.md)
+§ 6). A door answers more gently only by design, saying the refusal's words
+— among them: Task setup still opens a folder, the Results tab still lists a
+file and opens a calculation whose ladder does not read, its transport
+report opens with each rung *unreadable* in the file's words, the Transport tab's
+pick says the calculation is not citable or, where a record of it does not
+read, that record's words, `jobset status` says a stage *unreadable*,
+`molbuilder jobs status` lists a job's file that does not read and keeps it,
+a vibration's frame set is written without the record it cannot read, a
+transmission digest is read again, and a composed junction of an older
+version is composed again at the next prep while none of its stages is
+launched — which `jobset migrate` says, never calling the calculation
+current.
 
-| file | also reads |
-|---|---|
-| `slot-provenance.json` | `@1` — what a record holds is known by what its junction's files state; one whose junction, composed again, is the recorded one is written again at `@2` by the prep ([`engines/transport.md`](?doc=engines/transport.md) § 1.1, *The first prep*) |
-| `.molstruct.json` | every `schema_version` in `sidecars/molstruct.READABLE_VERSIONS` |
-| `.spectra.json` | every `schema_version` in `spectra/results.READABLE_SCHEMA_VERSIONS` |
-| `.spectra.nc` | every schema in `spectra/datafile.READABLE_DATA_SCHEMAS` ([`model/datafiles.md`](?doc=model/datafiles.md) § 1) |
-| `.optical.nc` | every schema in `spectra/optical_data.READABLE_DATA_SCHEMAS` ([`model/datafiles.md`](?doc=model/datafiles.md) § 1) |
+**The versions' words** (`persist.check_schema`, by the name and the major): an
+older major — *… it says 'molbuilder/X@1', this molbuilder reads
+molbuilder/X@2 -- <the family's way on>*; a later one — *… it says
+'molbuilder/X@3', written by a later molbuilder than this one -- this
+molbuilder reads molbuilder/X@2 -- open it with the molbuilder that wrote
+it* (`persist.LATER_WAY`), and no family's way on after it, which would send
+a person to remake what only a newer molbuilder reads
+(`persist.written_later`); a same-major addition passes. The two
+bare-integer versions say the same by their own readers
+(`parse.sidecars.molstruct.load_record`,
+`spectra/results.readable_version`).
+
+**Each family's way on for an older version** *(the user, 2026-11-26: "Drop
+all as asked"; "Everything before 2026-11-04"; 2026-11-27: "versions can be
+handled differently for structural, calculation setup etc.")*:
+
+| family | file | an older version | its way on |
+|---|---|---|---|
+| settings and machine | `molbuilder.json` | no version: a retired key refused, naming what to write instead | ([`configuration.md`](?doc=configuration.md) § 4) |
+| | this machine's record, a named target's | refused | written again by `jobset probe --write`, on that machine ([`configuration.md`](?doc=configuration.md) § 5) |
+| | a calculation's copy of its machine's record | translated | `jobset migrate --bundle <calc>`, the old file kept beside |
+| | this machine's `report-cards.json` | refused (any version but the one read) | put right, or moved aside and the shipped layout lays the cards out ([`configuration.md`](?doc=configuration.md) § 3.1) |
+| calculation setup | `task.json`, `job-request.json`, `<label>.template.toml`, `job-set.json`, a calculation's own `warm-files.toml` | the shapes `jobset migrate` knows translated, on the person's word ([`job-request.md`](?doc=execution/job-request.md) § 8); any other older one belongs to a calculation described before 2026-11-04 | `jobset migrate --bundle <calc>`; else the calculation described again |
+| | a hand-over, `task.1st.json`, beside where `task.json` will go | refused, in Task setup's folder | handed over again from its tab, which replaces it whole ([`handover-procedure.md`](?doc=web/handover-procedure.md) § 2) |
+| | `slot-provenance.json` | refused (`@1`, composed before 2.10.0) | a new transport calculation of the same junction, described and run ([`engines/transport.md`](?doc=engines/transport.md) § 1.1) |
+| | a calculation's `<label>.source.molstruct.json` | refused at its next prep (described before 2026-11-04) | the calculation described again from the structure it was made from ([`engines/stages.md`](?doc=engines/stages.md) § 6.3) |
+| | a transport calculation's composed `junction.molstruct.json` | no usable record | composed again at the next prep while none of its stages is launched; else a new calculation of the same junction ([`engines/transport.md`](?doc=engines/transport.md) § 1.1) |
+| prep and launch records | `prepared-with.json`, `calcdir.json`, `run.json`, a sequence's launch record, a job's address, `<stem>.points.json`, `notified.json` | none was written: each has had one version | — |
+| results and data files | `<label>.transport.json`, `<label>.transport.nc`, `<label>.fc-sweep.json`, `bench-result.json`, an export's files | refused | written again by its command (`jobset summarize task`, `jobset summarize bench`, the export) ([`model/datafiles.md`](?doc=model/datafiles.md) § 3a) |
+| | `<label>.TBT.digest.nc` | no kept reading | the point's data file read again ([`model/parse.md`](?doc=model/parse.md) § 5e) |
+| | `<label>.spectra.json` (`spectra/results.READABLE_SCHEMA_VERSIONS`), `<label>.spectra.nc`, `<label>.optical.nc` | refused (written before 2026-11-23) | the vibration run again ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.1) |
+| structure files | `.molstruct.json` (`sidecars/molstruct.READABLE_VERSIONS`) | refused (saved before 2026-11-04) | the pair made again, or its `.xyz` opened alone ([`model/structure-molstruct.md`](?doc=model/structure-molstruct.md) § 2) |
 
 What each version changed is the [changelog](?doc=process/changelog.md).
 
@@ -1559,8 +1622,8 @@ character beyond ASCII written as itself (`Å`, a region label's `α`). Read by
 of what a file holds and an editor may add one to a file a person keeps
 (`molbuilder.json`, [`job-request.md`](?doc=execution/job-request.md)'s two
 records); text that is not UTF-8, or not JSON, does not read. A record is read
-as one JSON object of its schema (`persist.read_object(path, schema=…)`; a
-record read at any major, below, as one object): any other value, or another
+as one JSON object of its schema (`persist.read_object(path, schema=…)`):
+any other value, or another
 artifact or major, is refused as not reading — in words, never a reader's
 crash — and the reader that asked names the file and the way out. What a prep
 writes, and what launch writes at its send, goes through their plan: the one

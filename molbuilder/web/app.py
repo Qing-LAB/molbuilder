@@ -500,15 +500,18 @@ def create_app(*, config=None) -> Flask:
     def _outside_the_fence(exc):
         return err(exc.message, exc.status)
 
-    # A RUN'S DECK WHOSE MOLBUILDER BLOCK CANNOT BE READ is refused by the run
-    # door (`runs.declared`), naming the deck and the way out; it leaves every
-    # route as a 400 with that sentence, here, once -- a route that reads a
-    # run's view inherits it rather than answering an HTML 500
-    # (`execution/job-contracts.md` § 3.1).
-    from molbuilder.deck_record import DeckRecordUnreadable
+    # A FILE MOLBUILDER KEEPS THAT ITS READER CANNOT READ -- a version it
+    # does not read, or a content: a record, a data file, a run's deck whose
+    # molbuilder block does not read (`runs.declared`) -- is refused in its
+    # reader's words, naming the file and the way on, and every reader's
+    # refusal carries one mark (`persist.FileRefused`).  It leaves every
+    # route as a 400 with that sentence, here, once -- a route that forgets
+    # inherits the right answer rather than an HTML 500
+    # (`execution/job-contracts.md` § 6.1).
+    from molbuilder.persist import FileRefused
 
-    @app.errorhandler(DeckRecordUnreadable)
-    def _deck_record_unreadable(exc):
+    @app.errorhandler(FileRefused)
+    def _file_refused(exc):
         return err(str(exc), 400)
 
     # --- Security headers ----------------------------------------- #

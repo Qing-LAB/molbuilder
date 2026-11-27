@@ -1022,11 +1022,15 @@ reads the same shipped file for the tab.
 `report_cards.layout_path()`). The config dir, because it travels with the
 monitor (`config_dir.py`). The monitor reads the copy on the machine that runs the job;
 the tab and the Test button read the server's. Each is the person's own file, never written by molbuilder, not a
-secret, any mode. A file that does not read is refused by its reason: the monitor of a run that sends reports, as
+secret, any mode. A file that does not read is refused by its reason, then its way on — the copy replaces the
+shipped layout whole and is optional: put it right, or move it aside ([`configuration.md`](?doc=configuration.md)
+§ 3.1); one a later molbuilder wrote, by the versions' words alone, to be opened with the molbuilder that wrote
+it ([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1): the monitor of a run that sends reports, as
 its channels are chosen at its start, in its monitor log's line `[MONITOR] the card's layout is refused --
 <reason>` (§ 2.5), and the monitor stops there — a run that sends none never reads it *(the user, 2026-11-18)*; a
 run of points' `notify` verb in a `[NOTIFY]` line, sending nothing; the reports route and the Test button in their
-answer.
+answer, a 400 the web server's edge gives every file a reader cannot read
+([`web-api.md`](?doc=web/web-api.md) § 1).
 
 ```json
 {"schema": "molbuilder/report-cards@1",

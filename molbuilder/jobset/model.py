@@ -40,7 +40,7 @@ SCHEMA = "molbuilder/job-set@1"
 #: a fixed name's owner takes it from the row).
 from ..runfiles import JOBSET_FILE as FILENAME  # noqa: E402
 from ..runfiles import JOB_REQUEST_FILE  # noqa: E402
-from ..persist import check_keys  # noqa: E402
+from ..persist import FileRefused, check_keys  # noqa: E402
 
 #: The two kinds, each a name with ONE home.  `KIND_SWEEP` is exported
 #: because a reader outside this module has to ask *is this a benchmark
@@ -604,7 +604,7 @@ def _warm_of(d: Dict[str, Any]) -> "List[WarmFile]":
         raise ValueError(f"job {d['name']!r}: {exc}") from None
 
 
-class WrittenBefore(ValueError):
+class WrittenBefore(ValueError, FileRefused):
     """A `job-set.json` an older molbuilder wrote -- before every job key
     was (2026-10-06), or holding a key a release retired
     (`template.RETIRED_ITEMS`): read by no fallback -- `molbuilder jobset
@@ -642,8 +642,12 @@ class JobSet:
     def from_dict(cls, d: Dict[str, Any]) -> "JobSet":
         # Major-version check via the shared helper (persist.py), same rule
         # scheduler/record.py + bench/result.py use.
+        # ANOTHER VERSION, refused with the family's way on
+        # (`job-contracts.md` § 6.1).
+        from ..calcdirs import DESCRIBE_AGAIN
         from ..persist import check_schema
-        check_schema(str(d.get("schema") or ""), SCHEMA, label="job-set")
+        check_schema(str(d.get("schema") or ""), SCHEMA, label="job-set",
+                     way=DESCRIBE_AGAIN)
         check_keys("job-set", d, JOBSET_KEYS)
         return cls(
             name=d["name"],
@@ -707,7 +711,8 @@ class JobSet:
                 f"{path}: {exc} -- written by an older molbuilder; "
                 f"{way}.") from None
         except ValueError as exc:
-            raise ValueError(f"{path}: {exc}") from None
+            from ..persist import RecordUnreadable
+            raise RecordUnreadable(f"{path}: {exc}") from None
 
     def job(self, stage: str) -> "Optional[Job]":
         """The job ``stage`` is prepared as -- matched as every reader

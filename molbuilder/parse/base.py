@@ -59,9 +59,13 @@ class FileParser(ABC):
     @classmethod
     @abstractmethod
     def can_parse(cls, path: Path) -> bool:
-        """Sniff the path's contents (cheaply) and return True iff
-        this parser knows how to handle it.  Must not raise; a
-        buggy sniffer must not take down the dispatch loop.
+        """Return True iff this parser reads the file at ``path`` -- a
+        file of ours claimed by its name alone (its role in the catalogue;
+        a benchmark's plan by its name and place, a description by its name
+        and kind), never by its version, which :meth:`parse` refuses in its
+        words (`model/parse.md` § 6); an engine's output by the content
+        markers of its first lines.  Must not raise; a buggy sniffer must
+        not take down the dispatch loop.
         """
 
     @classmethod
@@ -69,9 +73,11 @@ class FileParser(ABC):
     def parse(cls, path: Path) -> ParseResult:
         """Read + parse the file, return the typed
         ``ParseResult`` subclass declared in ``output``.
-        Implementations should raise the canonical
-        :exc:`molbuilder.parse.errors.ParseError` (or
-        ``UnknownFormatError`` when reasonable) on malformed
-        input rather than letting unstructured exceptions escape.
+        A file that does not read -- a version this molbuilder does
+        not read, or a content -- is refused with
+        :exc:`molbuilder.parse.errors.FileUnreadable` (or the parser's
+        own subclass of it), naming the file, which carries the mark of
+        a file its reader cannot read (`persist.FileRefused`), rather
+        than letting unstructured exceptions escape.
         """
 

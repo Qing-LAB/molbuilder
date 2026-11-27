@@ -44,7 +44,7 @@ _DESCRIPTION_PARTS = [(k, key) for k in kind_table.kinds()
 def test_every_part_a_kind_s_description_names_resolves(calculation, key):
     """Every door a kind's description names for the shared doors that ask
     of a kind that cites or extends -- the extension's limits, a citation's
-    frames, the order record, the reuse module with every door prep,
+    frames, the reuse module with every door prep,
     describe and launch ask of it (`kind_table.REUSE_DOORS`) -- is
     importable: the floor that asks finds it (`execution/architecture.md`
     § 3.3)."""
@@ -285,10 +285,10 @@ _KIND_ROWS = [
      "cited_kind 'nope' is no kind of the table"),
     # A door asked of a kind that cites or extends comes with what makes it
     # asked: a cited slot, a carried `reuses`.
-    ("an order record on a kind that cites nothing",
+    ("the frames of a citation on a kind that cites nothing",
      '[k]\nnoun = "k"\ntopic = "k"\n'
-     'description = {order_record = "m:f"}\n[k.on.siesta]\n',
-     "description.order_record on a kind whose description does not state "
+     'description = {cited_frames = "m:f"}\n[k.on.siesta]\n',
+     "description.cited_frames on a kind whose description does not state "
      "cites"),
     # ...and a kind that cites names what reads its citation's frames, and
     # one that carries `reuses` what decides it.

@@ -29,12 +29,11 @@ import numpy as np
 from ..identity import JOBSET_PROG, TASK, as_typed, words_for
 from ..cell import entering
 from ..parse.fdf import read_deck
-from ..persist import sha256_of
+from ..persist import FileRefused, sha256_of
 from ..structure import (ACROSS_TRANSPORT, AXIS_KIND_TRANSPORT, SAME_PLACE_ANG,
                          Structure, farthest_apart, frame_words)
 from ..kind_table import atom_order
-from .sort import (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE, SortError,
-                   sort_by)
+from .sort import REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE, sort_by
 from .wizard import ElectrodeModel, extract_electrode_model
 
 if TYPE_CHECKING:                                    # pragma: no cover
@@ -43,7 +42,43 @@ if TYPE_CHECKING:                                    # pragma: no cover
 
 class ComposeError(Exception):
     """A citation the composition cannot honour — the message names
-    exactly what to run (or fix) first, ready to surface verbatim."""
+    exactly what to run (or fix) first, ready to surface verbatim.  A file
+    it reads that does not read is its own kind,
+    :class:`ComposeFileUnreadable`."""
+
+
+class ComposeFileUnreadable(ComposeError, FileRefused):
+    """A FILE THE COMPOSITION READS THAT DOES NOT READ -- the composed
+    junction beside ``task.json``, a cited pair, a cited run's own records
+    (its folder's record or its description, its launch record, its deck's
+    block, its steps) -- in its reader's words: a file its reader cannot
+    read, carrying the mark the two edges say (`persist.FileRefused`,
+    `execution/job-contracts.md` § 6.1).  A citation the composition cannot
+    honour -- a run not finished, a geometry that relaxed nothing, labels
+    that make no lead -- carries none.  ``fact`` is what is wrong with the
+    file alone, without a way on: a door that answers the composed junction
+    by the calculation's state says its own way on beside it (`jobset
+    migrate`)."""
+
+    def __init__(self, message: str, *, fact: Optional[str] = None):
+        super().__init__(message)
+        self.fact = fact if fact is not None else message
+
+
+class JunctionOfAnotherVersion(ComposeFileUnreadable):
+    """THE COMPOSED JUNCTION'S SIDECAR OF A VERSION THIS MOLBUILDER DOES NOT
+    READ (:func:`recorded_junction`), in the calculation's words: one
+    composed before the one version read -- no usable record, composed
+    again at the next prep while none of its stages is launched -- or one a
+    later molbuilder wrote (``later``), refused wherever it is read, never
+    composed again over it (`execution/job-contracts.md` § 6.1, the family
+    table's composed junction)."""
+
+    def __init__(self, message: str, *, later: bool, fact: str):
+        # ``fact``: the version's alone (`structure_pair.
+        # MolstructVersionError.fact`).
+        super().__init__(message, fact=fact)
+        self.later = later
 
 
 #: The composed record's on-disk names, beside the transport
@@ -55,11 +90,10 @@ from ..runfiles import JUNCTION_CITED_FILE as JUNCTION_DECK  # noqa: E402 -- the
 from ..runfiles import SLOT_PROVENANCE_FILE as PROVENANCE_FILE  # noqa: E402
 
 #: The composition record's schema (`execution/job-contracts.md` § 6.1),
-#: stamped by its one writer (:func:`write_compose_record`).
-#: ``@2``: the junction's sidecar carries its order record, and no file of it
-#: lies beside (`model/overview.md` § 2.2a, I7).  What a record holds is
-#: asked of the files themselves, never of this name
-#: (:func:`recorded_junction`).
+#: stamped by its one writer (:func:`write_compose_record`) and the one its
+#: reader reads (:func:`read_provenance`): the junction's sidecar carries its
+#: order record, and no file of it lies beside (`model/overview.md` § 2.2a,
+#: I7).
 PROVENANCE_SCHEMA = "molbuilder/slot-provenance@2"
 
 
@@ -136,12 +170,6 @@ class ComposedJunction:
     #: ended and what it converged, or a cited pair's frame count — written
     #: beside the copies so a result can always say which junction built it
     provenance: Dict[str, object]
-    #: THE ORDER RECORD FOUND, NOT READ (`engines/transport.md` § 1.1, *The
-    #: first prep*): a recorded junction whose sidecar states none, checked
-    #: atom for atom against its citation composed again in memory and given
-    #: that composition's record -- which the prep that read it writes
-    #: (:func:`write_compose_record`).  ``False`` for every other junction.
-    order_found: bool = False
 
 
 
@@ -258,7 +286,7 @@ def _classify_run(cite_dir: Path) -> CitedRun:
     from ..runs import place_of, run_of, state_of
     place = place_of(cite_dir)
     if place.problem:
-        raise ComposeError(place.problem)
+        raise ComposeFileUnreadable(place.problem)
     run = run_of(cite_dir)
     if run is None:
         where = ("no calculation claims this folder"
@@ -278,8 +306,8 @@ def _classify_run(cite_dir: Path) -> CitedRun:
     # launch record that does not read -- is refused in the door's words.
     st = state_of(run)
     if st.state == "unreadable":
-        raise ComposeError(f"{cite_dir}: {st.detail.rstrip('.')}.  "
-                           f"{CITATION_CONDITION}.")
+        raise ComposeFileUnreadable(f"{cite_dir}: {st.detail.rstrip('.')}.  "
+                                    f"{CITATION_CONDITION}.")
     # ONE RUN, the one the run door settled, asked of each door: its launch
     # record -- in the folder the run door says it lies in
     # (`Run.launched_in`: a point's is its run's), which the state above
@@ -288,7 +316,7 @@ def _classify_run(cite_dir: Path) -> CitedRun:
         launched = launch_record(run.launched_in) is not None
     except LaunchRecordError as e:
         # A RECORD REPLACED BETWEEN THE TWO READS (a restore's copy).
-        raise ComposeError(str(e)) from e
+        raise ComposeFileUnreadable(str(e)) from e
     # HOW THE CITED RUN ENDED, asked of the one door (`runrecord.ending`,
     # `execution/architecture.md` § 3.2).
     end = ending(cite_dir, run.names.stem)
@@ -344,8 +372,9 @@ def _classify_pair(path: Path) -> CitedPair:
         struct = StructureCodec().load(path, frames=True, in_user_order=True,
                                        said_out=said)
     except (ValueError, OSError) as exc:
-        raise ComposeError(f"{path} does not read as a structure pair "
-                           f"({exc}).  {CITATION_CONDITION}.") from exc
+        raise ComposeFileUnreadable(
+            f"{path} does not read as a structure pair ({exc}).  "
+            f"{CITATION_CONDITION}.") from exc
     calc = (struct.info or {}).get("calculation")
     if not isinstance(calc, dict) or not isinstance(calc.get("contract"),
                                                     dict):
@@ -523,7 +552,7 @@ def junction_axis_kind(cited: "CitedRun | CitedPair") -> Tuple[str, str, str]:
     try:
         said = declared(cited.run)
     except (DeckRecordUnreadable, PermutationError) as exc:
-        raise ComposeError(str(exc)) from exc
+        raise ComposeFileUnreadable(str(exc)) from exc
     recorded = (said.engine_offset or {}).get("axis_kind")
     return _with_transport(recorded or ("periodic",) * 3,
                            f"the cited deck {said.deck.name}"
@@ -587,7 +616,7 @@ def _run_geometry(cited: CitedRun, kinds):
         steps = steps_of(cited.run, output)
     except (RunStepsError, OrderUnstated, DeckRecordUnreadable,
             PermutationError) as exc:
-        raise ComposeError(str(exc)) from exc
+        raise ComposeFileUnreadable(str(exc)) from exc
     try:
         struct = steps.last.replace(axis_kind=kinds)
     except ValueError as exc:
@@ -940,8 +969,9 @@ def write_compose_record(base_dir, composed: ComposedJunction) -> List[str]:
     if composed.deck_text is not None:
         write_bytes(base_dir / JUNCTION_DECK,
                     composed.deck_text.encode("utf-8"))
-    # AT THIS SCHEMA, whoever composed it: a record read back and written
-    # again holds what this molbuilder writes.
+    # AT THIS SCHEMA: a record read back and written again (an extension's
+    # junction, taken from its finished calculation) holds what this
+    # molbuilder writes.
     write_json(base_dir / PROVENANCE_FILE,
                {**composed.provenance, "schema": PROVENANCE_SCHEMA})
 
@@ -1002,20 +1032,41 @@ def read_provenance(base_dir, *, read=None) -> Optional[Dict]:
     check below, the transport record, and the frame count
     (`transport.rung.frames_had`).  ``read`` reads a path's text where the
     record is a prep's plan's, not yet on disk (`prepared_with.record`).
-    Read by the one record reader at ANY major (`job-contracts.md` § 6.1,
-    *Older versions still read*): what it holds is asked of its files; one
-    that does not read is refused naming it."""
-    from ..persist import object_of, read_object
+    Read by :data:`PROVENANCE_SCHEMA`'s name and major, as every record is
+    (`persist.check_schema`, `job-contracts.md` § 6.1): a same-major
+    addition reads; an older one -- a calculation composed before 2.10.0 --
+    or another artifact is refused naming it, its way on a new calculation
+    of the same junction (the user, 2026-11-26: "Drop all as asked"); a
+    later one says a later molbuilder wrote it; one that does not read is
+    refused in its reader's words -- each a :class:`persist.SchemaMismatch`
+    or :class:`persist.RecordUnreadable`, which every door says."""
+    from ..persist import (RecordUnreadable, SchemaMismatch, check_schema,
+                           object_of, read_object, written_later)
     path = Path(base_dir) / PROVENANCE_FILE
     try:
         if read is not None:
             # THE PLAN'S TEXT, read as the disk's bytes are.
-            return object_of(read(path).encode("utf-8"))
-        return read_object(path) if path.is_file() else None
+            record = object_of(read(path).encode("utf-8"))
+        elif path.is_file():
+            record = read_object(path)
+        else:
+            return None
     except FileNotFoundError:
         return None
     except ValueError as exc:
-        raise ValueError(f"{path}: {exc}") from None
+        raise RecordUnreadable(f"{path}: {exc}") from None
+    got = str(record.get("schema") or "")
+    try:
+        check_schema(got, PROVENANCE_SCHEMA, label=str(path))
+    except SchemaMismatch:
+        if written_later(got, PROVENANCE_SCHEMA):
+            raise
+        raise SchemaMismatch(
+            f"{path}: {record.get('schema')!r} -- a transport calculation "
+            f"composed before 2.10.0 -- and this molbuilder reads "
+            f"{PROVENANCE_SCHEMA} alone: describe a new transport "
+            f"calculation of the same junction and run it") from None
+    return record
 
 
 @dataclass(frozen=True)
@@ -1024,62 +1075,64 @@ class RecordedJunction:
     (:func:`recorded_junction`)."""
     #: every frame, in TranSIESTA's order, its order record from its sidecar
     structure: Structure
-    #: WHY ITS ORDER IS NOT STATED -- its sidecar written before the field
-    #: (`model/overview.md` § 2.2a, I9) -- in one sentence, the fact alone:
-    #: each door that names the junction's atoms in the user order says its own
-    #: way on.  ``None`` for a sidecar that states it (null for an order the
-    #: sort left as it was).
-    order_unstated: Optional[str]
 
 
 def recorded_junction(base_dir) -> Optional[RecordedJunction]:
     """THE ONE READ OF THE COMPOSED JUNCTION beside ``task.json``, through the
-    codec (every frame, its order record from its sidecar), and whether that
-    sidecar states the order record at all -- known by what the file states,
-    never by the molbuilder that wrote it (the user, 2026-10-15:
-    "feature/format detection").  ``None`` before anything was composed;
-    a pair that does not read is refused in its reader's words,
-    :class:`ComposeError`.  Asked by every reader of the composed junction,
-    each catching `rung.compose_refusals`."""
+    codec (every frame, its order record from its sidecar).  ``None`` before
+    anything was composed; a pair that does not read is refused in its
+    reader's words, :class:`ComposeError` -- a sidecar of a version this
+    molbuilder does not read, saved before 2026-11-04 or by a later
+    molbuilder (`structure-molstruct.md` § 2), its own kind,
+    :class:`JunctionOfAnotherVersion`.  Asked by every reader of the
+    composed junction, each catching `rung.compose_refusals`."""
     from ..identity import checkpoint_words
-    from ..sidecars.molstruct import sidecar_path_for
-    from ..structure_pair import GeometryChangedError
-    from ..workingcopy_structure import (ORDER_UNSTATED, StructureCodec,
-                                         geometry_changed_fact,
-                                         pair_order_unstated_said)
+    from ..sidecars.molstruct import SCHEMA_SINCE
+    from ..structure_pair import GeometryChangedError, MolstructVersionError
+    from ..workingcopy_structure import (StructureCodec,
+                                         geometry_changed_fact)
     path = Path(base_dir) / JUNCTION_GEOMETRY
     if not path.is_file():
         return None
-    stated: set = set()
     try:
-        # ITS ORDER IS THIS READ'S TO JUDGE, below -- opened whatever its
-        # sidecar states, as a door that shows it does (I9).
-        struct = StructureCodec().load(path, frames=True, stated_out=stated,
-                                       opened=(ORDER_UNSTATED,),
-                                       said_out=[])
+        struct = StructureCodec().load(path, frames=True)
+    except MolstructVersionError as exc:
+        if exc.later:
+            # A LATER MOLBUILDER'S JUNCTION: that molbuilder is the way on
+            # (`job-contracts.md` § 6.1).
+            from ..persist import LATER_WAY
+            raise JunctionOfAnotherVersion(
+                f"the composed junction, {path.name}, does not read: "
+                f"{exc.fact} -- {LATER_WAY}", later=True,
+                fact=exc.fact) from exc
+        # COMPOSED BEFORE THE ONE VERSION READ: the version's fact and the
+        # calculation's way on, never the pair's (the user, 2026-11-26:
+        # "Everything before 2026-11-04").
+        raise JunctionOfAnotherVersion(
+            f"the composed junction, {path.name}, was composed before "
+            f"{SCHEMA_SINCE}: {exc.fact}.  Describe a new transport "
+            f"calculation of the same junction and run it",
+            later=False, fact=exc.fact) from exc
     except GeometryChangedError as exc:
         # EDITED SINCE PREP COMPOSED IT: the codec's fact, and THIS RECORD'S
         # WAY BACK -- the junction is the record prep composed from the
         # citation, never a file to edit, so the state saved before the
         # change, not a save on the Molbuilder tab.
-        raise ComposeError(
+        changed = geometry_changed_fact(path.name)
+        raise ComposeFileUnreadable(
             f"the composed junction, {path.name}, does not read: "
-            f"{geometry_changed_fact(path.name)}.  It is the record prep "
-            f"composed from the citation, not a file to edit; go back to "
-            f"the state saved before the change -- "
-            f"{checkpoint_words(Path(base_dir).resolve())}") from exc
+            f"{changed}.  It is the record prep composed from the citation, "
+            f"not a file to edit; go back to the state saved before the "
+            f"change -- {checkpoint_words(Path(base_dir).resolve())}",
+            fact=changed) from exc
     except ValueError as exc:
         # THE CODEC'S OTHER REFUSALS are ValueErrors -- a sidecar that does
         # not parse, an atom list that does not read
         # (`structure_pair.MolstructJsonError` among them).
-        raise ComposeError(f"the composed junction, {path.name}, does not "
-                           f"read: {exc}") from exc
-    return RecordedJunction(
-        structure=struct,
-        order_unstated=(
-            None if "atom_order" in stated else
-            "the composed junction's "
-            + pair_order_unstated_said(sidecar_path_for(path).name)))
+        raise ComposeFileUnreadable(f"the composed junction, {path.name}, "
+                                    f"does not read: {exc}",
+                                    fact=str(exc)) from exc
+    return RecordedJunction(structure=struct)
 
 
 def junction_difference(recorded: Structure,
@@ -1133,7 +1186,7 @@ def junction_difference(recorded: Structure,
     return None
 
 
-def load_compose_record(base_dir, *, citation: str, engine: str,
+def load_compose_record(base_dir, *, citation: str,
                         tree_root=None, why: "Optional[list]" = None,
                         swap_electrodes: bool = False
                         ) -> Optional[ComposedJunction]:
@@ -1143,9 +1196,8 @@ def load_compose_record(base_dir, *, citation: str, engine: str,
     **`None` HAS SEVERAL CAUSES AND THEY ARE NOT THE SAME NEWS** -- no
     record, a record of another citation or another rename, a record that
     names no kind, an incomplete one.  Pass a list as *why* and the reason
-    is appended to it, in words for a person.
-    The `retired_out` pattern (`workingcopy_structure.StructureCodec.load`):
-    the happy path is unchanged and the caller that needs more asks for it.
+    is appended to it, in words for a person: the happy path is unchanged
+    and the caller that needs more asks for it.
 
     Without it, all of them read as *"there is no record"* -- while the
     likeliest cause, on a folder that has travelled somewhere the citation
@@ -1164,7 +1216,10 @@ def load_compose_record(base_dir, *, citation: str, engine: str,
 
     *tree_root* holds a cited PAIR to the bytes it was composed from
     (§ 3.1): one edited since is refused by name, because the seed and the
-    leads already ran on what it said then.
+    leads already ran on what it said then.  So is a junction a later
+    molbuilder composed (:class:`JunctionOfAnotherVersion`): its record is
+    there, and only that molbuilder reads it -- never *no record*, composed
+    again over it.
     """
     base_dir = Path(base_dir)
     # WHICH FORM decides which files the record needs, and the form is
@@ -1187,9 +1242,9 @@ def load_compose_record(base_dir, *, citation: str, engine: str,
     # THE RENAME IS PART OF THE RECORD'S IDENTITY (§ 4): a copy composed
     # with the leads one way round does not serve a description that now
     # says the other.
-    if bool(provenance.get("swap_electrodes", False)) != bool(swap_electrodes):
+    if provenance.get("swap_electrodes") != bool(swap_electrodes):
         return _no(f"the record beside it was composed with "
-                   f"swap_electrodes {bool(provenance.get('swap_electrodes', False))}, "
+                   f"swap_electrodes {provenance.get('swap_electrodes')}, "
                    f"and this task now says {bool(swap_electrodes)}")
     kind = provenance.get("kind")
     if kind not in CITATION_KINDS:
@@ -1208,39 +1263,16 @@ def load_compose_record(base_dir, *, citation: str, engine: str,
     # left as it was.
     try:
         recorded = recorded_junction(base_dir)
+    except JunctionOfAnotherVersion as exc:
+        if exc.later:
+            # A LATER MOLBUILDER'S JUNCTION is refused in its words, never
+            # taken as no record and composed again over it
+            # (`job-contracts.md` § 6.1, the family table).
+            raise
+        return _no(str(exc))
     except ComposeError as exc:
         return _no(str(exc))
     dev = recorded.structure
-    # ONE WHOSE SIDECAR STATES NO ORDER -- written before the field -- is
-    # usable when its citation composed again, in memory, is the junction
-    # recorded (`engines/transport.md` § 1.1, *The first prep*): it is given
-    # that composition's order record, which the prep that read it writes
-    # (`order_found`); another, or a citation that does not compose here, is
-    # no record.
-    order_found = False
-    if recorded.order_unstated:
-        if tree_root is None:
-            return _no(f"{recorded.order_unstated}; it is checked against its "
-                       f"citation where the citation resolves, inside its "
-                       f"projects tree")
-        try:
-            composed = compose_junction(citation, tree_root=tree_root,
-                                        engine=engine,
-                                        swap_electrodes=swap_electrodes)
-        except (ComposeError, SortError) as exc:
-            return _no(f"{recorded.order_unstated}; its citation does not "
-                       f"compose again here -- {exc}")
-        differs = junction_difference(dev, composed.junction)
-        if differs:
-            return _no(f"{recorded.order_unstated}; composed again from its "
-                       f"citation, it is not the junction recorded -- "
-                       f"{differs}")
-        # ITS ORDER IS STATED NOW -- the composition's record, which the prep
-        # that read it writes into the sidecar (§ 1.1): the read's mark that
-        # nothing stated it goes with it.
-        dev = dev.replace(atom_order=composed.junction.atom_order,
-                          order_unstated=False)
-        order_found = True
     if tree_root is not None:
         try:
             _cited_path, cited = resolve_citation(citation, Path(tree_root))
@@ -1262,5 +1294,4 @@ def load_compose_record(base_dir, *, citation: str, engine: str,
         electrode_right=elec_r,
         deck_text=deck_text,
         provenance=provenance,
-        order_found=order_found,
     )

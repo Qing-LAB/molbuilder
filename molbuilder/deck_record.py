@@ -33,9 +33,11 @@ from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 try:                                        # inside molbuilder
     from .trajectory_log.keys import WALL_TIME as _WALL_TIME
     from .identity import checkpoint_as_typed
+    from .persist import FileRefused
 except ImportError:                         # beside a job, in a bundle
     from keys import WALL_TIME as _WALL_TIME
     from identity import checkpoint_as_typed
+    from persist import FileRefused  # type: ignore[no-redef]
 
 
 BLOCK_PROVENANCE    = "provenance"
@@ -121,7 +123,7 @@ def without_stamps(data: bytes) -> bytes:
     return _STAMPS.sub(b"<stamp>", data)
 
 
-class DeckRecordUnreadable(ValueError):
+class DeckRecordUnreadable(ValueError, FileRefused):
     """A deck carries the molbuilder block it names, and the block cannot be
     read: its fences are not a BEGIN/END pair, it holds no JSON object, or
     its JSON does not parse.  The block is a record molbuilder writes and
@@ -458,7 +460,8 @@ def read_bench_marks_block(text: str) -> Optional[Dict[str, Any]]:
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
 #: imports there by their bare names (`runwrap.bundle_members`).
 TRAVELS_WITH = ("molbuilder.trajectory_log.keys",
-                "molbuilder.identity")
+                "molbuilder.identity",
+                "molbuilder.persist")
 
 
 __all__ = ["BUILD_NAME", "BLOCK_PROVENANCE", "BLOCK_BENCH_MARKS",

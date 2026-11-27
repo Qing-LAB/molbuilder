@@ -405,3 +405,41 @@ def test_init_refuses_a_folder_of_independent_calculations_as_an_advisory(
     assert body["ok"] is False and body["errors_only"]
     assert "run_a" in body["error"] or "calculation" in body["error"].lower(), (
         "the message must say what is wrong with the folder")
+
+
+# ------------------------------------------------------------------ #
+#  An archive that does not verify -- a refusal, like every file      #
+# ------------------------------------------------------------------ #
+
+
+#: THE ROUTES THAT READ A STATE'S ARCHIVE: where the folder stands (its
+#: archive's record checked by the cheap read, I2b), and a restore to it.
+_READS_THE_ARCHIVE = {
+    "state": lambda client, calc, state: _get(client, "state", calc),
+    "restore": lambda client, calc, state: _post(
+        client, "restore", calc, state=state["id"], force=True),
+}
+
+
+@pytest.mark.parametrize("route", list(_READS_THE_ARCHIVE))
+def test_an_archive_that_does_not_verify_is_a_refusal_at_its_routes(
+        route, client, started, calc):
+    """`job-contracts.md` § 6.1 and `web-api.md` § 1 (the user, 2026-11-27:
+    *"A refusal, like the rest"*): a state's archive whose record does not
+    hash to the name it is stored under -- the record modified -- is a file
+    its reader cannot read, refused as a 400 in its words at every route
+    that reads it, never a server's fault.  THE SILENT FAILURE: the route's
+    own catch of every checkpoint error answering 500 first."""
+    from molbuilder.checkpoint import MANIFEST_NAME, archive_dir
+    (calc / "big.bin").write_bytes(BIG)
+    state = _post(client, "save", started,
+                  note="with an archive").get_json()["state"]
+    man = archive_dir(calc, state["archive"]) / MANIFEST_NAME
+    man.write_bytes(man.read_bytes().replace(b"big.bin", b"big.bio"))
+    r = _READS_THE_ARCHIVE[route](client, calc, state)
+    body = r.get_json()
+    assert r.status_code == 400, body
+    assert body["ok"] is False, body
+    for w in (MANIFEST_NAME, "does not hash to the name it is stored under",
+              "modified"):
+        assert w in body["error"], (w, body)

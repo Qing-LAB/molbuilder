@@ -27,12 +27,15 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 try:                                        # inside molbuilder
     from . import data_dir as _data_dir, report_fields as _fields
     from .config_dir import config_dir as _config_dir
-    from .persist import object_of, read_shipped
+    from .persist import (FileRefused, check_schema, object_of,
+                          read_shipped, written_later)
     _HERE = _data_dir()
 except ImportError:                         # beside the job
     import report_fields as _fields
     from config_dir import config_dir as _config_dir
-    from persist import object_of, read_shipped  # type: ignore[no-redef]
+    from persist import (FileRefused,  # type: ignore[no-redef]
+                         check_schema, object_of, read_shipped,
+                         written_later)
     _HERE = Path(__file__).parent
 
 #: The file's name -- spelled here, in the module that owns it
@@ -43,6 +46,12 @@ FILENAME = "report-cards.json"
 SCHEMA = "molbuilder/report-cards@1"
 #: The shipped file: the package's `data/` copy, or the bundle member.
 SHIPPED = _HERE / FILENAME
+#: THE WAY ON FOR A COPY THAT DOES NOT READ -- this machine's, which
+#: replaces the shipped layout whole and is optional (`configuration.md`
+#: § 3.1): put right, or moved aside for the shipped one.
+COPY_WAY = ("this machine's copy replaces the shipped layout whole and is "
+            "optional: put it right, or move it aside and the shipped layout "
+            "lays the cards out")
 
 #: The receivers a layout must lay out: the two chat wires of
 #: `run-reports.md` § 4.1b and the This machine tab.
@@ -61,7 +70,15 @@ _COLOR_RE = re.compile(r"#[0-9A-Fa-f]{6}")
 
 
 class LayoutError(ValueError):
-    """The layout file does not read: its path and the reason."""
+    """The layout refused: a file that does not read
+    (:class:`LayoutUnreadable`), or a receiver its caller names that the
+    layout does not lay out."""
+
+
+class LayoutUnreadable(LayoutError, FileRefused):
+    """The layout file does not read: its path and the reason -- a file its
+    reader cannot read, carrying the mark the two edges say
+    (`persist.FileRefused`, `execution/job-contracts.md` § 6.1)."""
 
 
 @dataclass(frozen=True)
@@ -148,7 +165,8 @@ def shipped_bytes() -> bytes:
 def load(path: Optional[Path] = None) -> Layout:
     """The layout in force here: the copy at :func:`layout_path` when there
     is one, else the shipped file.  ``path`` names a file to read instead.
-    Refused (:class:`LayoutError`) with the path and the reason."""
+    Refused (:class:`LayoutError`) with the path and the reason -- a copy's
+    with its way on (:data:`COPY_WAY`)."""
     if path is None:
         copy = layout_path()
         if copy.is_file():
@@ -157,23 +175,35 @@ def load(path: Optional[Path] = None) -> Layout:
         try:
             data = path.read_bytes()
         except OSError as exc:
-            raise LayoutError(f"{path}: cannot be read -- {exc}") from None
-        return parse(data, str(path))
+            raise LayoutUnreadable(f"{path}: cannot be read -- {exc} -- "
+                              f"{COPY_WAY}") from None
+        return parse(data, str(path), way=COPY_WAY)
     return parse(shipped_bytes(), str(SHIPPED))
 
 
-def parse(data: bytes, source: str) -> Layout:
+def parse(data: bytes, source: str, *, way: str = "") -> Layout:
     """A layout file's bytes as a :class:`Layout`: read as every record is
     (`persist.object_of` -- UTF-8, the byte-order mark an editor adds read
     past, one JSON object of this schema), then every rule of
     `run-reports.md` § 4.1c checked; ``source`` names the file in a
-    refusal, as the monitor says a copy that does not read."""
-    def refuse(why: str) -> LayoutError:
-        return LayoutError(f"{source}: {why}")
+    refusal, as the monitor says a copy that does not read, and ``way`` is
+    the way on said after the reason -- never after a layout a later
+    molbuilder wrote, whose words say its way on, that molbuilder
+    (`job-contracts.md` § 6.1)."""
+    def refuse(why: str) -> LayoutUnreadable:
+        return LayoutUnreadable(f"{source}: {why.rstrip('.')}"
+                           + (f" -- {way}" if way else ""))
 
     try:
-        doc = object_of(data, schema=SCHEMA)
+        doc = object_of(data)
     except ValueError as exc:
+        raise refuse(str(exc)) from None
+    got = str(doc.get("schema") or "")
+    try:
+        check_schema(got, SCHEMA)
+    except ValueError as exc:
+        if written_later(got, SCHEMA):
+            raise LayoutUnreadable(f"{source}: {str(exc).rstrip('.')}") from None
         raise refuse(str(exc)) from None
 
     colors_in = doc.get("colors")

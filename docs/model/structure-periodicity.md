@@ -41,7 +41,7 @@ file.
 |---|---|---|---|
 | `cell` | 3×3 (rows = lattice vectors, Å) or `null` | the lattice / box vectors | derived (§ 4) |
 | `engine_offset` | 3 floats (Å) or `null` | the offset the structure **states** (§ 6.0): an origin the person assigned at P, stored as `−P`, on a typed `cell` only; or an engine's own output, `[0, 0, 0]`. The box is drawn at `−engine_offset` of the coordinates beside it, and the engine gets those coordinates plus it | `null` = **the rule places the atoms**, centred in the cell (§ 6.0) |
-| `offset_by` | `person`, `engine` or `null` | whose the stated offset is (§ 6.0): the person's assigned origin, kept; or an engine's own frame, kept from stage to stage and not carried into a new calculation (`cell.entering`) | `null` beside a `null` offset; a later frame of a set (`Structure.frame_at`) states frame 0's offset as the rule placed it, as `engine` (*A frame set gets one offset*, below); a v7–v11 file's stated offset is read as `person`, and written so (`sidecars.molstruct.apply_to_structure`) |
+| `offset_by` | `person`, `engine` or `null` | whose the stated offset is (§ 6.0): the person's assigned origin, kept; or an engine's own frame, kept from stage to stage and not carried into a new calculation (`cell.entering`) | `null` beside a `null` offset; a later frame of a set (`Structure.frame_at`) states frame 0's offset as the rule placed it, as `engine` (*A frame set gets one offset*, below) |
 | **`axis_kind`** | 3 × enum `{periodic, isolated, transport}` | **how axis *i* is treated — the authoritative periodicity field** (§ 2) | `(periodic,periodic,periodic)` if a cell is present, else all-`isolated` |
 | `pbc` | — | not a field: the boolean view is the accessor `Structure.pbc()`, computed from `axis_kind` on demand (§ 2.0a) | — |
 | `vacuum` | 3 floats (Å) **or `null`** | isolation padding, **per side** — meaningful only on an `isolated` axis. `null` means *nobody chose one*, which is what earns that axis the default gap (§ 6.1); `[0,0,0]` means *no gap, deliberately*, and is used verbatim | `null` (unset) |
@@ -50,11 +50,9 @@ file.
 (`structure.py`) and serialize through the one metadata codec
 (`metadata_to_dict`/`apply_metadata_dict`, see `structure.md § 2.2`).
 
-> **`cell_origin` is a retired key** (sidecar v10): a v7–v9 file that carries
-> it is read with it ignored, and no writer emits it again. Placement is
-> `engine_offset`'s (§ 6.0). Opening such a file on the load door says so,
-> naming the corner it did not apply (`cell.origin_retired`, `info`), because
-> a person who typed it assigns it again on the Cell page.
+> **`cell_origin` is a retired key** (sidecar v10): no writer emits it, and no
+> pair this build reads holds one (`structure-molstruct.md` § 2). Placement is
+> `engine_offset`'s (§ 6.0).
 
 ### 2.0a One periodicity field, and a boolean accessor *(user, 2026-09-22)*
 
@@ -74,10 +72,11 @@ outside this project that requires booleans and has nothing richer:
 is treated asks `axis_kind`, which says which of the three it is. Reading the
 boolean instead would label a `transport` axis `periodic`.
 
-**On disk:** a sidecar carries `axis_kind` and no `pbc`; a `pbc` key in an
-older sidecar is a retired key — accepted and ignored, never applied
-(`RETIRED_METADATA_KEYS`); nothing is lost, since every readable sidecar
-carries a real `axis_kind`.
+**On disk:** a sidecar carries `axis_kind` and no `pbc`: `pbc` is a retired
+key, which no pair this build reads holds — a sidecar holding one is refused
+as holding a key it does not carry
+([`model/structure-molstruct.md`](?doc=model/structure-molstruct.md) § 2,
+*Retired keys*).
 
 ---
 
@@ -400,9 +399,7 @@ recomputed on those engine coordinates is `[0, 0, 0]`.
 **A stated offset — an origin the person assigns, and an engine's own.** The
 rule is the default, not a cage. A structure may STATE its offset instead, and
 two things state one; the structure records which, as `offset_by` — `person`
-or `engine` — beside the offset (`model/structure-molstruct.md` v12). A file
-written before the record (v10–v11) states an offset and not whose: it is read
-as the person's, kept as stated, and *Automatic* on the Cell page centres it.
+or `engine` — beside the offset (`model/structure-molstruct.md` v12).
 
 * **An origin the person assigns** *(user, 2026-09-25: "we should add one that
   can allow user to explicitly assign the origin of the cell box as the user

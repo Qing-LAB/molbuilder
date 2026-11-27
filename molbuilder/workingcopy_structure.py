@@ -54,8 +54,7 @@ from typing import List, NamedTuple, Optional, Sequence, Tuple
 # installed.  What that call reaches imports only the standard library and
 # numpy; the rest of the codec reads through the package.
 try:                                        # inside molbuilder
-    from .atom_permutation import (LISTED_NOT_STATED, MAP_KEY, AtomIndexMap,
-                                   Permutation)
+    from .atom_permutation import LISTED_NOT_STATED, MAP_KEY, AtomIndexMap
     from .structure import REMAPPED_NOT_EDITED, Structure
     from .sidecars import molstruct
     from .structure_pair import GeometryChangedError
@@ -64,7 +63,7 @@ try:                                        # inside molbuilder
     from .runfiles import PAIRED_SUFFIX
 except ImportError:                         # beside a job, in mb_pyscf.pyz
     from atom_permutation import (  # type: ignore[no-redef]
-        LISTED_NOT_STATED, MAP_KEY, AtomIndexMap, Permutation)
+        LISTED_NOT_STATED, MAP_KEY, AtomIndexMap)
     from structure import REMAPPED_NOT_EDITED, Structure
     import molstruct
     from structure_pair import GeometryChangedError
@@ -140,14 +139,11 @@ READ_NOTICES = {LONE_FILE: "info", GEOMETRY_CHANGED: "warn",
                 ORDER_NOT_STATED: "warn"}
 
 
-def order_not_stated_said(name: str, why: str = "") -> str:
-    """What a read says of a pair that states no atom order
-    (`model/overview.md` § 2.2b, F4) -- one saved before 2026-10-14, or one
-    whose map states ``not_stated`` and ``why``."""
+def order_not_stated_said(name: str, why: str) -> str:
+    """What a read says of a pair whose map states ``not_stated``, and
+    ``why`` (`model/overview.md` § 2.2b, F4)."""
     known = (f"{name} states its atom order is not known -- {why}: read in "
-             f"the order listed." if why else
-             f"{name} does not say which order its atoms are in: read in the "
-             f"order listed, though it may be an engine's.")
+             f"the order listed.")
     return (f"{known} If that is the order you built it in, saving it again "
             f"on the Molbuilder tab records it; a calculation described from "
             f"it is then described again from the saved pair.")
@@ -156,56 +152,27 @@ def order_not_stated_said(name: str, why: str = "") -> str:
 #: WHY A PAIR SAVED FROM A VIEW OF A RUN WHOSE ORDER NOTHING STATES IS
 #: `not_stated` (`model/overview.md` § 2.2b, F4) -- its map's own sentence.
 VIEW_ORDER_UNSTATED_WHY = (
-    "saved from a view of a structure whose order nothing states -- a run's "
-    "deck or a composed junction's sidecar written before 2026-10-14: its "
-    "atoms may be listed by engine index")
+    "saved from a view of a run whose order nothing states -- its deck "
+    "written before 2026-10-14: its atoms may be listed by engine index")
 
 
-def pair_order_unstated_said(sidecar_name: str) -> str:
-    """What every door says of a pair the catalogue lists by engine index --
-    a calculation's composed junction -- whose sidecar states no order
-    record (`model/overview.md` § 2.2a, I9): one sentence, the junction's
-    one read (`transport.compose.recorded_junction`) and `atom_index`
-    alike."""
-    return (f"{sidecar_name} states no order record -- it was written "
-            f"before the field -- so its atoms stand in the engine's order "
-            f"with nothing stating the way back to the user order")
-
-
-def pair_atom_index_map(geometry: Path, payload: dict, *,
-                        listing: "Optional[bool]", states_order: bool
-                        ) -> "Optional[AtomIndexMap]":
+def pair_atom_index_map(geometry: Path, payload: dict) -> AtomIndexMap:
     """WHAT A PAIR STATES OF ITS ATOMS' ORDER (`model/overview.md` § 2.2b,
     F4) -- the one answer for the codec's read, `atom_index` and prep: its
-    sidecar's own map (v15, read and checked by the sidecar's reader);
-    else, a sidecar that ``states_order`` (v14: its ``atom_order`` field,
-    known by what the file states), made from its order record -- listed by
-    engine index where it carries one or the catalogue lists the pair by
-    engine index (``listing`` not ``None``, :func:`pair_engine_listing`: an
-    engine's record whose sort moved nothing); else, a v7-v13 sidecar
-    stating no order: the user's pair read as listed by user index with
-    F4's warning, an engine's record of a kind that sorts nothing
-    (``listing`` ``False`` -- a PySCF run's) the identity, and one of a
-    kind that may sort ``None``: nothing states its order (I9,
-    :func:`pair_order_unstated_said`)."""
+    sidecar's own map, read and checked by the sidecar's reader; one that
+    states ``not_stated`` read as listed by user index, F4's warning its
+    words.  Refused by name: a sidecar stating none, as every pair this
+    build reads states one."""
     n = int(payload["n_atoms_total"])
-    if MAP_KEY in payload:
-        atoms = AtomIndexMap.from_dict(payload[MAP_KEY], n_atoms=n)
-        if atoms.listed_by == LISTED_NOT_STATED:
-            atoms = AtomIndexMap.assumed_user(
-                n, order_not_stated_said(geometry.name, atoms.said))
-        return atoms
-    if states_order:
-        record = payload.get("atom_order")
-        record = (Permutation.from_dict(record, n_atoms=n) if record
-                  else None)
-        if record is not None or listing is not None:
-            return AtomIndexMap.of_engine_record(record, n)
-        return AtomIndexMap.of_user_structure(n)
-    if listing is None:
-        return AtomIndexMap.assumed_user(
-            n, order_not_stated_said(geometry.name))
-    return None if listing else AtomIndexMap.of_engine_record(None, n)
+    if MAP_KEY not in payload:
+        raise molstruct.MolstructUnreadable(
+            f"{geometry.name}'s sidecar states no {MAP_KEY}, which every "
+            f"pair of version {molstruct.SCHEMA_VERSION} states")
+    atoms = AtomIndexMap.from_dict(payload[MAP_KEY], n_atoms=n)
+    if atoms.listed_by == LISTED_NOT_STATED:
+        atoms = AtomIndexMap.assumed_user(
+            n, order_not_stated_said(geometry.name, atoms.said))
+    return atoms
 
 
 def pair_files_changed(path, pinned) -> List[str]:
@@ -226,36 +193,6 @@ def pair_files_changed(path, pinned) -> List[str]:
         if not same:
             changed.append(f.name)
     return changed
-
-
-def pair_engine_listing(sidecar: Path) -> "Optional[bool]":
-    """WHETHER THE CATALOGUE LISTS THIS PAIR BY ENGINE INDEX -- a
-    calculation's composed junction, a PySCF run's ``_initial`` and
-    ``_optimized`` pairs (`runs.catalogue_row`, F3) -- and if so whether
-    its kind may be sorted: ``None`` for the user's pair (a pair in no
-    calculation of ours is the user's, whatever its name, and a run's pair
-    where no label reads its name back -- the calculation's description
-    does not read); ``True`` where the pair's atom order sorts the stage it
-    belongs to (`kind_table.atom_order` -- the composed junction), and for
-    the junction where the description does not read, so nothing says;
-    ``False`` for a kind that sorts nothing (a PySCF run's)."""
-    try:                                    # inside molbuilder
-        from .atom_permutation import LISTED_BY_ENGINE
-        from .runs import catalogue_row, place_of, run_of
-        from .kind_table import atom_order
-    except ImportError:                     # beside a job: no calculation
-        return None
-    place = place_of(sidecar.parent)
-    row = catalogue_row(sidecar, place)
-    if row is None or row.listed_by != LISTED_BY_ENGINE:
-        return None
-    if place.root is None:
-        return None
-    if place.task is None:
-        return True
-    run = run_of(sidecar.parent)
-    return atom_order(place.task.calculation, place.task.engine,
-                      run.stage if run is not None else None) is not None
 
 
 #: THE ENGINE RECORD'S WORDS in its `.xyz` comment line, after the title
@@ -340,8 +277,6 @@ class StructureCodec:
     def load(self, source_path, *,
              frame: "int | None" = None,
              frames: bool = False,
-             retired_out: "dict | None" = None,
-             stated_out: "set | None" = None,
              said_out: "list | None" = None,
              opened: "tuple | frozenset" = (),
              in_user_order: bool = False,
@@ -362,16 +297,6 @@ class StructureCodec:
         with ``frames=True``, the whole set (:meth:`frame_choice`).  A
         one-frame file answers the same for all three.
 
-        ``retired_out``: a caller that passes a dict gets each retired key the
-        sidecar carried with a value -- read and ignored, and the load door
-        says so (plan § 5q D14).
-
-        ``stated_out``: a caller that passes a set gets every metadata field
-        the sidecar states -- a null one among them -- so a reader can tell a
-        field stated null from one written before the field existed
-        (``model/overview.md`` § 2.2a, I9: the composed junction's order
-        record, `transport.compose.recorded_junction`).
-
         ``said_out``: a caller that passes a list gets what the read says to a
         person about this file, each a notice at its level
         (:func:`read_notice`) -- a LONE ``.xyz`` (no sidecar, not an engine's
@@ -385,8 +310,7 @@ class StructureCodec:
         THE PIN COMPARED (``structure-molstruct.md`` § 3) -- a sidecar whose
         geometry hash is not the file's, its atoms or cell changed after the
         pair was written, :class:`structure_pair.GeometryChangedError`,
-        :data:`GEOMETRY_CHANGED` (a sidecar written before v13 states no
-        hash, and its pair opens unchecked); and AN ENGINE'S OWN FILE OF A
+        :data:`GEOMETRY_CHANGED`; and AN ENGINE'S OWN FILE OF A
         RUN WHOSE ORDER NOTHING STATES -- its deck written before the order
         was recorded, for a kind that reorders (``model/overview.md`` § 2.2a,
         I9) -- :class:`runs.OrderUnstated`, :data:`ORDER_UNSTATED`.
@@ -431,14 +355,8 @@ class StructureCodec:
         restored_said = None
         sidecar_path = molstruct.paired_sidecar(src)
         if sidecar_path is not None:
-            # WHAT THE FILE STATES, by its fields -- the order record's
-            # among them (`model/overview.md` § 2.2a, I9: known by what the
-            # file states, never its version).
-            stated = stated_out if stated_out is not None else set()
-            payload = molstruct.load(sidecar_path, retired_out=retired_out,
-                                     stated_out=stated)
-            pinned = payload.get("geometry_hash")
-            if pinned is not None and pinned != molstruct.geometry_hash(
+            payload = molstruct.load(sidecar_path)
+            if payload["geometry_hash"] != molstruct.geometry_hash(
                     text, payload["cell"], payload["axis_kind"]):
                 if GEOMETRY_CHANGED not in opened:
                     raise GeometryChangedError(
@@ -449,24 +367,17 @@ class StructureCodec:
                 molstruct.apply_to_structure(struct, payload)
             except molstruct.MolstructJsonError as exc:
                 # THE FILE THAT SAID IT, named (a map against its record) --
-                # the refusal's own kind kept (a pairing refusal among them).
-                raise type(exc)(f"{sidecar_path.name}: {exc}") from exc
-            # WHAT THE PAIR STATES OF ITS ORDER (§ 2.2b, F4): one that states
-            # none -- saved before 2026-10-14, or from a view of a run whose
-            # order nothing states -- is read as listed by user index, and
-            # said; an engine's record that states none of a kind that may
-            # sort (I9) is refused to an editor and a builder, and opened
-            # for a viewer marked, and said.
-            atoms = pair_atom_index_map(
-                src, payload, listing=pair_engine_listing(sidecar_path),
-                states_order="atom_order" in stated)
-            if atoms is None:
-                said = pair_order_unstated_said(sidecar_path.name)
-                if in_user_order or ORDER_UNSTATED not in opened:
-                    raise ValueError(said)
-                struct.order_unstated = True
-                said_out.append(read_notice(ORDER_UNSTATED, said))
-            elif atoms.listed_by == LISTED_NOT_STATED:
+                # the refusal's own kind kept (a pairing refusal among them),
+                # every one a pair that does not read, marked.
+                kind = (type(exc)
+                        if isinstance(exc, molstruct.MolstructUnreadable)
+                        else molstruct.MolstructUnreadable)
+                raise kind(f"{sidecar_path.name}: {exc}") from exc
+            # WHAT THE PAIR STATES OF ITS ORDER (§ 2.2b, F4): one saved from
+            # a view of a run whose order nothing states says so -- read as
+            # listed by user index, and said.
+            atoms = pair_atom_index_map(src, payload)
+            if atoms.listed_by == LISTED_NOT_STATED:
                 if said_out is not None:
                     said_out.append(read_notice(ORDER_NOT_STATED, atoms.said))
                 if a_copy:

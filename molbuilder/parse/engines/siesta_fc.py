@@ -32,11 +32,11 @@ import numpy as np
 # (`runwrap.members`), where the package is not installed.
 try:                                        # inside molbuilder
     from ...constants import BOHR_ANGSTROM, HARTREE_EV
-    from ..errors import ParseError
+    from ..errors import FileUnreadable
     from .siesta_grammar import FC_STEP_PATTERN
 except ImportError:                         # beside a job, in mb_vibration.pyz
     from constants import BOHR_ANGSTROM, HARTREE_EV
-    from errors import ParseError
+    from errors import FileUnreadable
     from siesta_grammar import FC_STEP_PATTERN  # type: ignore[no-redef]
 
 #: eV/Å² -> Hartree/Bohr², from the two constants it is made of.
@@ -63,35 +63,39 @@ def read_fc(path) -> ForceConstantFile:
     text = p.read_text(encoding="utf-8")
     lines = [ln for ln in text.splitlines() if ln.strip()]
     if not lines or not lines[0].lower().startswith("force constants matrix"):
-        raise ParseError(
+        raise FileUnreadable(
             f"{p.name}: not a SIESTA force-constant file (the first line "
             f"should begin 'Force constants matrix')")
     head = lines[0].split(":", 1)
     if len(head) != 2:
-        raise ParseError(f"{p.name}: the header carries no 'n_atoms, "
-                         f"displacement' pair after the colon")
+        raise FileUnreadable(
+            f"{p.name}: the header carries no 'n_atoms, "
+            f"displacement' pair after the colon")
     fields = head[1].split()
     try:
         n_atoms = int(fields[0])
         displacement_ang = float(fields[1].replace("D", "E"))
     except (IndexError, ValueError) as exc:
-        raise ParseError(f"{p.name}: cannot read n_atoms and the "
-                         f"displacement from the header: {exc}") from exc
+        raise FileUnreadable(
+            f"{p.name}: cannot read n_atoms and the "
+            f"displacement from the header: {exc}") from exc
     try:
         rows = np.array([[float(x.replace("D", "E")) for x in ln.split()]
                          for ln in lines[1:]], dtype=float)
     except ValueError as exc:
-        raise ParseError(f"{p.name}: a force row is not three numbers: "
-                         f"{exc}") from exc
+        raise FileUnreadable(
+            f"{p.name}: a force row is not three numbers: "
+            f"{exc}") from exc
     if rows.ndim != 2 or rows.shape[1] != 3:
-        raise ParseError(f"{p.name}: force rows must carry three "
-                         f"components; got shape {rows.shape}")
+        raise FileUnreadable(
+            f"{p.name}: force rows must carry three "
+            f"components; got shape {rows.shape}")
     # SIESTA'S ORDER (`siesta_grammar.FC_STEP_PATTERN`): each axis, each
     # side within it.
     axes = len(dict.fromkeys(axis for axis, _side in FC_STEP_PATTERN))
     per_displaced = len(FC_STEP_PATTERN) * n_atoms
     if rows.shape[0] == 0 or rows.shape[0] % per_displaced:
-        raise ParseError(
+        raise FileUnreadable(
             f"{p.name}: {rows.shape[0]} force rows is not a multiple of "
             f"{len(FC_STEP_PATTERN)} x {n_atoms} atoms -- the file is "
             f"truncated or is not an FC file for this structure")
@@ -111,13 +115,14 @@ def _two_sided_mean(fc: ForceConstantFile,
     diagnostic read the same numbers."""
     displaced = [int(i) for i in displaced]
     if len(displaced) != fc.n_displaced:
-        raise ParseError(
+        raise FileUnreadable(
             f"{Path(fc.path).name}: the file holds {fc.n_displaced} "
             f"displaced atom(s) but the caller names {len(displaced)} -- "
             f"the FC range and the free set disagree")
     if any(not 0 <= a < fc.n_atoms for a in displaced):
-        raise ParseError(f"{Path(fc.path).name}: a displaced-atom index is "
-                         f"outside the {fc.n_atoms} atoms of the file")
+        raise FileUnreadable(
+            f"{Path(fc.path).name}: a displaced-atom index is "
+            f"outside the {fc.n_atoms} atoms of the file")
     n = fc.n_atoms
     H = np.zeros((n, n, 3, 3))
     for p, a in enumerate(displaced):
@@ -184,9 +189,10 @@ def reference_frame_of(reading, *, name: str = "the output"):
     for step in reading.get("steps") or ():
         if step.get("forces") and step.get("coords"):
             return step
-    raise ParseError(f"{name}: no force block for the reference geometry "
-                     f"(FC step 0) -- the force-constant run has not written "
-                     f"its first step")
+    raise FileUnreadable(
+        f"{name}: no force block for the reference geometry "
+        f"(FC step 0) -- the force-constant run has not written "
+        f"its first step")
 
 
 __all__ = ["ForceConstantFile", "read_fc", "hessian_from_fc",

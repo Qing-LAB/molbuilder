@@ -13,8 +13,10 @@
  * viewer.  Nothing here is recomputed; a stage still running reads as
  * pending, never as a failure.
  *
- * Reads through `ctx.readFile` -- the one shared reader every presenter uses
- * (`web/presenters.md` § 2) -- so it opens no route of its own.
+ * Reads the record through the server's reader (`/api/spectra/sweep`, the
+ * registry's `fc-sweep-json`), as each presenter loads its own data through
+ * its kind's route (`web/results.md` § 0.2): a record of another version is
+ * its reader's refusal, shown in its words.
  */
 (function (root) {
     "use strict";
@@ -196,22 +198,20 @@
         mount(host, file, ctx) {
             let disposed = false;
             (async function () {
-                let rec;
-                try {
-                    const body = await ctx.readFile(file);
-                    if (!body || !body.ok) {
-                        throw new Error("could not read " + file + ": "
-                            + ((body && body.error) || "unknown"));
-                    }
-                    rec = JSON.parse(body.text || "");
-                } catch (e) {
-                    if (disposed) return;
-                    if (ctx && ctx.showError) ctx.showError(String(e));
-                    else host.textContent = String(e);
+                // THE RECORD THROUGH ITS READER (`/api/spectra/sweep`, the
+                // registry's `fc-sweep-json`): one of another version is
+                // its reader's refusal, said here in its words -- never
+                // the file's text drawn as if current.
+                const answer = await root.molbuilder.server.ask(
+                    "/api/spectra/sweep?path=" + encodeURIComponent(file));
+                if (disposed) return;
+                if (!answer.ok) {
+                    if (ctx && ctx.showError) ctx.showError(answer.error);
+                    else host.replaceChildren(
+                        root.molbuilder.dom.codeWords(answer.error));
                     return;
                 }
-                if (disposed) return;
-                render(host, rec);
+                render(host, answer.body.record);
                 /* FIRST RENDER ON SCREEN: the picker drops its "Parsing…"
                  * line on this event (`lib/results/file-picker.js`) rather
                  * than waiting out its fallback timer.  A table draws

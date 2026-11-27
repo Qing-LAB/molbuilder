@@ -53,9 +53,9 @@ by a second reader: it is that composition on its grid, for analysis.
 | file | what it is | written by | schema | its chapter · its names |
 |---|---|---|---|---|
 | `<label>.transport.nc` | every result of a transport calculation, in groups: the junction, each stage, each point and its device run, and the summary across the points | `jobset summarize task`; an export composes the same file | `molbuilder/transport-data@14` | `engines/transport.md` § 2a.12 · § 9.1 |
-| `<label>.spectra.nc` | a vibration result, beside its JSON — the same payload, tied by the JSON's sha256 | the result's one writer, at every write on both engines | `molbuilder/spectra-data@11` (`@1`–`@10` read as they are) | `engines/vibration.md` § 6.10, *The data file* · § 9.2 |
+| `<label>.spectra.nc` | a vibration result, beside its JSON — the same payload, tied by the JSON's sha256 | the result's one writer, at every write on both engines | `molbuilder/spectra-data@11`, any other refused | `engines/vibration.md` § 6.10, *The data file* · § 9.2 |
 | `<label>.TBT.digest.nc` (`.TBT_UP` / `.TBT_DN`) | a TBtrans data file's DOS per orbital, k-averaged once and kept | the reading of the `.TBT.nc` beside it | `molbuilder/tbt-digest@5` | `model/parse.md` § 5e · § 9.6 |
-| `<label>.optical.nc` | a SIESTA vibration's optical calls — each frame's ε₂ on the photon energies, its mode, side and geometry, the settings the calls read: the record of the Raman phase so far | the run's own record steps — the force constants', every frame pending, then each optical call's — and its finish | `molbuilder/optical-data@5` (`@1`–`@4` read as they are) | `engines/vibration.md` § 5.11 § 8 · § 9.3 |
+| `<label>.optical.nc` | a SIESTA vibration's optical calls — each frame's ε₂ on the photon energies, its mode, side and geometry, the settings the calls read: the record of the Raman phase so far | the run's own record steps — the force constants', every frame pending, then each optical call's — and its finish | `molbuilder/optical-data@5`, any other refused | `engines/vibration.md` § 5.11 § 8 · § 9.3 |
 | `<label>.optimization.nc` · `<label>.steps.nc` | a calculation's runs and their steps (§ 9.5): every step its runs finished on one grid — each atom's position and force, its charges where the run printed them, the energy, the stress, the largest force — each step's SCF cycles, and each run's own record: whether it converged, how it ended; an optimization's data file, and a vibration's runs beside its own data files | an export alone (`stepsdata`, through `optimization.export` and `spectra.export`), never into the calculation | `molbuilder/run-steps@1` | `engines/optimization-postprocessing.md` § 6, `engines/vibration-postprocessing.md` § 1 · § 9.5 |
 | `<label>.<chart>.nc` | what one chart on the Results page draws, as drawn: each curve of each tag, the thresholds, what the person had chosen | an export alone (`chartdata`, `POST /api/export/chart`), never into the calculation | `molbuilder/chart-data@1` | `web/results.md` § 1.2 · § 9.7 |
 | `<label>.raman.nc` | a SIESTA vibration's Raman view at the laser and width a person named — per picked mode `∂α/∂Q` and the strength, at the laser and static, and the equilibrium `α`; what it was derived from by name and sha256 — the result, `<label>.spectra.json`, and the optical calls' data file | an export alone (`spectra.export`), never into the calculation | `molbuilder/raman-view@4` | `engines/vibration.md` § 5.11 § 10 · § 9.4 |
@@ -274,19 +274,13 @@ naming this section — in every file, every group, the root's included.
    here and to `ncdata.AXES` — its name made by rule 2 and checked against
    every row for a concept already named. Until then the writer refuses it.
 5. **A row is never renamed in place.** Renaming an axis is a new `schema`
-   of every file that uses it. A reader that reads its older files as they
-   are (the vibration result's, the optical calls' — § 1) keeps reading
-   the old name as the new one, each variable stating the names older
-   files wrote it under (`ncdata.Var.earlier`). **An older file's names are
-   read through one door** (`ncdata.named_now`) — its variables', its
-   attributes' and the names it lists — so a reader asks only for the names
-   its schema writes. The one reader of variables, handed a group's
-   variables (`ncdata.read_variables(group, variables)`), applies it, and
-   takes a number an older file stated as an attribute — every file before
-   2.47.0 did — as the variable it is now. A file refused by its version (§ 3a) is
-   written again by its command; a kept reading is out of date at another
-   version and made again from its source (the digest, `model/parse.md`
-   § 5e).
+   of every file that uses it, and every reader reads its own schema alone:
+   a file of another is refused by its version (§ 3a), naming both and the
+   way on, and its reader asks only for the names its schema writes. A file
+   refused is written again by its command — the vibration result's and the
+   optical calls', which a run wrote, by running the vibration again; a kept
+   reading is out of date at another version and made again from its source
+   (the digest, `model/parse.md` § 5e).
 
 | axis | its points | its coordinate's values | units (— labels) | files |
 |---|---|---|---|---|
@@ -324,11 +318,9 @@ naming this section — in every file, every group, the root's included.
 | `curve` | a chart's curves of one tag | from 0, in the order the chart drew them; each one's legend name beside it (`curve_name`) | 1 | chart |
 | `curve_point` | a curve's points | from 0, in the order the chart drew them; a curve of fewer points padded with the fill | 1 | chart |
 
-**Files written before these names** read as rule 5 says: the vibration
-data file's reader takes `@1`–`@3`'s names for the new ones, and `@1`–`@9`'s
-for the names 2.72.3 gave by rule 2; the optical calls' reader `@1`–`@4`'s —
-each by the variable's `earlier` names; a digest before `@5` is out of
-date, read again from its `.TBT.nc`.
+**Files written before these names** are refused by their version, as
+rule 5 says; a digest before `@5` is out of date, read again from its
+`.TBT.nc`.
 
 ## 3. Writing — one writer
 
@@ -425,8 +417,7 @@ attribute `engine_version`, the version read by the one reader of an engine
 output's build header (`siesta_reader.engine_version`); a file derived from
 others states `derived_from=` — and, a view derived from files an engine
 computed (the Raman view), both, in one sentence. One name,
-`engine_version`, wherever a file states an engine's version (the optical
-calls and the Raman view named it `siesta_version` until 2.72.2); a file
+`engine_version`, wherever a file states an engine's version; a file
 that states
 only what it was derived from (the steps file, a TBtrans digest)
 states none.
@@ -437,7 +428,12 @@ states none.
 record and every data file: a schema it does not read is refused by name,
 the schemas it reads listed, and the way on where a command writes the file
 again (the transport file's `summarize task`, the steps file's and the
-Raman view's export). A TBtrans digest is not refused: one of another
+Raman view's export) or a run does (the vibration result's data file and the
+optical calls', *run the vibration again*); a file a later molbuilder wrote
+says that instead, its way on the molbuilder that wrote it. Each reader's
+refusal is its own type with one mark, `persist.FileRefused`, which the
+command line and the web server say at their edge
+([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1). A TBtrans digest is not refused: one of another
 version is out of date and read again (`model/parse.md` § 5e). A file's
 groups are walked by one walk, `ncdata.groups`, a group after its parent —
 the tables (§ 5), the atom index door, the file's own statement. A file read
@@ -450,11 +446,12 @@ every road. A file whose reader rebuilds a record — the vibration result's
 payload, the optical calls' frames, the Raman view's modes — does that from
 the same doors.
 
-Each file moves its schema with this, and its chapter says which older ones
-it still reads: the vibration result's and the optical calls', which a run
-wrote and nothing writes again, are read as they are; the transport and
-steps files and the Raman view, which an export or `summarize`
-writes, are refused by version, their writer's command writing them again.
+Each file moves its schema with this, and its reader reads that one schema
+alone: the vibration result's and the optical calls', which a run wrote,
+are refused by version and made again by running the vibration again; the
+transport and steps files and the Raman view, which an export or
+`summarize` writes, are refused by version, their writer's command writing
+them again.
 
 ## 4. Reading — one door, one access, one handle
 
@@ -486,8 +483,8 @@ read_data_file`, `spectra.datafile.read_spectra_data`,
 TBtrans parser, the `.MD.nc` reader, the atom index map's reader — kept so by
 review; sisl reads an engine's other files (`.TS.HSX`, `.ORB_INDX`), which
 are not NetCDF, through its own doors. **Every reader gives the map back with
-the data**: `read_variables(group, variables)` — each of `variables` under
-its name now, an older file's included (§ 2a rule 5) — and
+the data**: `read_variables(group)` — every variable of the group, each
+by its name — and
 `read_atom_index_map(group)` — the
 map's one reader, `AtomIndexMap.from_dict`, checked as it is read.
 
@@ -1105,8 +1102,8 @@ Every raw variable here is *from the device point's SIESTA output*.
 The vibration result as data — the same payload as `<label>.spectra.json`
 beside it, tied to it by that JSON's sha256 (`json_sha256`). Written by the
 job at every write of the result, on both engines (the result's one writer,
-`write_spectra_payload`); schema `molbuilder/spectra-data@11` — which older
-ones it reads, § 1. The science is [`engines/vibration.md`](?doc=engines/vibration.md)
+`write_spectra_payload`); schema `molbuilder/spectra-data@11`, the one its
+reader reads (§ 1). The science is [`engines/vibration.md`](?doc=engines/vibration.md)
 § 4 (PySCF) and § 5 (SIESTA); the result's keys, § 6.2–6.6.
 
 ```text
@@ -1320,7 +1317,7 @@ on the photon energies, its mode, side and geometry, its state and SCF facts,
 and the settings the calls read. Written at the run's root by the run's own
 record steps — the force constants' (every frame pending), each optical
 call's, and the finish — and rewritten as each call ends; cited by the result's
-`optical` (9.2). Schema `molbuilder/optical-data@5` — which older ones it reads, § 1. The science: [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11
+`optical` (9.2). Schema `molbuilder/optical-data@5`, the one its reader reads (§ 1). The science: [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11
 § 8, [`science/vibrational-optical-response.md`](?doc=science/vibrational-optical-response.md) § 3.
 
 #### `/`

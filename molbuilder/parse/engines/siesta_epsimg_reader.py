@@ -44,10 +44,10 @@ import numpy as np
 # TWO WAYS, because this module travels beside the job.
 try:                                        # inside molbuilder
     from . import siesta_grammar as _G
-    from ..errors import ParseError
+    from ..errors import FileUnreadable
 except ImportError:                         # beside a job, in mb_vibration.pyz
     import siesta_grammar as _G  # type: ignore[no-redef]
-    from errors import ParseError  # type: ignore[no-redef]
+    from errors import FileUnreadable  # type: ignore[no-redef]
 
 #: THE HEADER'S TITLES, as SIESTA prints them (`Src/optical.F`), compared
 #: lowercased -- each followed by its value line.
@@ -95,7 +95,8 @@ def _number(token: str, *, what: str, name: str) -> float:
     try:
         return float(token.replace("D", "E").replace("d", "e"))
     except ValueError:
-        raise ParseError(f"{name}: {what} is {token!r}, not a number") from None
+        raise FileUnreadable(
+            f"{name}: {what} is {token!r}, not a number") from None
 
 
 def read_epsimg(path) -> EpsImg:
@@ -116,8 +117,9 @@ def read_epsimg(path) -> EpsImg:
                 continue
             if text.startswith("##"):
                 if rows:
-                    raise ParseError(f"{name}: line {n}: a header line after "
-                                     f"the rows began")
+                    raise FileUnreadable(
+                        f"{name}: line {n}: a header line after "
+                        f"the rows began")
                 body = text[2:].strip()
                 if title is None:
                     title = body.lower()
@@ -126,19 +128,22 @@ def read_epsimg(path) -> EpsImg:
                     title = None
                 continue
             if title is not None:
-                raise ParseError(f"{name}: the header's '{title}' has no "
-                                 f"value line")
+                raise FileUnreadable(
+                    f"{name}: the header's '{title}' has no "
+                    f"value line")
             rows.append([_number(t, what=f"line {n}", name=name)
                          for t in text.split()])
     for t in (RANGE_TITLE, SPIN_TITLE):
         if t not in header:
-            raise ParseError(f"{name}: the header states no '{t}' -- not a "
-                             f"SIESTA optical spectrum (Src/optical.F)")
+            raise FileUnreadable(
+                f"{name}: the header states no '{t}' -- not a "
+                f"SIESTA optical spectrum (Src/optical.F)")
     n_spin = int(_number(header[SPIN_TITLE][0], what="the spin count",
                          name=name))
     if n_spin not in CHANNELS:
-        raise ParseError(f"{name}: {n_spin} spin components; SIESTA's "
-                         f"optical spectrum has 1 or 2")
+        raise FileUnreadable(
+            f"{name}: {n_spin} spin components; SIESTA's "
+            f"optical spectrum has 1 or 2")
     lo, hi = (_number(t, what="the energy range", name=name)
               for t in header[RANGE_TITLE][:2])
 
@@ -147,28 +152,30 @@ def read_epsimg(path) -> EpsImg:
                 [f"{base}{sep} spin {i}" for i in range(1, n_spin + 1)])
         missing = [k for k in keys if k not in header]
         if missing:
-            raise ParseError(f"{name}: the header states no "
-                             f"{', '.join(repr(k) for k in missing)}")
+            raise FileUnreadable(
+                f"{name}: the header states no "
+                f"{', '.join(repr(k) for k in missing)}")
         return tuple(_number(header[k][0], what=k, name=name) for k in keys)
 
     f_sum = per_spin(FSUM_TITLE, "")
     drude = per_spin(DRUDE_TITLE, ",")
     if not rows:
-        raise ParseError(f"{name}: the header holds no rows below it -- the "
-                         f"spectrum was not written")
+        raise FileUnreadable(
+            f"{name}: the header holds no rows below it -- the "
+            f"spectrum was not written")
     widths = {len(r) for r in rows}
     if widths != {1 + n_spin}:
-        raise ParseError(
+        raise FileUnreadable(
             f"{name}: rows of {sorted(widths)} numbers; the header's "
             f"{n_spin} spin component(s) make each row {1 + n_spin} -- the "
             f"energy, then ε₂ per spin")
     table = np.asarray(rows, dtype=float)
     energy = table[:, 0]
     if energy.size > 1 and not np.all(np.diff(energy) > 0):
-        raise ParseError(f"{name}: the energies are not ascending")
+        raise FileUnreadable(f"{name}: the energies are not ascending")
     if (abs(energy[0] - lo) > _HEADER_HALF_DECIMAL_EV
             or abs(energy[-1] - hi) > _HEADER_HALF_DECIMAL_EV):
-        raise ParseError(
+        raise FileUnreadable(
             f"{name}: the rows run from {energy[0]:.4f} to {energy[-1]:.4f} "
             f"eV and the header states {lo:.4f} to {hi:.4f} -- the file was "
             f"cut short (the call stopped while writing it)")

@@ -66,6 +66,18 @@ except ImportError:                        # beside a job
 
 SCHEMA = "molbuilder/calcdir@1"
 
+#: WHEN THE CALCULATION SETUP THIS MOLBUILDER READS BEGAN: a description, a
+#: job request, a template, a plan or a calculation's own warm-file list of
+#: an older version than `jobset migrate` translates belongs to a
+#: calculation described before it (`execution/job-contracts.md` § 6.1, the
+#: family table; the user, 2026-11-26: "Everything before 2026-11-04").
+SETUP_SINCE = "2026-11-04"
+#: ...AND ITS WAY ON, said after its reader's refusal of an older version
+#: (`persist.check_schema`'s ``way``) and by `jobset migrate`, which does not
+#: translate it.
+DESCRIBE_AGAIN = (f"it belongs to a calculation described before "
+                  f"{SETUP_SINCE}: describe the calculation again")
+
 #: § 1.4's own two words.  What a folder IS -- a stage's, an attempt, a
 #: point's, a benchmark's, a trial's, support -- is READ OFF ITS PLACE
 #: (:func:`where`, § 1.4a) -- not a role.
@@ -142,6 +154,24 @@ def read(directory) -> Optional[Placement]:
     if role not in ROLES or not isinstance(of, str):
         return None
     return Placement(role=role, of=of)
+
+
+def unread(directory) -> Optional[str]:
+    """Why ``directory``'s own record does not read, in its reader's words
+    -- ``None`` when it reads, or when the directory has none.  :func:`read`
+    answers both with ``None``, the directory read alone; a reader that says
+    what a folder is says this one's record is there and does not read
+    (`execution/job-contracts.md` § 6.1), never that nothing marks it."""
+    path = Path(directory) / FILENAME
+    if not path.is_file() or read(directory) is not None:
+        return None
+    try:
+        said = read_object(path, schema=SCHEMA)
+    except (OSError, ValueError) as exc:
+        return f"its record, {path}, does not read: {exc}"
+    return (f"its record, {path}, does not read: its role "
+            f"{said.get('role')!r} is none of {', '.join(ROLES)}, or it "
+            f"names no folder it lies in")
 
 
 def description_path(directory) -> Path:

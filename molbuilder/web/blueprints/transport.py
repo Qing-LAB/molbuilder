@@ -386,6 +386,7 @@ def _describe_reused(folder: str, root) -> Any:
     with the refusal as its summary, as any path that is not citable."""
     from molbuilder.frame_average import answer
     from molbuilder.jobset.rung import citation_of
+    from molbuilder.persist import FileRefused
     from molbuilder.transport.compose import read_provenance
     from molbuilder.jobset.runstatus import jobset_status
     from molbuilder.transport.compose import recorded_junction
@@ -407,28 +408,29 @@ def _describe_reused(folder: str, root) -> Any:
         recorded, unread = None, str(exc)
     # THE JUNCTION IN THE USER ORDER, once -- the structure the viewer draws
     # and the frames and their rows beside it, one list
-    # (`model/overview.md` § 2.2a) -- or, a junction whose order is not
-    # recorded (I9), as TranSIESTA lists it, marked and said (§ 2.2b, F4).
+    # (`model/overview.md` § 2.2a).
     junction = (recorded.structure.restored() if recorded is not None
                 else None)
-    unstated = recorded.order_unstated if recorded is not None else None
-    if unstated:
-        junction = junction.replace(order_unstated=True)
     # THE WINDOW ITS TRANSMISSION COMPUTED: the template's, or the rung's
     # own values over it (`ladder.stage_config`).
     cfg = stage_config(task, window_rung(), calc.template_text)
     window = (f"{cfg.transmission_emin_ev:g}…{cfg.transmission_emax_ev:g} "
               f"eV at {cfg.transmission_n_points} points")
-    # WHERE IT STANDS, the status door's line (`JobSetStatus.stands`).
-    stands = jobset_status(calc).stands
+    # WHERE IT STANDS, the status door's line (`JobSetStatus.stands`) --
+    # or, a record it is read from not reading (the calculation's copy of
+    # its machine's record among them), that record's words in its place:
+    # the pick is a gentler door by design (`job-contracts.md` § 6.1).
+    try:
+        stands = jobset_status(calc).stands
+    except FileRefused as exc:
+        stands = str(exc)
     summary = " · ".join([
         "a transport calculation", Extension(rel, task).name,
         f"its junction, cited from {citation_of(task)}",
         str(task.treatment),
         ", ".join(volts_words(v) for v in task.bias), window,
         stands] + ([f"its junction's record does not read: {unread}"]
-                   if unread else [])
-        + ([unstated] if unstated else []))
+                   if unread else []))
     # ITS FRAMES, as any citation's are shown (§ 3.8.1, § 2a.9): the
     # junction's rows as it ran them, stored, and the cited pair's files
     # against the sha256 the calculation pinned.

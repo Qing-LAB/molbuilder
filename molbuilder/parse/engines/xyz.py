@@ -34,7 +34,7 @@ import numpy as np
 
 from molbuilder.frame import Frame, Trajectory
 from molbuilder.parse.base import FileParser
-from molbuilder.parse.errors import ParseError
+from molbuilder.parse.errors import FileUnreadable
 from molbuilder.parse.types import TrajectoryResult
 from molbuilder.runfiles import (PYSCF_OPTIMIZED, ROLE_GEOM_TRAJ, ROLE_INITIAL,
                                  stem_before)
@@ -174,7 +174,7 @@ class XyzFileParser(FileParser):
         try:
             frames = read_frames(str(path))
         except OSError as exc:
-            raise ParseError(f"{Path(path).name}: {exc}") from exc
+            raise FileUnreadable(f"{Path(path).name}: {exc}") from exc
         traj = Trajectory(
             source_format=cls.name,
             frames=[Frame(structure=Structure(elements=symbols,

@@ -354,7 +354,11 @@ def from_dict(obj: Mapping[str, Any], description: "Task") -> JobRequest:
     other (`job-request.md` § 3)."""
     if not isinstance(obj, Mapping):
         _refuse(f"expected a JSON object, got {type(obj).__name__}")
-    check_schema(str(obj.get("schema") or ""), SCHEMA, label=FILENAME)
+    # ANOTHER VERSION, refused with the family's way on (`job-contracts.md`
+    # § 6.1).
+    from .calcdirs import DESCRIBE_AGAIN
+    check_schema(str(obj.get("schema") or ""), SCHEMA, label=FILENAME,
+                 way=DESCRIBE_AGAIN)
     _refuse_unknown_keys(obj, TOP_KEYS, where="", note=_DESCRIPTION_NOTE)
     engine, calc = str(description.engine), str(description.calculation)
     return JobRequest(

@@ -67,6 +67,29 @@ def cited_pair_path(task, base: Path) -> Optional[Path]:
     return path if path.is_file() else None
 
 
+def copy_of_another_version(candidate: Path, exc) -> str:
+    """THE WORDS FOR THE COPY OF ITS STRUCTURE A CALCULATION KEEPS whose
+    sidecar is of a version this molbuilder does not read (``exc``, the
+    codec's `structure_pair.MolstructVersionError`): the version's fact and
+    the calculation's way on, never the pair's -- one described before the
+    one version read is described again from the structure it was made from
+    (`structure-molstruct.md` § 2; the user, 2026-11-26: "Everything before
+    2026-11-04"); one a later molbuilder wrote is opened with that
+    molbuilder (`job-contracts.md` § 6.1).  Said by prep
+    (:func:`structure_for`) and by `jobset migrate`, which does not
+    translate it."""
+    from ..persist import LATER_WAY
+    from ..sidecars.molstruct import SCHEMA_SINCE
+    if exc.later:
+        return (f"the copy of its structure this calculation keeps, "
+                f"{candidate.name}, does not read -- {exc.fact} -- "
+                f"{LATER_WAY}")
+    return (f"this calculation was described before {SCHEMA_SINCE}: the "
+            f"copy of its structure it keeps, {candidate.name}, does not "
+            f"read -- {exc.fact}.  Describe it again from the structure it "
+            f"was made from")
+
+
 def structure_for(task, base: Path, pset):
     """The structure this calculation is *of*, from the reference in the
     description (`stages.md` § 6.3 — a reference plus a witness, never a copy).
@@ -80,7 +103,7 @@ def structure_for(task, base: Path, pset):
     different calculation under the same id — § 1's second failure mode.
     """
     from ..runfiles import TASK_FILE
-    from ..structure_pair import GeometryChangedError
+    from ..structure_pair import GeometryChangedError, MolstructVersionError
     from ..workingcopy_structure import StructureCodec
     codec = StructureCodec()
     # The codec, not the bare loader: describe writes the structure as the
@@ -98,6 +121,8 @@ def structure_for(task, base: Path, pset):
             raise PrepError(f"the structure has changed since this "
                             f"calculation was described: {exc} -- describe it "
                             f"again to build on the edit") from None
+        except MolstructVersionError as exc:
+            raise PrepError(copy_of_another_version(candidate, exc)) from None
     else:
         raise PrepError(
             f"the structure this calculation describes is not here: "

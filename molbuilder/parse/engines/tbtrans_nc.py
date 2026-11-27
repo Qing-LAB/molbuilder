@@ -54,7 +54,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 from molbuilder.parse.base import FileParser
-from molbuilder.parse.errors import ParseError
+from molbuilder.parse.errors import FileUnreadable, ParseError
 from molbuilder.parse.types import ParseResult, TransmissionResult
 from molbuilder.runfiles import (CHANNEL_UNPOLARIZED, OUR_LEADS,
                                  ROLE_TBT_DIGEST, ROLE_TBT_DIGEST_CLAIM,
@@ -445,7 +445,7 @@ def _read(path: Path, progress: Callable[[int, int], None]
     # A DECK MOLBUILDER DID NOT WRITE names its leads its own way; its
     # files are no run of ours, said as such.
     if any(e not in OUR_LEADS for e in elecs):
-        raise ParseError(
+        raise FileUnreadable(
             f"{path.name} names its leads {', '.join(elecs)}; molbuilder's "
             f"decks name them {' and '.join(OUR_LEADS)} -- a data file of a "
             f"deck molbuilder did not write is not read")

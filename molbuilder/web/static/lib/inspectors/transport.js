@@ -215,35 +215,25 @@ const WORKSPACE_TAG = "results:transport";
         const device = _card("Device", "transport-device-card");
         const molHost = _el("div", "molviewer-host transport-molview");
         device.appendChild(molHost);
-        /* A JUNCTION WHOSE ORDER IS NOT RECORDED -- its sidecar states none
-         * (`model/overview.md` § 2.2a, I9) -- is drawn as TranSIESTA lists
-         * it: MolView's notice states the fact, and the record's way on is
-         * said below it, in its own words. */
-        if (rec.order_way) {
-            device.appendChild(_el("p", "transport-note", rec.order_way));
-        }
         /* WHICH INDEX ITS ATOMS ARE NUMBERED BY (`model/overview.md`
          * § 2.2b; `web/results.md` § 2.5) -- the user's, the drawing put
-         * back through the junction's order record, unless the record says
-         * the order is not recorded (above), when it is TranSIESTA's. */
-        if (!rec.order_unstated) {
-            const line = _el("p", "transport-note",
-                "Atoms are numbered as in your structure (user index + 1). "
-                + "The engine's own files list them by engine index -- the "
-                + "digest, and .TBT.nc as sisl reads it, counted from 0; ");
-            line.appendChild(_el("code", null,
-                root.molbuilder.typed("atom-index")));
-            line.appendChild(root.document.createTextNode(
-                " shows both, and "));
-            const how = _el("a", null, "the post-processing document");
-            how.href = "/documents?doc=engines/transport-postprocessing.md";
-            how.target = "_blank";
-            how.rel = "noopener";
-            line.appendChild(how);
-            line.appendChild(root.document.createTextNode(
-                " how to use them."));
-            device.appendChild(line);
-        }
+         * back through the junction's order record. */
+        const line = _el("p", "transport-note",
+            "Atoms are numbered as in your structure (user index + 1). "
+            + "The engine's own files list them by engine index -- the "
+            + "digest, and .TBT.nc as sisl reads it, counted from 0; ");
+        line.appendChild(_el("code", null,
+            root.molbuilder.typed("atom-index")));
+        line.appendChild(root.document.createTextNode(
+            " shows both, and "));
+        const how = _el("a", null, "the post-processing document");
+        how.href = "/documents?doc=engines/transport-postprocessing.md";
+        how.target = "_blank";
+        how.rel = "noopener";
+        line.appendChild(how);
+        line.appendChild(root.document.createTextNode(
+            " how to use them."));
+        device.appendChild(line);
         row.appendChild(device);
 
         const curves = _card("Results", "transport-curves-card");
@@ -287,8 +277,7 @@ const WORKSPACE_TAG = "results:transport";
         host.appendChild(wrap);
 
         if (rec.junction_file) {
-            _mountDevice(molHost, state, rec.junction_file,
-                         !!rec.order_unstated);
+            _mountDevice(molHost, state, rec.junction_file);
         } else {
             /* A JUNCTION THAT DOES NOT READ is said in its reader's words
              * (`record.junction_unread`); none composed yet, when. */
@@ -1396,7 +1385,7 @@ const WORKSPACE_TAG = "results:transport";
     /* THE DEVICE, read-only -- the structure presenter's door: MolView
      * mounted with its own owner, the composed junction opened through the
      * one file door (its sidecar brings the labels and the cell). */
-    async function _mountDevice(molHost, state, junctionFile, unstated) {
+    async function _mountDevice(molHost, state, junctionFile) {
         const ws = root.molbuilder && root.molbuilder.workspace;
         const proj = root.molbuilder && root.molbuilder.projects;
         if (!ws || !proj || !proj.parser) {
@@ -1432,13 +1421,11 @@ const WORKSPACE_TAG = "results:transport";
         /* IN THE USER ORDER (`model/overview.md` § 2.2a, I1): the composed
          * junction is the engine's record, in TranSIESTA's order; the report
          * draws it put back in the user order, and names a selection's atoms
-         * so to the PDOS door, which crosses them into the junction's order
-         * -- or, a junction whose order is not recorded (I9), drawn as a
-         * viewer draws it, in TranSIESTA's order, marked, the record's line
-         * above saying so (its PDOS refused by the record). */
+         * so to the PDOS door, which crosses them into the junction's
+         * order. */
         const res = await proj.parser.openMolecule(
             handle, state.dir ? join(state.dir, junctionFile) : junctionFile,
-            { restore: !unstated });
+            { restore: true });
         if (state.disposed) return;
         if (res && res.ok === false) {
             molHost.appendChild(_el("p", "transport-note",

@@ -343,3 +343,143 @@ def test_extending_a_finished_calculation_says_its_voltages_as_every_surface_doe
                     stages=_stages())
     said = Extension("P/transport/T", finished).says["bias"]
     assert "computed 0 V, 0.2 V." in said, said
+
+
+#: EACH DOOR A PERSON REACHES A TRANSPORT CALCULATION BY, as typed or asked:
+#: its command, or the route the Results, Transport and Task setup tabs ask,
+#: and how it refuses -- a command's exit, a route's status (the extension
+#: pick answers 200: the calculation is not citable, the summary saying why;
+#: Task setup opens the folder, its frames saying why) -- and the groups
+#: prepared besides the first, where the door asks one of their stages: the
+#: launch of the device rung, which runs per point (a dry run: nothing is
+#: sent).
+_DOORS_OF_A_CALCULATION = {
+    "status": ("jobset", ("status",)),
+    "launch": ("jobset", ("launch", "task", "--stage", "device", "--mode",
+                          "direct", "--dry-run"), ("2", "3")),
+    "summarize": ("jobset", ("summarize", "task")),
+    "extending it": ("molbuilder", (
+        "describe", "--engine", "siesta", "--calculation", "transport",
+        "--bundle", "P/transport/T2", "--reuses", "{address}")),
+    "the Results tab's report": (
+        "route", "/api/transport/record?path={folder}"),
+    "the Results tab's readings": (
+        "route", "/api/transport/digest?path={folder}"),
+    "the Transport tab's extension pick": (
+        "route", "/api/transport/describe_attempt?path={address}"),
+    "Task setup's folder": ("route", "/api/task-setup/folder?dir={folder}"),
+}
+
+
+@pytest.mark.parametrize("door", list(_DOORS_OF_A_CALCULATION))
+def test_a_calculation_composed_before_2_10_0_is_refused_by_name_at_every_door(
+        door, tmp_path, monkeypatch):
+    """`engines/transport.md` § 1.1, `execution/job-contracts.md` § 6.1 (the
+    user, 2026-11-26: "Drop all as asked"): a transport calculation whose
+    composition record is of another format -- `slot-provenance@1`, composed
+    before 2.10.0 -- is refused by name wherever a person reaches it, in the
+    record reader's words: the format it found, the one this molbuilder reads
+    and the way on, a new transport calculation of the same junction.  The
+    calculation is the road's -- a frame-less junction cited as a pair
+    (`support.junction.bridged_chain`) stating the optimization it came from,
+    group 1 prepared, and the groups a door's stage is in -- its record's
+    format then set as an older molbuilder wrote it.  THE SILENT FAILURE: a
+    Python traceback or a server error where the person was owed the
+    refusal's words -- the device rung's launch died of one once 2.87.0's
+    first part refused the older record (2.86.0 read it at any major)."""
+    import json
+    from molbuilder.projects import address
+    from molbuilder.runfiles import SLOT_PROVENANCE_FILE
+    from molbuilder.web.app import create_app
+    from support.junction import bridged_chain
+    from support.road import described, jobset, molbuilder, road_tree
+    junction = {**bridged_chain(), "info": {"calculation": {"contract": {}}}}
+    tree = road_tree(tmp_path, monkeypatch, structure=junction)
+    transport = described(tree, calculation="transport", name="T")
+    how, what, *also = _DOORS_OF_A_CALCULATION[door]
+    for group in ("1", *(also[0] if also else ())):
+        prep = jobset("prep", "task", "--group", group, "--bundle",
+                      transport, "--target", "this")
+        assert prep.exit_code == 0, prep.output
+    record = transport / SLOT_PROVENANCE_FILE
+    record.write_text(json.dumps({**json.loads(record.read_text()),
+                                  "schema": "molbuilder/slot-provenance@1"}))
+    if how != "route":
+        typed = [str(w).format(address=address(transport)) for w in what]
+        r = (jobset(*typed, "--bundle", transport) if how == "jobset"
+             else molbuilder(*typed))
+        assert r.exit_code != 0, r.output
+        # A REFUSAL, never a Python error the command line dies of.
+        assert isinstance(r.exception, SystemExit), repr(r.exception)
+        said = r.output
+    else:
+        got = create_app(config={}).test_client().get(
+            what.format(folder=transport, address=address(transport)))
+        body = got.get_json()
+        if door == "the Transport tab's extension pick":
+            assert got.status_code == 200, body
+            assert body["citation"] is None, body
+            said = body["summary"]
+        elif door == "Task setup's folder":
+            assert got.status_code == 200, body
+            said = body["frame_set"]["why"]
+        else:
+            assert got.status_code == 400, body
+            said = body["error"]
+    for words in ("'molbuilder/slot-provenance@1'",
+                  "a transport calculation composed before 2.10.0",
+                  "reads molbuilder/slot-provenance@2 alone",
+                  "describe a new transport calculation of the same junction "
+                  "and run it"):
+        assert words in " ".join(said.split()), (words, said)
+
+
+#: THE COMPOSITION RECORD'S VERSIONS, a row each: what it says, and whether
+#: it reads -- else the words of a later molbuilder's file.
+_COMPOSITION_RECORD_VERSIONS = {
+    "a same-major addition": ("molbuilder/slot-provenance@2.1", None),
+    "a later molbuilder's": (
+        "molbuilder/slot-provenance@3",
+        ("it says 'molbuilder/slot-provenance@3'",
+         "written by a later molbuilder than this one",
+         "open it with the molbuilder that wrote it")),
+}
+
+
+@pytest.mark.parametrize("version", list(_COMPOSITION_RECORD_VERSIONS))
+def test_a_composition_record_is_read_by_its_name_and_major(
+        version, tmp_path, monkeypatch):
+    """`execution/job-contracts.md` § 6.1, the schema-string convention: the
+    composition record is read by its name and its major -- a same-major
+    addition reads, and a later major says a later molbuilder wrote it, to
+    be opened with that one, never the way of a calculation composed before
+    2.10.0.  The calculation is the road's, as above, `jobset status` the
+    door.  THE SILENT FAILURES: a same-major record refused (the string
+    compared whole, in 2.87.0's first part; 2.86.0 read the record at any
+    major); a later one told to be described again."""
+    import json
+    from molbuilder.runfiles import SLOT_PROVENANCE_FILE
+    from support.junction import bridged_chain
+    from support.road import described, jobset, road_tree
+    junction = {**bridged_chain(), "info": {"calculation": {"contract": {}}}}
+    tree = road_tree(tmp_path, monkeypatch, structure=junction)
+    transport = described(tree, calculation="transport", name="T")
+    prep = jobset("prep", "task", "--group", "1", "--bundle", transport,
+                  "--target", "this")
+    assert prep.exit_code == 0, prep.output
+    schema, words = _COMPOSITION_RECORD_VERSIONS[version]
+    record = transport / SLOT_PROVENANCE_FILE
+    record.write_text(json.dumps({**json.loads(record.read_text()),
+                                  "schema": schema}))
+    r = jobset("status", "--bundle", transport)
+    said = " ".join(r.output.split())
+    if words is None:
+        assert r.exit_code == 0, r.output
+        assert "schema" not in said, said
+        return
+    assert r.exit_code != 0, r.output
+    assert isinstance(r.exception, SystemExit), repr(r.exception)
+    for w in words:
+        assert w in said, (w, said)
+    assert "composed before 2.10.0" not in said, said
+

@@ -118,7 +118,7 @@ names its act and, after the `·`, who makes it:
 
 | act | who | what it writes |
 |---|---|---|
-| **`prep task`** | `prep_task` | a group's files and rows; with no group named, an older transport junction's order record ([`engines/transport.md`](?doc=engines/transport.md) § 1.1); for a calculation that reuses a finished one, the runs of the groups it copies in |
+| **`prep task`** | `prep_task` | a group's files and rows; for a calculation that reuses a finished one, the runs of the groups it copies in |
 | **`launch task`** | `send_launch` | fills a run and sends it |
 | **the run** | the scheduler and the run script | its output and its conclusion |
 | **`checkpoint restore`** | `checkpoint` | the whole folder, put back |
@@ -482,7 +482,7 @@ name no refusal.
 |---|---|---|---|
 | **R-P1** | the folder is not a described calculation, or is one of its stage or run folders; or it has no job request | `molbuilder describe`; the calculation's own folder; no job request: Task setup's Save; an older description (`task@1`): `jobset migrate` | `calculation.open` (`calculation.refusal`) |
 | **R-P2** | `task.json`, its template or `job-request.json` does not read, or a stage states no group | its reader's words; an older file: `jobset migrate` | `task.of`, `job_request.of` |
-| **R-P3** | no group named and nobody to ask; or none to offer, and no junction order to record ([`engines/transport.md`](?doc=engines/transport.md) § 1.1) | the line that picks the groups offered (`ready.prep_offer`); none offered: `status` | `_cli._ask_which_groups`, `prep._prep_groups` |
+| **R-P3** | no group named and nobody to ask; or none to offer | the line that picks the groups offered (`ready.prep_offer`); none offered: `status` | `_cli._ask_which_groups`, `prep._prep_groups` |
 | **R-P4** | a group the job request does not hold | the groups it holds | `prep._prep_groups` |
 | **R-P5** | a launched member's deck, rendered now, is not the same calculation as its runs ran, or its points are not ([`job-request.md`](?doc=execution/job-request.md) § 6), each difference named; or a stage put beside a launched group, or taken out of one | the state saved before the group's first launch; a stage put in: a group of its own; one taken out: put back | `prep._prep_groups` (`ready.launched_without`, `deck_record.same_calculation`) |
 | **R-P6** | a job whose members changed has members in groups not picked | every group to pick, in one line | `group.formed_again` |
@@ -493,11 +493,11 @@ name no refusal.
 | **R-P13** | a job walking several members — a group, a benchmark's shelf — whose members do not ask the same of what they share | the same values for each, or groups of their own | a group, `prep.group_header` (`group.envelope`); a benchmark, `prep.prep_jobset` (`shelves.shelf_request`) |
 | **R-P14** | a Prep whose plan differs from the one previewed | preview again | `prep._prep_groups` |
 | **R-P15** | the folder's state cannot be saved | the save's words | `checkpoint.save_before`, said by `jobset/ledger.save_then_carry_out` |
-| **R-P16** | the structure is missing, or not the one described | the structure put back, or the calculation described anew | `rung.structure_for` |
+| **R-P16** | the structure is missing, or not the one described; or the copy of it the calculation keeps does not read — a calculation described before 2026-11-04 ([`engines/stages.md`](?doc=engines/stages.md) § 6.3) | the structure put back, or the calculation described anew — from the structure it was made from | `rung.structure_for` |
 | **R-P17** | a run's GPU request disagrees with itself: GPUs used and none counted, or counted and not used | the count stated, or no GPU | `prep.plan_stage` (`model.gpu_request`) |
 | **R-P19** | a description stating a layout other than the one, `"shape": "flat"` among them ([`project-layout.md`](?doc=execution/project-layout.md) § 1) | the calculation described again | `task.of` — at describe, at Save and at every read |
 | **R-P20** | a stage the description no longer holds has a launch record that does not read | the record's own words | `prep.prep_calculation` (`materialize.ever_launched`) |
-| **R-P21** | a transport junction record that is not usable while a stage is launched; or, no group named, its order not found ([`engines/transport.md`](?doc=engines/transport.md) § 1.1) | the state saved before the launched group's first launch; none launched: a prep of its groups | `gather.no_usable_record` |
+| **R-P21** | a transport junction record that is not usable while a stage is launched — one of another citation, or one whose composed junction does not read, a calculation composed before 2026-11-04 among them; with none launched, prep composes the junction again from its citation ([`engines/transport.md`](?doc=engines/transport.md) § 1.1) | why, in its reader's words — for a junction composed before 2026-11-04, a new transport calculation of the same junction described and run — and the state saved before the launched group's first launch; none launched: a prep of its groups | `gather.no_usable_record` |
 | **R-P22** | `--one-job` that cannot make one job (below) | the groups' run cards alike on what differs, or each group sent alone | `prep.sequence_header` (`group.sequence_request`), `prep._prep_groups`, `_cli.prep_cmd` |
 | **R-P23** | a group a sequence still going holds (§ 6.0): its job is about to launch the files it was prepared with | the prep once that job has ended, or `molbuilder jobs stop` of the job first | `prep._prep_groups` (`ready.held_by_sequence`) |
 | **R-L1** | nothing is prepared | `prep task` for the first group | `_cli._nothing_prepared`, asked by `_cli._launch` and `_cli._launch_unit` |
@@ -1197,8 +1197,6 @@ flowchart TD
     C --> D{"groups named?"}
     D -- "no — a terminal" --> Q["asked which: every group that needs<br/>a prep, and preparable, offered"]
     D -- "no — nobody to ask, or none to offer" --> R3["R-P3"]
-    D -- "no — none to offer, a junction's order to record" --> O["the junction composed again in memory, compared;<br/>its order record written, the state saved first — nothing else<br/>prep._prep_groups"]
-    O -- "a refusal" --> R21["R-P15 · R-P21"]
     D -- yes --> E
     Q --> E{"groups the job request holds?<br/>with --one-job, two or more, not all launched?<br/>every group a changed job's members are in named?<br/>no stage put into, or taken out of, a launched group?<br/>no group a sequence still going holds?"}
     E -- no --> R4["R-P4 · R-P5 · R-P6 · R-P22 · R-P23"]
@@ -2349,7 +2347,9 @@ qlabsrv-312877  run here on qlabsrv, in the background, pid 312877 -- its proces
 in the background — shows what it will stop (the calculation, its members, the
 pid or the job id) and asks *stop it? [y/N]*; `--yes` answers in advance, and
 with nobody to ask nothing is stopped. The question and its answer are written
-in the calculation's ledger, a *no* too.
+in the calculation's ledger, a *no* too. A file named for the id that does not
+read is refused in its words, its path named — never *no job &lt;id&gt; is on
+file* ([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1).
 
 - **A run here** is checked to be the process launched (host, pid, start), and
   checked again once the answer is given; SIGTERM goes to its process group,

@@ -67,6 +67,18 @@ name = "a structure whose held atoms changed after it was described is refused a
 held_edited = [1]
 refused = ["the structure has changed since this calculation was described", "structure fingerprint"]
 
+[[case]]
+name = "a calculation described before 2026-11-04 -- the copy of its structure it keeps a pair of a sidecar version this molbuilder does not read -- is refused at prep with the calculation's way on, never the pair's (the user, 2026-11-26: \"Everything before 2026-11-04\")"
+source_sidecar_version = 16
+refused = ["this calculation was described before 2026-11-04", "its sidecar is version 16, saved before 2026-11-04, and this molbuilder reads version 17 alone", "Describe it again from the structure it was made from"]
+said_lacks = ["Make the pair again", "moved aside"]
+
+[[case]]
+name = "...and a copy whose sidecar a later molbuilder wrote is refused at prep as that -- opened with the molbuilder that wrote it, never told it was described before 2026-11-04 (execution/job-contracts.md 6.1)"
+source_sidecar_version = 18
+refused = ["its sidecar is version 18, written by a later molbuilder than this one", "this molbuilder reads version 17", "open it with the molbuilder that wrote it"]
+said_lacks = ["described before 2026-11-04", "saved before 2026-11-04", "Describe it again"]
+
 # ===================================================================== #
 #  A GROUP PREPARED AND NEVER LAUNCHED: NOTHING TO WRITE, OR AGAIN     #
 # ===================================================================== #

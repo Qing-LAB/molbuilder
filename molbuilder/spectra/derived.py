@@ -12,10 +12,10 @@ ROLE    from what a mode STATES -- its frequency, whether it is imaginary, its
         modes were weighted by, the values a result states derived from them:
         the activity classes (`spectra.activity`, a decision against the
         whole run), the zero-point amplitude and every free atom's
-        displacement at it (v7); each free atom's share of the motion, the
+        displacement at it, each free atom's share of the motion, the
         largest zero-point move, the reduced mass and force constant, and
         the block of each mode's spread and mean quanta at the modes' own
-        temperatures (v15) -- each by its one home (`oscillator`, `vibration`),
+        temperatures -- each by its one home (`oscillator`, `vibration`),
         composed there; this module states them
 USED-BY the one writer of a result file, every engine's
         (`sidecars.spectra.write_spectra_payload`); `SpectraResults.to_dict`;
@@ -64,17 +64,16 @@ except ImportError:                         # beside a job, in a bundle
     from normal_modes import mode_temperatures  # type: ignore[no-redef]
 
 #: THE KEYS A MODE'S ROW CARRIES THAT ARE DERIVED from its other keys
-#: (`engines/vibration.md` § 6.3), by the schema version that first states
-#: them: what every writer states and the reader checks.
-DERIVED_MODE_KEYS_V7 = ("ir_active", "raman_active", "activity_class",
-                        "zero_point_amplitude_amu12_ang",
-                        "zero_point_displacement_ang")
-DERIVED_MODE_KEYS_V15 = ("motion_share", "largest_zero_point_move_ang",
-                         "reduced_mass_amu", "force_constant_mdyn_per_ang")
-DERIVED_MODE_KEYS = DERIVED_MODE_KEYS_V7 + DERIVED_MODE_KEYS_V15
+#: (`engines/vibration.md` § 6.3): what every writer states and the reader
+#: checks.
+DERIVED_MODE_KEYS = ("ir_active", "raman_active", "activity_class",
+                     "zero_point_amplitude_amu12_ang",
+                     "zero_point_displacement_ang",
+                     "motion_share", "largest_zero_point_move_ang",
+                     "reduced_mass_amu", "force_constant_mdyn_per_ang")
 
-#: THE RESULT'S BLOCK OF EACH MODE'S SPREAD AND MEAN QUANTA (v15,
-#: `engines/vibration.md` § 6.2), its keys a mode's thermal row's
+#: THE RESULT'S BLOCK OF EACH MODE'S SPREAD AND MEAN QUANTA
+#: (`engines/vibration.md` § 6.2), its keys a mode's thermal row's
 #: (`vibration.THERMAL_ROW_KEYS`: ``temperature_k``,
 #: ``thermal_spread_amu12_ang``, ``mean_quanta``).
 THERMAL_KEY = "modes_thermal"
@@ -102,8 +101,8 @@ def mode_derivations(modes: Sequence[Mapping[str, Any]],
     :data:`DERIVED_MODE_KEYS`, from the mode rows as a result file states
     them (``frequency_cm1``, ``has_imag``, ``eigenvector_canonical``,
     ``ir_intensity_km_mol``, ``raman_activity_a4_amu``) and the free atoms'
-    masses in the free list's order (``None`` where a file states none: no
-    shares), in mode order."""
+    masses in the free list's order (``None`` before any geometry exists:
+    no shares), in mode order."""
     if not modes:
         return []
     flags = classify_modes([m.get("ir_intensity_km_mol") for m in modes],
@@ -186,7 +185,7 @@ def free_masses_of(payload: Mapping[str, Any]) -> List[float]:
     ``equilibrium.masses_amu`` at its ``free_atom_idxs`` -- refused by name
     where the payload states none, or none for a free atom: the modes were
     weighted by masses a result states beside its geometry, every atom's
-    (§ 6.2, v7)."""
+    (§ 6.2)."""
     masses = (payload.get("equilibrium") or {}).get("masses_amu")
     if masses is None:
         raise ValueError("the result has modes and states no masses "
@@ -218,22 +217,19 @@ def payload_with_derived(payload: Mapping[str, Any]) -> Dict[str, Any]:
             THERMAL_KEY: thermal_block(modes, temperatures)}
 
 
-def disagreements(payload: Mapping[str, Any], version: int,
+def disagreements(payload: Mapping[str, Any],
                   masses_free_amu: Optional[Sequence[float]]) -> List[str]:
     """What a file's stored derived values say that their derivation does
     not -- one sentence per mode and key, a key not stated among them, and
-    from v15 the ``modes_thermal`` block, each row checked at the
-    temperatures the file states (the list is the file's own, never
-    rebuilt); ``[]`` when every stored value is the derivation's.
-    ``version`` the file's schema version: a key is checked from the version
-    that first states it; ``masses_free_amu`` the free atoms' masses the
-    file states (:func:`free_masses_of`), ``None`` where it states none."""
-    keys = (DERIVED_MODE_KEYS if int(version) >= 15
-            else DERIVED_MODE_KEYS_V7)
+    the ``modes_thermal`` block, each row checked at the temperatures the
+    file states (the list is the file's own, never rebuilt); ``[]`` when
+    every stored value is the derivation's.  ``masses_free_amu`` the free
+    atoms' masses the file states (:func:`free_masses_of`), ``None`` before
+    its modes exist."""
     modes = payload.get("modes") or []
     out: List[str] = []
     for m, d in zip(modes, mode_derivations(modes, masses_free_amu)):
-        for key in keys:
+        for key in DERIVED_MODE_KEYS:
             if key not in m:
                 out.append(f"mode {m.get('index_1based')}: {key} is not "
                            f"stated")
@@ -244,7 +240,7 @@ def disagreements(payload: Mapping[str, Any], version: int,
                 where = "".join(f"[{i}]" for i in at)
                 out.append(f"mode {m.get('index_1based')}: {key}{where} is "
                            f"{stated!r}, its derivation {derived!r}")
-    if int(version) >= 15 and modes:
+    if modes:
         block = payload.get(THERMAL_KEY)
         if block is None:
             return out + [f"{THERMAL_KEY} is not stated"]

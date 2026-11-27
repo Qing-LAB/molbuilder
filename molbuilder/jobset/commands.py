@@ -85,11 +85,22 @@ def takes_a_queue(base, target: Optional[str] = None) -> bool:
     once it is set to one; before that, the record of the machine named for
     its first prep (``target``).  A machine that cannot be told -- no record
     yet, or several on file and none named -- is taken to have one: the prep
-    that sets it answers first."""
+    that sets it answers first.  The calculation's own copy that does not
+    read, or names no machine, is refused in its words
+    (`scheduler.record.MachineRecordUnreadable`, a file refused at the
+    edge, `job-contracts.md` § 6.1) -- never a launch offered either way;
+    a door that answers more gently by design catches the mark
+    (`runstatus.views_of`)."""
     from ..scheduler import AmbiguousTarget, UnknownTarget, machine_for
     try:
         rec = machine_for(base, target=target)
-    except (AmbiguousTarget, UnknownTarget):
+    except AmbiguousTarget:
+        return True                     # the prep that sets it asks first
+    except UnknownTarget as exc:
+        if exc.name is None:
+            # THE CALCULATION'S OWN COPY of its machine's record, there and
+            # unusable: its words, never *ready* with both lines offered.
+            raise
         return True                     # the prep that sets it refuses first
     return rec is None or rec.kind.queue
 
@@ -463,17 +474,6 @@ def way_back(stage: str, *, calc, launched: bool) -> str:
     return redo_launched(stage, calc=calc)
 
 
-def order_recorded(*, base) -> str:
-    """How a transport calculation's junction whose sidecar states no order
-    record has it recorded (`engines/transport.md` § 1.1, *The first prep*):
-    `prep task`, with a group left to prepare or none, checks the junction
-    against its citation and records its order -- a sentence ending ``--``
-    and its line."""
-    return ("`prep task` records it, checking the junction against its "
-            "citation -- with a group left to prepare or none --\n"
-            + block([command("prep", *words_for(TASK), base=base)]))
-
-
 def launch_pending(stage: str, group: Optional[int], attempt,
                    *, base) -> List[str]:
     """The launch that sends ``stage``'s run that is opened and not launched
@@ -545,5 +545,5 @@ __all__ = ["TASK", "BENCH", "words_for", "bundle_flag", "command",
            "prep_sequence_lines",
            "launch_lines", "lines", "run_first", "name_a_stage",
            "block", "said_lines", "reason_of", "rollback", "redo_launched", "way_back",
-           "order_recorded", "launch_pending",
+           "launch_pending",
            "stage_lines", "takes_a_queue", "target_flags"]

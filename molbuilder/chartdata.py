@@ -34,6 +34,7 @@ import numpy as np
 
 from . import data_dir
 from .ncdata import ExportError, Var, check_said
+from .persist import FileRefused
 
 #: The table every chart's drawn data is laid out by.
 TABLE_FILE = data_dir() / "chart_table.toml"
@@ -78,7 +79,7 @@ class ChartTableError(ValueError):
     """The chart table breaks a rule -- the message names the row."""
 
 
-class ChartDataError(ValueError):
+class ChartDataError(ValueError, FileRefused):
     """A file that is not a chart's drawn data of this schema."""
 
 
@@ -162,7 +163,7 @@ def _variable(spec: Mapping[str, Any], dims: Tuple[str, ...], *,
         if not owned:
             raise _refuse(where, f"{of} declares no variable {name!r}")
         var = owned[0]
-    var = replace(var, dims=dims, kind=kind or var.kind, earlier=())
+    var = replace(var, dims=dims, kind=kind or var.kind)
     if var.kind == "coordinate":
         var = replace(var, kind="given")
     try:

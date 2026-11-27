@@ -945,7 +945,7 @@ def test_a_finished_relaxation_composes_and_says_how_it_ended(junction):
     words -- and its leads are the labelled blocks."""
     from molbuilder.transport.compose import load_compose_record
     record = load_compose_record(junction.bundle, citation=junction.cite,
-                                 engine="siesta", tree_root=junction.tree)
+                                 tree_root=junction.tree)
     assert record is not None
     said = record.provenance
     assert said["evidence"].startswith("rc=0 at "), said
@@ -1401,7 +1401,7 @@ def test_a_pair_saved_from_the_run_defaults_the_template_as_the_run_does(
     assert (psml.value, psml.source) == ("pseudopotential", "person")
     record = load_compose_record(junction.from_pair.bundle,
                                  citation=junction.frame_set,
-                                 engine="siesta", tree_root=junction.tree)
+                                 tree_root=junction.tree)
     assert record is not None
     assert (record.provenance["kind"], record.provenance["frames"]) == (
         "pair", _N_FRAMES)
@@ -1494,8 +1494,7 @@ def test_a_pair_whose_relaxation_left_an_electrode_atom_free_is_said(
     base = tmp_path / "calc"
     base.mkdir()
     write_compose_record(base, composed)
-    back = load_compose_record(base, citation="P/relabelled/relabelled.xyz",
-                               engine="siesta")
+    back = load_compose_record(base, citation="P/relabelled/relabelled.xyz")
     assert back is not None and junction_said(back) == junction_said(
         composed), (back, junction_said(composed))
 

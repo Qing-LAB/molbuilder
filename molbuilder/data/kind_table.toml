@@ -64,8 +64,7 @@
 # description's `cited_kind`: the kind of run a citation is; and the parts
 # the shared doors ask of a kind that cites or extends -- `extension` (the
 # limits of extending a finished calculation), `cited_frames` (the frames
-# its citation holds -- given its folder once composed, the frames it ran), `order_record` (the citation's atom order recorded
-# at a prep that names no group), `reuse` (what a prep copies in from the
+# its citation holds -- given its folder once composed, the frames it ran), `reuse` (what a prep copies in from the
 # calculation it extends and what each point computes, a module named
 # whole).
 #
@@ -245,7 +244,6 @@ carries = ["swap_electrodes", "bias", "reuses"]
 cited_kind = "optimization"
 extension = "molbuilder.transport.reuse:Extension"
 cited_frames = "molbuilder.transport.compose:cited_frames"
-order_record = "molbuilder.transport.gather:order_record"
 describe = "molbuilder.transport.describe"
 reuse = "molbuilder.transport.reuse"
 

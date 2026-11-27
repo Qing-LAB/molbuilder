@@ -46,6 +46,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 import numpy as np
 
 from ..constants import HC_EV_NM
+from ..persist import FileRefused
 from ..runpoints import FAILED, NOT_DONE, NOT_RUN
 from .activity import CHANNEL_PRESENT_FLOOR_RAMAN_A4_AMU, relative_to_strongest
 from .results import OPTICAL_FINISHED, OPTICAL_PENDING, ROUTE_OPTICAL
@@ -87,6 +88,16 @@ WHAT = ("the Raman strengths of a SIESTA vibration's picked modes at a "
 class RamanError(ValueError):
     """The view cannot be derived -- the message names what the result or
     the ask lacks, ready to surface verbatim."""
+
+
+class RamanDataUnreadable(RamanError, FileRefused):
+    """A DATA FILE THE VIEW READS THAT DOES NOT READ -- the optical data
+    file's settings stating no width, its structure no cell volume, the one
+    a result cites not beside it, a Raman view of a version this molbuilder
+    does not read: a file its reader cannot read, carrying the mark the two
+    edges say (`persist.FileRefused`, `execution/job-contracts.md` § 6.1).
+    An ask the view refuses, or a result whose route has no optical part,
+    carries none."""
 
 
 # --------------------------------------------------------------------- #
@@ -309,8 +320,9 @@ def run_broaden_ev(optical: Mapping[str, Any]) -> float:
     ry = parse_fdf_params(stated, source="the optical data file's "
                           "settings").optical_broaden_ry
     if ry is None:
-        raise RamanError("the optical deck the data file keeps states no "
-                         "Optical.Broaden -- the run's width cannot be said")
+        raise RamanDataUnreadable(
+            "the optical deck the data file keeps states no Optical.Broaden "
+            "-- the run's width cannot be said")
     return energy_ev(ry, "Ry")
 
 
@@ -322,9 +334,10 @@ def _cell_volume_a3(optical: Mapping[str, Any]) -> float:
     from ..structure import Structure
     box = resolve(Structure.from_dict(optical["structure"]))
     if box.unresolvable or not box.has_volume:
-        raise RamanError(f"the data file's structure has no cell volume "
-                         f"({box.unresolvable or 'a box of zero volume'}) "
-                         f"-- the polarizability needs it")
+        raise RamanDataUnreadable(
+            f"the data file's structure has no cell volume "
+            f"({box.unresolvable or 'a box of zero volume'}) -- the "
+            f"polarizability needs it")
     return float(box.volume)
 
 
@@ -463,8 +476,8 @@ def optical_data_of(result_path, result) -> Path:
     require_optical_route(result, f"{path.name}: ")
     data = path.parent / result.optical["data_file"]
     if not data.is_file():
-        raise RamanError(f"{path.name} cites {data.name}, which is not "
-                         f"beside it")
+        raise RamanDataUnreadable(f"{path.name} cites {data.name}, which is "
+                                  f"not beside it")
     return data
 
 
@@ -684,7 +697,8 @@ def read_raman_data(path) -> Dict[str, Any]:
     by name, with the way back: the view exported again."""
     from ..ncdata import (checked, key_of, read_variables, unjson_attr,
                           unnumber_attr)
-    with checked(path, schemas=READABLE_RAMAN_SCHEMAS, error=RamanError,
+    with checked(path, schemas=READABLE_RAMAN_SCHEMAS,
+                 error=RamanDataUnreadable,
                  way="export the view again (jobset export)") as (ds, attrs):
         out: Dict[str, Any] = {
             "label": str(attrs.get("label", "")),

@@ -73,94 +73,19 @@ except ImportError:                         # beside a job, in a bundle
 #: store, one spelling of the name, interpreted at the end.
 #:
 #: A version gate that admits a version the code cannot honour is worse than
-#: no gate: it turns a loud failure into a quiet one.
-SCHEMA_VERSION = 17  # 17: `selection_rules` RETIRED -- never written; a
-#                      7-16 file's is read past (RETIRED_ENVELOPE_KEYS).
-#                      Every older file reads whole.
-#                   16: + the OPTIONAL `species_labels`
-#                      (structure.SPECIES_LABELS), each atom's species
-#                      label where one is not the name its geometry file
-#                      holds (model/chemistry.md § 3) -- additive: a 7-15
-#                      file's symbols are its labels.
-#                   15: + `atom_index_map`, which index the atoms are
-#                   listed by and each atom's indices (model/overview.md
-#                   § 2.2b), an envelope key the codec writes from the door
-#                   that writes the pair.
-#                   14: + `atom_order`, the order record of a structure
-#                      in an engine's order, null in the user order
-#                      (model/overview.md § 2.2a) -- additive: a 7-13 file
-#                      reads as the user order.
-#                   13: the pin is `geometry_hash` -- the atom lines as
-#                      written and the cell, never the comment line
-#                      (structure-molstruct.md § 3) -- and `structure_hash`,
-#                      the file's bytes, is RETIRED: read and never
-#                      compared, never written again.  Additive: a 7-12
-#                      file opens unchecked.
-#                   12: + the OPTIONAL `offset_by` -- whose the
-#                      stated `engine_offset` is, the person's or the
-#                      engine's (model/structure-periodicity.md § 6.0) --
-#                      additive: a 7-11 file's stated offset reads as the
-#                      person's, kept as stated.
-#                   11: + the OPTIONAL `customized` block (the
-#                      structure's named values, one row set per frame;
-#                      model/structure.md § 2.2d) and the envelope's
-#                      `n_frames_total` -- additive: a 7-10 file holds
-#                      nothing indexed by frame.
-#                   10: `cell_origin` RETIRED -- read and
-#                      ignored, never written again (structure.
-#                      RETIRED_METADATA_KEYS; the user's decision, plan § 5q
-#                      D2) -- and the OPTIONAL stated `engine_offset` added
-#                      (null = the rule places the atoms;
-#                      model/structure-periodicity.md § 6.0).
-#                    9: + the OPTIONAL `info` block (the free-form
-#                      NON-structural store -- additive; absent
-#                      means "nothing recorded", and it never enters
-#                      the pin).
-#                    8: + the OPTIONAL identity columns
-#                      (structure.IDENTITY_FIELDS, canonical-dict spellings,
-#                      written only when real -- user ruling: additive
-#                      "extra", never conflicting).  A 7 file simply lacks
-#                      them and reads as before; an OLDER reader meeting an
-#                      8 file that carries them refuses with the stray-key
-#                      message, which names exactly what it does not know.
+#: no gate: it turns a loud failure into a quiet one.  What each version
+#: changed is `structure-molstruct.md` § 2's history.
+SCHEMA_VERSION = 17
 
-#: The versions THIS build reads whole.  v8 only ADDED the
-#: optional identity columns, so a v7 file loses nothing read under v8 rules
-#: (absent identity = the synthesized defaults, which is what v7 meant).
-#: Everything older stores the same facts in DIFFERENT places (v3's top-level
-#: ``frozen_atoms``), and partial reads of those are the silent-loss case the
-#: strict gate exists for -- so the set widens only when an addition is
-#: provably additive.
-#:
-#: **AND ONLY WHEN A READER HAS BEEN RUN AGAINST A FILE AT THAT VERSION.**
-#: That is the check, not the reasoning: ``load_record`` reads the keys it
-#: NAMES, so a key an older version kept elsewhere is never looked for.  It is
-#: made when the version joins the set and kept by no test: no test builds an
-#: older release's file (`process/testing.md`).
-#:
-#: v10 removed a key and added an optional one: a v7-v9 file's
-#: `cell_origin` is retired -- read and ignored, by decision (D2) -- and a
-#: missing `engine_offset` means the rule, which is what those files meant for
-#: every structure whose corner nobody typed.
-#:
-#: v11 added two: `customized`, absent meaning no row, and `n_frames_total`,
-#: which a 7-10 file does not state and needs no more than it needs rows --
-#: nothing in it is indexed by frame.
-#:
-#: v12 added `offset_by`, absent meaning an offset whose kind nobody recorded
-#: -- read as the person's, so the file is placed exactly as before.
-#:
-#: v13 put `geometry_hash` in place of `structure_hash`: a 7-12 file has no
-#: geometry hash, and its pair opens unchecked -- metadata is never required.
-#:
-#: v14 added `atom_order`, absent meaning the user order -- which every pair a
-#: 7-13 writer made for a person is in.
-#: v15 added `atom_index_map`; a 7-14 file states none, and its map is made
-#: from its `atom_order` -- a 7-13 file read as listed by user index, warned
-#: (`model/overview.md` § 2.2b, F4).
-#: v16 added `species_labels`; a 7-15 file states none, and its geometry
-#: file's symbols are its labels.
-READABLE_VERSIONS = frozenset({7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17})
+#: The versions THIS build reads: its own alone (the user, 2026-11-26,
+#: "Drop all as asked" -- told that every pair saved before 2026-11-04 stops
+#: opening, with no rewrite command).  A file of any other version is
+#: refused by name (`parse.sidecars.molstruct.load_record`), its way on said.
+READABLE_VERSIONS = frozenset({SCHEMA_VERSION})
+
+#: WHEN THE ONE READABLE VERSION BEGAN -- every pair saved before it states
+#: another (2.65.8), said in its refusal.
+SCHEMA_SINCE = "2026-11-04"
 
 #: The sidecar LAYER's own keys -- everything in a payload that is not a
 #: Structure metadata field.  Named so :func:`apply_to_structure` can hand the
@@ -169,12 +94,12 @@ READABLE_VERSIONS = frozenset({7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17})
 ENVELOPE_KEYS = ("schema_version", "n_atoms_total", "n_frames_total",
                  "geometry_hash", "created_by", "created_at", MAP_KEY)
 
-#: An envelope key the schema once wrote and no longer does -- tolerated on
-#: read, never applied, dropped on rewrite, as `structure.RETIRED_METADATA_KEYS`
-#: (`structure-molstruct.md` § 2, *Retired keys*): `structure_hash`, the
-#: sha256 of the geometry file's bytes, until v13; `selection_rules`, how
+#: An envelope key the schema once wrote and no longer does: `structure_hash`,
+#: the sha256 of the geometry file's bytes, until v13; `selection_rules`, how
 #: each region was selected, which nothing filled and nothing read (the
-#: user, 2026-11-03: "retire selection_rules").
+#: user, 2026-11-03: "retire selection_rules").  No sidecar file this build
+#: reads holds one; a launched PySCF deck's embedded payload, written at its
+#: own prep, may -- what its comparison sets aside (`pyscf.script_input`).
 RETIRED_ENVELOPE_KEYS = ("structure_hash", "selection_rules")
 
 
@@ -183,22 +108,16 @@ def unread_keys(data) -> Optional[str]:
     sentence (`persist.unknown_keys`) -- or ``None``.  A sidecar carries the
     structure's metadata fields and per-atom columns
     (`structure.ATOM_COLUMNS`), the envelope and the free-form ``info``
-    block; the retired keys an older sidecar still opens with are accepted,
-    not applied, and never offered as known, so a typo is not steered to a
-    key nothing applies.  Asked by each gate that reads a sidecar, the read
-    door's (`parse.sidecars.molstruct.load_record`) and
+    block -- and nothing else: a retired key is no key of the version this
+    build reads.  Asked by each gate that reads a sidecar, the read door's
+    (`parse.sidecars.molstruct.load_record`) and
     :func:`apply_to_structure`'s.  A key nobody reads is metadata the writer
     thinks it saved."""
     try:                                        # inside molbuilder
-        from ..structure import (ATOM_COLUMNS, FILE_FIELDS,
-                                          RETIRED_IDENTITY_KEYS,
-                                          RETIRED_METADATA_KEYS)
+        from ..structure import ATOM_COLUMNS, FILE_FIELDS
     except ImportError:                         # beside a job, in a bundle
-        from structure import (ATOM_COLUMNS, FILE_FIELDS,  # type: ignore
-                               RETIRED_IDENTITY_KEYS, RETIRED_METADATA_KEYS)
-    retired = {*RETIRED_METADATA_KEYS, *RETIRED_IDENTITY_KEYS,
-               *RETIRED_ENVELOPE_KEYS}
-    return unknown_keys([k for k in data if k not in retired],
+        from structure import ATOM_COLUMNS, FILE_FIELDS  # type: ignore
+    return unknown_keys(list(data),
                         frozenset({*FILE_FIELDS, *ATOM_COLUMNS,
                                    *ENVELOPE_KEYS, "info"}),
                         note=(".  Refused rather than ignored -- a key nobody "
@@ -214,9 +133,11 @@ GEOMETRY_SUFFIXES = (PAIRED_SUFFIX, ".pdb")
 # THE PAIR'S REFUSALS are the saved pair's own (`structure_pair`, L1), so the
 # structure raises the same pairing refusal for a deck's block.
 try:                                        # inside molbuilder
-    from ..structure_pair import MolstructJsonError, MolstructPairingError
+    from ..structure_pair import (MolstructJsonError, MolstructPairingError,
+                                  MolstructUnreadable)
 except ImportError:                         # beside a job, in a bundle
-    from structure_pair import MolstructJsonError, MolstructPairingError
+    from structure_pair import (  # type: ignore[no-redef]
+        MolstructJsonError, MolstructPairingError, MolstructUnreadable)
 
 
 # --------------------------------------------------------------------- #
@@ -381,22 +302,16 @@ def atom_columns_via_dataclass(n_atoms_total: int,
     Structure of ``n_atoms_total`` atoms carrying them -- the labels as its
     ``elements`` -- re-runs ``__post_init__``'s own length and type checks,
     and what comes back is exactly what a reader will reconstruct.  Only
-    the columns handed in come back.  A retired key is not stray (an older
-    sidecar carrying ``title`` still opens, `structure.RETIRED_IDENTITY_KEYS`
-    says why): it is dropped, which is the third gate a retired key gets.
-    Asked by :func:`to_dict`, the one builder of a payload written and of
-    one read.
+    the columns handed in come back.  Asked by :func:`to_dict`, the one
+    builder of a payload written and of one read.
     Raises :class:`MolstructJsonError` on a stray key or an invalid column.
     """
     try:                                        # inside molbuilder
-        from ..structure import (ATOM_COLUMNS, RETIRED_IDENTITY_KEYS,
-                                          SPECIES_LABELS, Structure)
+        from ..structure import ATOM_COLUMNS, SPECIES_LABELS, Structure
     except ImportError:                         # beside a job, in a bundle
-        from structure import (ATOM_COLUMNS, RETIRED_IDENTITY_KEYS,
-                               SPECIES_LABELS, Structure)
+        from structure import ATOM_COLUMNS, SPECIES_LABELS, Structure
     columns = dict(columns or {})
-    said = unknown_keys([k for k in columns
-                         if k not in RETIRED_IDENTITY_KEYS], ATOM_COLUMNS)
+    said = unknown_keys(list(columns), ATOM_COLUMNS)
     if said:
         raise MolstructJsonError(f"identity: {said}")
     n = int(n_atoms_total)
@@ -453,13 +368,12 @@ def to_dict(
     *,
     identity: Optional[Dict[str, Any]] = None,
     n_atoms_total: int,
-    n_frames_total: Optional[int] = 1,
-    geometry_hash: Optional[str],
+    n_frames_total: int = 1,
+    geometry_hash: str,
     info: Optional[Dict[str, Any]] = None,
     created_by: str = "molbuilder",
     created_at: Optional[str] = None,
     atom_index_map: Optional[Dict[str, Any]] = None,
-    schema_version: int = SCHEMA_VERSION,
 ) -> Dict[str, Any]:
     """THE ONE BUILDER of a sidecar payload -- the envelope, and the
     metadata fields, the per-atom columns and ``info`` spread in, each
@@ -477,13 +391,9 @@ def to_dict(
     metadata API set speaks the same format.
 
     The envelope (``schema_version`` / ``n_atoms_total`` / ``n_frames_total``
-    / ``geometry_hash`` / ``created_*``) is layered on.  ``schema_version``
-    is the version the envelope states: this build's for a payload written,
-    the file's own for one read, never this build's in its place
-    (`model/overview.md` § 2.2b, F4).  A version states its envelope whole
-    -- the frame count from v11, the geometry hash from v13
-    (`structure-molstruct.md` § 2); a file of an older version states
-    neither, ``None`` here, and its fields are checked against one frame.
+    / ``geometry_hash`` / ``created_*``) is layered on, the version the one
+    this build reads and writes (:data:`SCHEMA_VERSION`), whole: the frame
+    count and the geometry hash required (`structure-molstruct.md` § 2).
     ``created_at`` is the moment the payload was made, as given: its
     writer's stamp for a payload written (``StructureCodec.pair``), the
     file's own for one read -- ``None`` where a file states none, never the
@@ -498,13 +408,11 @@ def to_dict(
             f"n_atoms_total must be a non-negative int; got "
             f"{n_atoms_total!r}"
         )
-    if not (geometry_hash is None and schema_version < 13) \
-            and not is_geometry_hash(geometry_hash):
+    if not is_geometry_hash(geometry_hash):
         raise MolstructJsonError(
             f"geometry_hash must be a sha256 hex string (got "
             f"{geometry_hash!r})")
-    if not (n_frames_total is None and schema_version < 11) and (
-            isinstance(n_frames_total, bool)
+    if (isinstance(n_frames_total, bool)
             or not isinstance(n_frames_total, int) or n_frames_total < 1):
         raise MolstructJsonError(
             f"n_frames_total must be a positive int; got {n_frames_total!r}")
@@ -513,7 +421,7 @@ def to_dict(
     # authority (a scratch N-atom Structure IS the schema), for a payload
     # written and one read alike, so no field can drift between them.
     fields = structure_fields_via_dataclass(n_atoms_total, fields or {},
-                                            n_frames_total or 1)
+                                            n_frames_total)
     # The OPTIONAL per-atom columns (identity, schema 8; species labels,
     # v16): validated the same way -- through the ONE dataclass authority.
     # Only REAL columns are handed in (Structure.identity_to_dict already
@@ -523,15 +431,11 @@ def to_dict(
 
     out = {
         # Envelope -- the sidecar LAYER's own keys (not Structure fields).
-        "schema_version":  int(schema_version),
+        "schema_version":  SCHEMA_VERSION,
         "n_atoms_total":   n_atoms_total,
-        # The frame count (v11) and THE PIN (v13), where the version states
-        # them: a v7-v12 file has no pin, and its pair opens unchecked
-        # (`structure-molstruct.md` § 3).
-        **({"n_frames_total": n_frames_total}
-           if n_frames_total is not None else {}),
-        **({"geometry_hash": geometry_hash}
-           if geometry_hash is not None else {}),
+        # The frame count and THE PIN (`structure-molstruct.md` § 3).
+        "n_frames_total":  n_frames_total,
+        "geometry_hash":   geometry_hash,
         # The Structure metadata block, VERBATIM from the ONE codec
         # (metadata_to_dict, via structure_fields_via_dataclass): every field
         # of METADATA_FIELDS -- and never a retired key.  Spread -- NOT re-listed -- so a field added to the
@@ -642,9 +546,9 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
         )
     # THE FRAME COUNT, beside the atom count and for the same reason: each
     # frame's `customized` rows are indexed by frame (`structure-molstruct.md`
-    # § 3).  A v7-v10 payload states none and holds nothing indexed by frame.
+    # § 3).
     sidecar_f = sidecar_data.get("n_frames_total")
-    if sidecar_f is not None and sidecar_f != struct.n_frames:
+    if sidecar_f != struct.n_frames:
         raise MolstructPairingError(
             f"sidecar n_frames_total={sidecar_f} but the structure holds "
             f"{struct.n_frames} frame(s).  The sidecar's frame rows no longer "
@@ -656,9 +560,8 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
     except ImportError:                         # beside a job, in a bundle
         from structure import (FILE_FIELDS, IDENTITY_FIELDS, SPECIES_LABELS,
                                split_species_label)
-    # A RETIRED KEY IS NOT A STRAY ONE -- the gates ask that question of
-    # one door (:func:`unread_keys`), so they give the same answer
-    # (`structure.RETIRED_METADATA_KEYS` says which and why).
+    # A STRAY KEY, asked of one door (:func:`unread_keys`), so every gate
+    # gives the same answer.
     #
     # `StructureCodec.load` never reaches here with a stray key, because
     # `parse.sidecars.molstruct.load_record` answers first.  This gate takes a
@@ -718,12 +621,6 @@ def apply_to_structure(struct, sidecar_data: Dict[str, Any]) -> None:
         # Surface field-validation failures as the sidecar-layer error type,
         # preserving the clear per-field message from the dataclass invariants.
         raise MolstructJsonError(str(exc)) from exc
-    # A V7-V11 FILE STATES AN OFFSET AND NOT WHOSE: it is the person's
-    # (`model/structure-molstruct.md` v12), stated so -- a re-save then
-    # writes `person`, never `null` beside an offset.
-    if (struct.engine_offset is not None and struct.offset_by is None
-            and int(sidecar_data.get("schema_version") or SCHEMA_VERSION) < 12):
-        struct.offset_by = "person"
     # THE ATOM INDEX MAP AGAINST THE ORDER RECORD (`model/overview.md`
     # § 2.2b): one statement of one order -- a pair whose map says another
     # order than its record is refused by name.
@@ -762,16 +659,11 @@ def _map_agrees(block, struct) -> None:
             "atom_order record -- one pair, one order")
 
 
-def load(sidecar_path: Union[str, Path], *,
-         retired_out: "Dict[str, Any] | None" = None,
-         stated_out: "set | None" = None) -> Dict[str, Any]:
+def load(sidecar_path: Union[str, Path]) -> Dict[str, Any]:
     """THE READ DOOR of a sidecar file: its bytes read, then its one reader
     (``parse.sidecars.molstruct.load_record`` -- the version gate, the
-    stray-key gate, then :func:`to_dict`), the normalised payload back, its
-    version the file's.  An unreadable file raises
-    :class:`MolstructJsonError` naming it.  ``retired_out`` is the
-    reader's (a retired key that carried a value), and ``stated_out``
-    (every metadata field the file states, a null one among them).  The
+    stray-key gate, then :func:`to_dict`), the normalised payload back.  An
+    unreadable file raises :class:`MolstructJsonError` naming it.  The
     reader is imported here, not at load: it imports this module.
     """
     from ..parse.sidecars.molstruct import load_record
@@ -779,11 +671,10 @@ def load(sidecar_path: Union[str, Path], *,
     try:
         data = sidecar_path.read_bytes()
     except OSError as exc:
-        raise MolstructJsonError(
+        raise MolstructUnreadable(
             f"failed to read sidecar {sidecar_path}: {exc}"
         ) from exc
-    return load_record(data, source=str(sidecar_path),
-                       retired_out=retired_out, stated_out=stated_out)
+    return load_record(data, source=str(sidecar_path))
 
 
 __all__ = [

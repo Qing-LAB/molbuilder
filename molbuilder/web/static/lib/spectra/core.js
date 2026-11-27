@@ -1417,8 +1417,7 @@
         const e = results.phase_es;
         if (f !== "complete") return "Computing vibrational frequencies (Hessian)";
         // A PHASE STILL TO FINISH, by its own record (`_running`): `not
-        // requested` is terminal (vibration.md § 4.9), and "" -- a file
-        // from before the flag -- no record, not a phase still to come.
+        // requested` is terminal (vibration.md § 4.9).
         if (_running(r))
             return _ramanOptical(results)
                 ? "Computing Raman (SIESTA's optical calls at \u00b1\u03b4Q)"
@@ -1439,15 +1438,14 @@
     function allPhasesComplete(results) {
         // A run is "complete" when no phase its record states is still
         // to finish.  L2 (frequencies) is always required.
-        // Relaxation counts only when the deck ran it (v4 files and
-        // `already_relaxed` runs carry enabled: false / no block).
+        // Relaxation counts only when the deck ran it (`already_relaxed`
+        // runs carry enabled: false).
         const rx = results.relaxation || {};
         if (rx.enabled && results.phase_relaxation !== "complete")
             return false;
         if (results.phase_frequencies !== "complete") return false;
         // EACH PHASE STILL TO FINISH, by its own record (vibration.md
-        // § 4.9): `not requested` is terminal, and "" -- a file written
-        // before a flag -- no record, and no reason to wait.
+        // § 4.9): `not requested` is terminal, no reason to wait.
         for (const ph of ["raman", "ir", "es"]) {
             if (_running(results["phase_" + ph])) return false;
         }
@@ -1462,8 +1460,7 @@
             const ph = dot.dataset.phase;   // relaxation|frequencies|raman|ir|es
             // A PHASE THE RUN DID NOT ASK FOR shows no dot (web/spectra.md
             // § 3), by its own record on either engine: `not requested` --
-            // a strength switched off, the probe at skip or on SIESTA -- or
-            // "" in a file written before its flag, no record.
+            // a strength switched off, the probe at skip or on SIESTA.
             const has = (ph === "raman" || ph === "ir" || ph === "es")
                 ? _asked(results, ph) : true;
             const wrap = dot.closest(".spectra-phase");
@@ -1586,8 +1583,8 @@
     /* A PHASE AS ITS OWN RECORD STATES IT, the same on both engines
      * (engines/vibration.md § 5.11 § 8) -- whether Raman or the probe was
      * asked, and each phase's dot (web/spectra.md § 3): `not requested` is
-     * a run that never asked -- Compute Raman off, PySCF's probe at skip;
-     * "" a file written before the flag, no record.  Whether the INFRARED
+     * a run that never asked -- Compute Raman off, PySCF's probe at skip.
+     * Whether the INFRARED
      * was asked -- for its column, CSV, sentence and summary -- is the
      * door's one reading (`_irAsked`); its dot shows its phase's record. */
     function _asked(r, phase) {
@@ -1596,7 +1593,7 @@
     }
     function _ramanAsked(r) { return _asked(r, "raman"); }
     /* WHETHER THE RUN ASKED FOR ITS INFRARED -- the load door's one reading
-     * of the result's own facts, older files included (`infrared_asked`,
+     * of the result's own facts (`infrared_asked`,
      * engines/vibration.md § 5.11 § 8): the column, the CSV, the sentence
      * and the summary read it, never `phase_ir`. */
     function _irAsked(r) { return !!(r && r.infrared_asked); }
@@ -1891,8 +1888,6 @@
             case "finite-difference":
                 return "computed — finite-difference dipoles" + shown;
             case "none":
-            case "":
-            case undefined:
                 return "computed — route not recorded" + shown;
             default:
                 return "computed — " + r.ir_route + shown;
@@ -1931,10 +1926,6 @@
                 return r.phase_raman === "complete"
                      ? "none computed \u2014 the Methods paragraph says why"
                      : r.phase_raman;
-            case "":
-            case undefined:
-                return r.phase_raman === "complete"
-                     ? "computed \u2014 route not recorded" : r.phase_raman;
             default:
                 return "computed \u2014 " + r.raman_route;
         }
@@ -2228,13 +2219,11 @@
         transition("APPLY", { path: path, results: results });
         els.resultsSummary.hidden = false;
 
-        // Top-of-summary meta dictionary.  ``runtime_info`` (added in
-        // results-schema v4, 2026-05-22) carries the actual CPU/GPU
-        // resources the run consumed -- so a user who saw load=40 on
-        // a 20-core host can confirm here "yes, the script used 20
-        // PySCF threads with BLAS=1, no oversubscription."  Missing
-        // keys render as "—" so older results (without runtime_info)
-        // degrade cleanly.
+        // Top-of-summary meta dictionary.  ``runtime_info`` carries the
+        // actual CPU/GPU resources the run consumed -- so a user who saw
+        // load=40 on a 20-core host can confirm here "yes, the script used
+        // 20 PySCF threads with BLAS=1, no oversubscription."  Missing
+        // keys render as "—": a SIESTA result states none.
         const rt   = results.runtime_info || {};
         const cpu  = (rt.n_threads_pyscf != null)
             ? `${rt.n_threads_pyscf} PySCF (BLAS=${rt.n_threads_blas ?? "?"}, `
@@ -2251,9 +2240,7 @@
         // for.  The two dmu/dR routes cost wildly different amounts --
         // analytic rides on the Hessian's own CPHF solve, the sweep
         // spends 6N extra SCFs -- so a reader comparing two runs needs
-        // to see which one they got.  An older sidecar predates the
-        // field: that is an absence of record, reported as such rather
-        // than guessed either way.
+        // to see which one they got.
         /* R7's second half: what the harmonic analysis took out before
          * diagonalising, and over which atoms the Hessian ran, said beside
          * the result and not only in the file. */
@@ -2387,8 +2374,8 @@
     }
 
     function _relaxSummary(results) {
-        // The tracked relaxation phase (v5; plan D3/D4): what the deck or the
-        // read-back recorded, in one line.  v4 files carry no block.
+        // The tracked relaxation phase (plan D3/D4): what the deck or the
+        // read-back recorded, in one line.
         const rx = results.relaxation || {};
         // THE JUDGED FORCE FIRST, whichever route measured it (vibration.md
         // § 4.3 for PySCF, § 5.5 for SIESTA), on every path that carries
@@ -2404,7 +2391,7 @@
         if (!rx.enabled) {
             // Nothing ran: the person's assertion (either route), or the
             // force-constant route that relaxes nothing and says so in its
-            // warning; a v4 file says nothing at all.
+            // warning.
             if (rx.already_relaxed) {
                 return "asserted relaxed"
                      + (rx.warning ? " \u2014 " + rx.warning : "") + force;
@@ -3021,7 +3008,7 @@
         // Electron-phonon coupling magnitude per spec § 9.2.4:
         //   g_HOMO = ΔE_HOMO(+A→−A) / (2A)  (meV/Å -- approximate)
         // The dimensionless coupling g_ν (per zero-point amplitude,
-        // `zero_point_amplitude_amu12_ang`, which the file carries from v7)
+        // `zero_point_amplitude_amu12_ang`, which the file carries)
         // is V1.27's, the PySCF probe over five points per mode -- decided,
         // not built (`engines/vibration.md` § 4.8).  Until then the simpler
         // ΔE/(2A) form is shown.
@@ -3290,8 +3277,8 @@
     const BOND_LIKE_ANG = 3.0;
 
     function _physicalAmplitude(modeRow, mode) {
-        // An imaginary or zero mode carries null, and a file older than the
-        // key carries nothing: no physical amplitude, the display form stays.
+        // An imaginary or zero mode carries null: no physical amplitude, the
+        // display form stays.
         const q = Number(modeRow && (mode === "thermal"
             ? modeRow.thermal_spread_amu12_ang
             : modeRow.zero_point_amplitude_amu12_ang));
@@ -3306,36 +3293,32 @@
      * `.spectra.json` and the shape of a mode, which is what keeps VibrationView
      * from ever naming spectra and the server from ever naming VibrationView.
      *
-     * When the result cannot be animated it says so, and the caller says so
-     * rather than finding a structure somewhere else: whatever MolView holds
-     * on /results is whatever the last inspection installed, and an atom
-     * count alone cannot tell two molecules of the same size apart.
+     * When the result holds nothing to animate, the panel stays hidden rather
+     * than finding a structure somewhere else: whatever MolView holds on
+     * /results is whatever the last inspection installed, and an atom count
+     * alone cannot tell two molecules of the same size apart.
      */
     /* ONE SHAPE, ALWAYS, so a caller cannot forget a case:
      *
-     *     { ready: false, why: null }      nothing is selected — say nothing
-     *     { ready: false, why: "…" }       selected, but it cannot be drawn
+     *     { ready: false }      nothing to draw — no mode selected, or no
+     *                           geometry for it to move
      *     { ready: true, structure, mode, amplitude, norm }
      *
      * Checking `ready` is the only thing to remember.
      */
     function _animationInputs() {
-        const nothing = { ready: false, why: null };
+        const nothing = { ready: false };
         const r = state.results;
         if (!r || state.selectedMode == null) return nothing;
 
-        // THE STRUCTURE the result states (schema 9): the equilibrium
-        // geometry's elements and positions are its own.
+        // THE STRUCTURE the result states: the equilibrium geometry's
+        // elements and positions are its own, stated with the modes
+        // (engines/vibration.md § 6.5) -- none before, and so nothing to draw.
         const eq = r.structure;
         if (!eq || !Array.isArray(eq.elements) || !Array.isArray(eq.positions)
                 || !eq.elements.length
                 || eq.positions.length !== eq.elements.length) {
-            // Not animatable, and WHY is worth saying: results written before the
-            // geometry was stored are a real thing a user still has on disk, and
-            // a mode-visualisation panel that simply vanishes reads as a bug.
-            return { ready: false,
-                     why: "this result has no stored geometry, so its modes "
-                        + "cannot be animated — re-parse the run to add one" };
+            return nothing;
         }
         const mode = (r.modes || []).find(
             m => m.index_1based === state.selectedMode);
@@ -3385,12 +3368,11 @@
                                            : mode.eigenvector_display,
                 basis:         free,
                 /* WHICH ATOMS THE MODE BELONGS TO -- {"C": 0.914, "H": 0.086}.
-                 * Computed by the server at /api/spectra/load, because it needs
-                 * the masses: a schema-7 file states its own, an older one
-                 * none, and the one rule for both is the server's
-                 * (`results.mass_of`); this page holds no mass table.  Absent
-                 * on a result the server could not weigh (an element ASE does
-                 * not know), so every reader treats it as optional. */
+                 * Summed by the server at /api/spectra/load from each free
+                 * atom's share the result states, weighted by the masses it
+                 * states (`SpectraResults.atoms_weighted`); this page holds
+                 * no mass table.  Absent on a mode that states no shares, so
+                 * every reader treats it as optional. */
                 share:         mode.motion_share_by_element || null,
                 // TEXT, not a number (§ 12.3): the sign carries meaning -- a
                 // negative frequency is a saddle point, not a small number -- and
@@ -3413,16 +3395,9 @@
         const inputs = _animationInputs();
         if (!inputs.ready) {
             _stopAnimation();
-            // No reason to give means nothing is selected: hide the panel, since
-            // there is nothing to explain.  A reason means something IS selected
-            // and cannot be drawn — so say why, where the molecule would have
-            // been, rather than vanishing and leaving the user to wonder which
-            // click did that.
-            els.modeViewerWrap.hidden = !inputs.why;
-            if (inputs.why) {
-                _sayUnderBox(inputs.why, "muted");
-                _releaseViewer();
-            }
+            // Nothing to draw: hide the panel, since there is nothing to
+            // explain.
+            els.modeViewerWrap.hidden = true;
             return;
         }
         els.modeViewerWrap.hidden = false;
@@ -3439,8 +3414,7 @@
 
     /* THE MODE BOX LET GO -- its clock, its surface and the host's markup
      * (vibrationview.md § 8) -- with what the page knew of it, so a box built
-     * after starts from nothing.  A result whose modes cannot be animated has
-     * none, and neither has a disposed panel. */
+     * after starts from nothing.  A disposed panel has none. */
     function _releaseViewer() {
         if (state.vib) { try { state.vib.dispose(); } catch (_) {} }
         state.vib = null;
@@ -4316,7 +4290,7 @@
         }));
     }
 
-    // ----- Thermochemistry panel (v5 `thermo`; plan § 2b) -------
+    // ----- Thermochemistry panel (the result's `thermo`; plan § 2b) -------
     //
     // The DECK computes, this panel draws, and it DERIVES NOTHING
     // (web/spectra.md § 3): the headline, the regime sentence and the
@@ -4346,9 +4320,9 @@
         const has  = T.length > 0;
         if (els.thermoTabBtn) els.thermoTabBtn.hidden = !has;
         if (!has) {
-            // A v4 file, or a run that has not reached the thermo
-            // stage yet.  If the user was ON the tab when such a run
-            // loaded, land them somewhere real.
+            // A run that has not reached the thermo stage yet.  If the
+            // user was ON the tab when such a run loaded, land them
+            // somewhere real.
             if (state.modeStrip && state.modeStrip.active() === "thermo") {
                 state.modeStrip.select("table");
             }

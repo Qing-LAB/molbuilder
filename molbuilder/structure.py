@@ -459,58 +459,21 @@ def normalise_customized(raw: Any, n_frames: int,
         return None
     return {"rows": rows, "frames": frames}
 
-#: Keys a sidecar ON DISK may carry that this build no longer stores.
-#: ACCEPTED AND IGNORED wherever a stored payload is read -- never refused.
-#:
-#: An UNKNOWN key and a RETIRED one are different states, and the difference
-#: is the user's file.  Unknown is a fact they believe they stored and this
-#: build cannot honour, so it is named and refused.  Retired is a key this
-#: project wrote and has stopped writing: the file is not wrong, it is older,
-#: and refusing it would make a pair that opened before unopenable now for no
-#: gain.
+#: Keys a stored payload may carry that this build no longer stores --
+#: ACCEPTED AND IGNORED where :meth:`Structure.apply_metadata_dict` applies
+#: one.  No sidecar this build reads holds one (it reads one version,
+#: `structure-molstruct.md` § 2); a run's deck does: its ATOM-METADATA block,
+#: written at its own prep and read at any version
+#: (`structure-molstruct.md` § 2, *What "refused" means*).
 #:
 #: RETIREMENT IS ONLY SAFE WHEN NOTHING IS LOST BY IGNORING THE KEY, and that
 #: is shown, not assumed.  `pbc` qualifies: the boolean was always recomputed
-#: from `axis_kind`, every sidecar at a readable schema version carries a real
-#: `axis_kind`, and `Structure.pbc()` reproduces it on demand.  A key whose
-#: fact lives nowhere else cannot be retired this way -- it needs a schema
-#: bump and a reader that migrates it.
-#:
-#: SHARED, because THREE gates ask this question and they must give one
-#: answer:
-#:
-#:   1. `parse.sidecars.molstruct.load_record` -- refuses stray keys while the
-#:      payload is still whole, deliberately upstream of anything that
-#:      applies it;
-#:   2. `sidecars.molstruct.apply_to_structure` -- refuses them again before
-#:      applying;
-#:   3. `apply_metadata_dict` -- refuses them on the way onto a Structure.
-#:
-#: Gate 2 is not reachable from `StructureCodec.load`, because gate 1 answers
-#: first -- but it takes a payload DIRECTLY, so a caller that builds one in
-#: code reaches it.  A retirement written into some gates and not others
-#: leaves the file readable by one door and refused by another, which is the
-#: failure this shared constant exists to make impossible.
-#:
-#: ``cell_origin`` is the second, and it qualifies BY DECISION rather than by
-#: derivation (user, 2026-09-25: "your option (a) is fine, and when files are
-#: saved, make sure no old retired key is written again").  It stored a box
-#: corner; placement is now the engine offset, the rule's unless the structure
-#: states one (`model/structure-periodicity.md` § 6.0).  Ignoring it can lose
-#: a corner a person typed by hand, who assigns it again on the Cell page --
-#: chosen over migrating it because v9 cannot tell a typed corner from the
-#: electrode builder's flush one, the placement TranSIESTA refused.
+#: from `axis_kind`, and `Structure.pbc()` reproduces it on demand.
+#: ``cell_origin`` qualifies BY DECISION (user, 2026-09-25: "your option (a)
+#: is fine, and when files are saved, make sure no old retired key is written
+#: again"): placement is the engine offset, the rule's unless the structure
+#: states one (`model/structure-periodicity.md` § 6.0).
 RETIRED_METADATA_KEYS = ("pbc", "cell_origin")
-
-#: Identity keys a sidecar ON DISK may carry that this build no longer writes.
-#: Same three gates as ``RETIRED_METADATA_KEYS``, for the same reason.
-#:
-#: ``title`` qualifies under the rule above because its fact lives in the
-#: PAIRED GEOMETRY FILE -- it is the `.xyz` comment line and the PDB TITLE
-#: record (``model/structure.md`` § 2.2c).  It remains a ``Structure`` field
-#: and still rides ``to_dict`` / ``replace``; what it is not is
-#: a column of the sidecar.
-RETIRED_IDENTITY_KEYS = ("title",)
 
 #: The structural keys an extended-XYZ comment line carries.  The title is the
 #: free text BEFORE the first of them (:meth:`Structure.from_xyz`).
@@ -523,7 +486,7 @@ _EXTXYZ_KEY = _re.compile(r"\b(?:Lattice|Properties|pbc)\s*=")
 #: placeholders stay out of the file.
 #:
 #: ``title`` is NOT one of these.  The geometry file owns it
-#: (``model/structure.md`` § 2.2c); it is in ``RETIRED_IDENTITY_KEYS``.
+#: (``model/structure.md`` § 2.2c).
 IDENTITY_FIELDS = ("atom_names", "residue_ids", "residue_names",
                    "chain_ids")
 
@@ -899,8 +862,8 @@ class Structure:
     # (``metadata_to_dict``), and ``None`` there means the rule.
     engine_offset: Optional[np.ndarray]            = None
     # WHOSE THE STATED OFFSET IS -- one of ``OFFSET_BY``, or None: no offset
-    # stated, or one recorded before the record (a v7-v11 sidecar), read as
-    # the person's and kept (`model/structure-molstruct.md` v12).
+    # stated, or one whose kind nothing states, kept as the person's
+    # (`model/structure-periodicity.md` § 6.0).
     offset_by:     Optional[str]                   = None
     # Extensible per-atom annotations (model/structure-annotations.md).  Holds
     # channels BEYOND the labels (regions -> tag channels, reserved ones
@@ -1349,23 +1312,12 @@ class Structure:
         out-of-range index, ...), sourced from the same invariants a freshly
         constructed Structure enforces.
 
-        **An unknown key is REFUSED, a RETIRED one is ignored.**  Those are
-        different states and the difference is the user's file.  An unknown
-        key is a fact they believe they stored and this build cannot honour,
-        so saying nothing would be a silent loss -- it is named and refused.
-        A retired key is one THIS project used to write and has since stopped:
-        the file is not wrong, it is older, and refusing it would make a pair
-        that opened yesterday unopenable today for no gain.
-        ``RETIRED_METADATA_KEYS`` (module scope, because two more gates ask
-        the same question upstream of this one and must agree) is that list.
-
-        Retiring a key is only safe when nothing is lost by ignoring it, and
-        that has to be shown rather than assumed.  For ``pbc`` it is: the
-        boolean was always recomputed from ``axis_kind``, every sidecar at a
-        readable schema version carries a real ``axis_kind`` (``__post_init__``
-        has always set one), and :meth:`pbc` reproduces the value on demand.
-        A key whose fact lives nowhere else cannot be retired this way -- it
-        needs a schema bump and a reader that migrates it."""
+        **An unknown key is REFUSED, a RETIRED one is ignored.**  An unknown
+        key is a fact the person believes they stored and this build cannot
+        honour, so saying nothing would be a silent loss -- it is named and
+        refused.  A retired key (:data:`RETIRED_METADATA_KEYS`) is one an
+        older release wrote into a run's deck, read at any version: nothing
+        is lost by ignoring it."""
         data = data or {}
         said = _persist().unknown_keys(
             [k for k in data if k not in RETIRED_METADATA_KEYS],

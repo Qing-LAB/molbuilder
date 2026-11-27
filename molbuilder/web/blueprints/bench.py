@@ -50,6 +50,7 @@ def api_bench_summary():
     from molbuilder.jobset.model import JobSet
     from molbuilder.jobset.materialize import bench_owner
     from molbuilder.jobset.summarize import sweep_view
+    from molbuilder.persist import FileRefused
     from .files import _existing, _resolve_within_roots
 
     raw = request.args.get("path", "")
@@ -60,11 +61,15 @@ def api_bench_summary():
                   if path == JobSet.path_of(path.parent) else None)
         if jobset is None:
             raise ValueError(f"{path.name} is not a job set of molbuilder's")
+    except FileRefused:
+        # A PLAN THAT DOES NOT READ is the edge's refusal, in its reader's
+        # words (`web/app.py`, `job-contracts.md` § 6.1).
+        raise
     except Exception as exc:
         # The picker lists what is on disk and a person may click any of
         # it, so "you picked something that is not a job-set" is a 400 the
-        # UI can show -- never a 500.
-        return err(f"not a readable job-set: {type(exc).__name__}: {exc}", 400)
+        # UI can show -- never a 500 -- in its words alone.
+        return err(f"not a readable job-set: {exc}", 400)
 
     if getattr(jobset, "kind", "") != "sweep":
         return err(

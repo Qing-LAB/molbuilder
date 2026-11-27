@@ -18,9 +18,9 @@ from molbuilder.vibration import motion_shares_of, shares_by
 
 
 def shares_by_the_table(elements, rows):
-    """The shares with each atom weighted by the element table's mass -- a
-    result before schema 7 states none, and a reader weights its modes so
-    (`results.mass_of`) -- each atom's share summed by its element."""
+    """The shares with each atom weighted by the element table's mass -- the
+    masses `prep` states every deck's from (`chemistry.atomic_mass`,
+    `engines/vibration.md` I3) -- each atom's share summed by its element."""
     return shares_by(elements, motion_shares_of(
         rows, [atomic_mass(e) for e in elements]))
 

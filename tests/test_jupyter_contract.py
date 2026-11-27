@@ -59,11 +59,14 @@ def test_a_wrong_schema_stamp_is_refused(rules_file):
     """The stamp is the artifact's NAME as well as its version.
 
     `persist.check_schema`'s own history is the reason: it compared only
-    majors once, so any `@1` artifact parsed as any other.
+    majors once, so any `@1` artifact parsed as any other.  Refused carrying
+    the mark of a file its reader cannot read, which the command line and the
+    web server say at their edge (`execution/job-contracts.md` § 6.1).
     """
+    from molbuilder.persist import FileRefused
     rules_file(J.rules_path().read_text(encoding="utf-8")
                .replace("molbuilder/jupyter@1", "molbuilder/warm-files@1"))
-    with pytest.raises(ValueError) as exc:
+    with pytest.raises(FileRefused) as exc:
         J.load_rules()
     assert "molbuilder/jupyter" in str(exc.value)
 

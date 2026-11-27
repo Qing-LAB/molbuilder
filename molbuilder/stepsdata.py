@@ -21,6 +21,7 @@ import numpy as np
 
 from .ncdata import (Var, axis_values, coordinate, scf_history_values,
                      scf_history_vars)
+from .persist import FileRefused
 from .spectra.results import PARTITIONS
 
 #: Which layout this is, at which version (`model/datafiles.md` § 2b).
@@ -166,6 +167,13 @@ def _scf_vars(columns) -> Tuple[Var, ...]:
 class DataFileError(ValueError):
     """A calculation whose runs do not lay out on the file's one grid, or a
     file that is not this one -- the message names which."""
+
+
+class DataFileUnreadable(DataFileError, FileRefused):
+    """A file read back that is not this one at a version this molbuilder
+    reads (:func:`read_data_file`): a file its reader cannot read, carrying
+    the mark the two edges say (`persist.FileRefused`,
+    `execution/job-contracts.md` § 6.1).  The writer's checks carry none."""
 
 
 def _runs_read(calc) -> List[Dict[str, Any]]:
@@ -324,7 +332,7 @@ def read_data_file(path) -> Dict[str, Any]:
     source -- the framework's one read of a file (`ncdata.read_file`).
     Refuses another schema by name."""
     from .ncdata import read_file
-    got = read_file(path, schemas=(DATA_SCHEMA,), error=DataFileError,
+    got = read_file(path, schemas=(DATA_SCHEMA,), error=DataFileUnreadable,
                     way="its export writes it again")
     return {"attrs": got["attrs"],
             "groups": {k: v for k, v in got["groups"].items() if k}}

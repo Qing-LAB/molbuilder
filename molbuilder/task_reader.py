@@ -19,27 +19,32 @@ WHY IT CLAIMS ONLY A TRANSPORT CALCULATION'S.  Every calculation has a
 ``task.json``; only a kind whose root opens its description has a report
 composed at its root -- the kind table's ``root_opens``, a transport
 calculation's.  The discriminator is the description's own ``calculation``,
-read through its one door (`task.of`) -- never the file's place or name
-alone.
+read as the file holds it -- never the file's place or name alone, and
+never its version: a parser claims its file by what it is and refuses on
+parse (`model/parse.md` § 6), so a description of a version this
+molbuilder does not read is listed as this parser's and, opened, refused in
+its one door's words (`task.of`), never hidden as no parser's.
 """
 from __future__ import annotations
 
 from pathlib import Path
 
 from .parse.base import FileParser
-from .parse.errors import UnknownFormatError
+from .parse.errors import FileUnreadable
 from .parse.sidecars._helpers import build_sidecar_result
 from .parse.types import SidecarResult
 from .runfiles import TASK_FILE
 
 
-class TaskReadError(ValueError):
-    """Why this file is not a transport calculation's description."""
+class TaskReadError(FileUnreadable):
+    """Why this file is not a transport calculation's description -- a
+    parser's refusal of its file, carrying the mark
+    (`parse.errors.FileUnreadable`)."""
 
 
 def _load_transport_task(path: Path) -> dict:
-    """The description's JSON, or :class:`TaskReadError` saying why not --
-    one reader for both halves of the parser."""
+    """The description's JSON, read through its one door (`task.of`), or
+    :class:`TaskReadError` saying why not, in that door's words."""
     from .task import of as task_of
     p = Path(path)
     if p.name != TASK_FILE:
@@ -54,9 +59,9 @@ def _load_transport_task(path: Path) -> dict:
             raise FileNotFoundError(p)
         obj = task.to_dict()
     except Exception as exc:                                  # noqa: BLE001
+        # THE READER'S OWN WORDS, never a Python class name before them.
         raise TaskReadError(
-            f"{p.name} does not read as a description: "
-            f"{type(exc).__name__}: {exc}") from exc
+            f"{p.name} does not read as a description: {exc}") from exc
     from .kind_table import ROOT_OPENS, kind
     if kind(task.calculation).root_opens != ROOT_OPENS[0]:
         raise TaskReadError(
@@ -79,20 +84,24 @@ class TransportTaskFileParser(FileParser):
 
     @classmethod
     def can_parse(cls, path: Path) -> bool:
-        try:
-            _load_transport_task(Path(path))
-        except TaskReadError:
+        # BY ITS NAME AND ITS KIND, the description's own ``calculation`` as
+        # the file holds it (`persist.read_object`, no schema asked): the
+        # version is the parse's to refuse.
+        from .kind_table import ROOT_OPENS, kind
+        from .persist import read_object
+        p = Path(path)
+        if p.name != TASK_FILE or not p.is_file():
             return False
-        return True
+        try:
+            calculation = read_object(p).get("calculation")
+            return kind(str(calculation)).root_opens == ROOT_OPENS[0]
+        except (OSError, ValueError):     # no object, or a kind none holds
+            return False
 
     @classmethod
     def parse(cls, path: Path) -> SidecarResult:
-        try:
-            payload = _load_transport_task(Path(path))
-        except TaskReadError as exc:
-            raise UnknownFormatError(str(exc)) from exc
         return build_sidecar_result(
-            payload=payload,
+            payload=_load_transport_task(Path(path)),
             kind="transport-task",
             parser_name=cls.name,
             source=Path(path),

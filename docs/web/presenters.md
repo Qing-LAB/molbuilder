@@ -214,9 +214,11 @@ Six of the eight presenters are simple, but two — **trajectory** and
   point's digest is being read it asks that reading's line again every 2 s,
   and fetches the record again when the reading ends
   ([`results.md`](?doc=web/results.md) § 2.5);
-- **fc-sweep** likewise: it reads a `<label>.fc-sweep.json` and draws the
-  stages' and modes' tables, once (bench-summary, transport and fc-sweep build
-  their elements through one shared helper, `lib/dom.js`);
+- **fc-sweep** likewise: for a `<label>.fc-sweep.json` it asks
+  `/api/spectra/sweep`, which reads the record through its reader, and draws
+  the stages' and modes' tables, once — a record of another version is that
+  reader's refusal, shown in its words (bench-summary, transport and
+  fc-sweep build their elements through one shared helper, `lib/dom.js`);
 - **source** (plain text) and **markdown** are small and self-contained.
 
 The two engines are large enough to be their own subject — this doc names them

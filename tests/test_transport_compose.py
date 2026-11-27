@@ -1,5 +1,6 @@
 """The lead checks the transport citation asks (`engines/transport.md` § 3.1,
-§ 4): what is said or measured on the structure alone.
+§ 4): what is said or measured on the structure alone; and the composed
+junction and its record read at their one version (§ 1.1).
 
 What a citation of a finished relaxation composes -- the leads it cuts, how
 the run ended, the electrode rename on this calculation's own copy -- reads
@@ -8,6 +9,8 @@ pass relaxes with the engine (`tests/test_transport_on_a_real_junction_e2e.py`,
 plan § 5y).  The layer positions are `support.junction`'s.
 """
 from __future__ import annotations
+
+import re
 
 import numpy as np
 import pytest
@@ -86,3 +89,78 @@ def test_a_frame_that_moves_a_lead_atom_is_said(moved, said):
     assert (sentence is not None) is said, sentence
     if said:
         assert "frame 2 of 2" in sentence and "Au" in sentence, sentence
+
+
+#: THE COMPOSED JUNCTION'S SIDECAR OF ANOTHER VERSION, a row each: the
+#: version it states, by who wrote it, and the words it is refused in.
+_JUNCTION_VERSIONS = {
+    "composed before 2026-11-04": (
+        lambda current: 16,
+        ("was composed before 2026-11-04: its sidecar is version 16, saved "
+         "before 2026-11-04, and this molbuilder reads version 17 alone.",
+         "Describe a new transport calculation of the same junction and run "
+         "it"),
+        ("written by a later molbuilder",)),
+    "a later molbuilder's": (
+        lambda current: current + 1,
+        ("does not read: its sidecar is version",
+         "written by a later molbuilder than this one",
+         "open it with the molbuilder that wrote it"),
+        ("Describe a new transport calculation", "composed before")),
+}
+
+
+@pytest.mark.parametrize("version", list(_JUNCTION_VERSIONS))
+def test_a_calculation_composed_before_the_one_pair_version_is_refused(
+        version, tmp_path):
+    """`engines/transport.md` § 1.1, `structure-molstruct.md` § 2 (the user,
+    2026-11-26: "Everything before 2026-11-04"), `job-contracts.md` § 6.1
+    (*The versions' words*): a transport calculation's composed junction
+    whose sidecar states a version this build does not read is refused by
+    name -- one composed before 2026-11-04 with the calculation's way on, a
+    new calculation described and run, never a pair's; one a later
+    molbuilder wrote with the later words alone.  The silent failures: such
+    a junction read as a v17 one, or the person told to save a pair the
+    calculation composed; a later molbuilder's junction told to be
+    described again by this one."""
+    import json
+    from molbuilder.sidecars.molstruct import SCHEMA_VERSION, sidecar_path_for
+    from molbuilder.structure import Structure
+    from molbuilder.transport.compose import (JUNCTION_GEOMETRY, ComposeError,
+                                              recorded_junction)
+    from molbuilder.workingcopy_structure import StructureCodec
+    stated, words, not_words = _JUNCTION_VERSIONS[version]
+    path = StructureCodec().write(
+        Structure.from_xyz("2\nH2\nH 0 0 0\nH 0 0 0.74\n"),
+        tmp_path / JUNCTION_GEOMETRY)
+    side = sidecar_path_for(path)
+    payload = json.loads(side.read_text())
+    payload["schema_version"] = stated(SCHEMA_VERSION)
+    side.write_text(json.dumps(payload))
+    with pytest.raises(ComposeError) as refused:
+        recorded_junction(tmp_path)
+    said = str(refused.value)
+    assert said.startswith(f"the composed junction, {JUNCTION_GEOMETRY}, "), (
+        said)
+    for w in words:
+        assert w in said, (w, said)
+    for w in not_words:
+        assert w not in said, (w, said)
+
+
+def test_a_composition_record_of_another_format_is_refused(tmp_path):
+    """`execution/job-contracts.md` § 6.1, `engines/transport.md` § 1.1: the
+    composition record reads its current format alone -- one of another, a
+    calculation composed before 2.10.0, refused by name with the way on.
+    The silent failure: an older record's absent fields read as defaults."""
+    import json
+    from molbuilder.runfiles import SLOT_PROVENANCE_FILE
+    from molbuilder.transport.compose import read_provenance
+    (tmp_path / SLOT_PROVENANCE_FILE).write_text(json.dumps(
+        {"schema": "molbuilder/slot-provenance@1", "citation": "P/s/R"}))
+    with pytest.raises(ValueError, match=re.escape(
+            "'molbuilder/slot-provenance@1' -- a transport calculation "
+            "composed before 2.10.0 -- and this molbuilder reads "
+            "molbuilder/slot-provenance@2 alone: describe a new transport "
+            "calculation of the same junction and run it")):
+        read_provenance(tmp_path)

@@ -123,7 +123,8 @@ def export(calc, fmt: str, *, folder=None, laser_nm: Optional[float] = None,
     try:
         result = parse_spectra_json(path)
     except SpectraJsonError as exc:
-        raise ExportError(f"{path.name}: {exc}") from exc
+        # THE READER'S WORDS, which name the file once.
+        raise ExportError(str(exc)) from exc
     # THE DATA FILES AS THEIR WRITERS WROTE THEM, each read once: its bytes
     # are what is copied, what its reader reads, and what the view hashes.
     spectra_nc = path.with_name(compose(label, ROLE_SPECTRA_DATA))

@@ -895,7 +895,6 @@ the act is about to change, each group named by its number and its members:
 |---|---|
 | prep of groups | `2026-10-30 19:03:24 · before prep task group 1 (seed, electrode_L, electrode_R), group 2 (device), group 3 (transmission)` |
 | prep of a benchmark | `… · before prep bench coarse` |
-| prep of a transport calculation's older junction, no group named | `… · before prep task: the citation's order record` ([`engines/transport.md`](?doc=engines/transport.md) § 1.1) |
 | prep copying a group in from a finished calculation | `… · before prep task group 1 (seed, electrode_L, electrode_R), copied in from <calculation>` ([`engines/transport.md`](?doc=engines/transport.md) § 2a.16) |
 | a group's first launch | `2026-10-31 21:19:11 · before launch task group 1 (coarse)` |
 | a group's first launch inside a sequence's job | `… · before launch task group 2 (medium), in job 4817 (sequence H2_sequence-01_coarse-02_medium)` — the job as `molbuilder jobs status` names it (a run here's walk, `<host>-<pid>`), and the sequence its header and launch record are named by |
@@ -1893,7 +1892,10 @@ take. A test file in no entry is a file nobody maintains against this document.
   repair → save, exit codes included.
 - **the HTTP routes** — `routes`: the verbs over the wire, and which bucket each
   refusal lands in — a name to repair and a folder of independent calculations
-  are advisories, an unknown state and a bad `limit` the caller's mistake,
+  are advisories, an unknown state and a bad `limit` the caller's mistake, an
+  archive or a state's record of one that does not verify
+  (`ArchiveUnreadable`) a file its reader cannot read, the edge's 400 in its
+  words ([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1),
   everything else a fault.
 - **the panel** — `sensor_js`: the state route opens no big file it can rule out
   by size and timestamp; the panel **runs**
@@ -1943,12 +1945,12 @@ take. A test file in no entry is a file nobody maintains against this document.
 | `Repo._manifest_of` | a state's MANIFEST, read off its own record — the one place damage to it is named (I2b) |
 | the note and calculation-name builder | `message_with_trailers`, `note_of`, `calculation_of`, `trailer_of` — written and read through one parser (L3) |
 | `save_before(path, what, *, engine)` · `Kept` | the save an act takes before it changes the folder — a `save`, so *already saved* is answered by content — and the line both doors show and the ledger records (§ 9) |
-| `CheckpointError` and its five subclasses | what a refusal raises. `CalculationNameError` and `NestedRepoRefusedError` are the **user's** to resolve; `GitNotInstalledError` and the rest are faults. Every surface buckets them by class, on every verb — a blanket `except CheckpointError` reports "fix your input" for a broken disk |
+| `CheckpointError` and its subclasses | what a refusal raises. `CalculationNameError` and `NestedRepoRefusedError` are the **user's** to resolve; `ArchiveUnreadable` — an archive or a state's record of one that does not verify — is a file its reader cannot read, carrying the mark the edges say (a 400 at every route, [`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1); `GitNotInstalledError` and the rest are faults. Every surface buckets them by class, on every verb — a blanket `except CheckpointError` reports "fix your input" for a broken disk |
 | `molbuilder/warmfiles.py` | `never_carried`, `is_scratch`, `scratch_families`, `never_carried_families` — what no copy carries (S1) |
 | `molbuilder/runtime_config.py` | the `checkpoint` section: `get_checkpoint`, `_validate_checkpoint`, `get_checkpoint_engines` (§ 4) |
 | `molbuilder/cli.py` | the `molbuilder checkpoint` verbs |
-| `molbuilder/jobset/ledger.py` | `save_then_carry_out`: `save_before`, the ledger's `saved` line, then the plan written — the one step `prep task`, `prep bench`, the junction's order record and a group's first launch take |
-| `molbuilder/jobset/prep.py` | `prep task`, `prep bench` and the junction's order record, each through `save_then_carry_out` |
+| `molbuilder/jobset/ledger.py` | `save_then_carry_out`: `save_before`, the ledger's `saved` line, then the plan written — the one step `prep task`, `prep bench` and a group's first launch take |
+| `molbuilder/jobset/prep.py` | `prep task` and `prep bench`, each through `save_then_carry_out` |
 | `molbuilder/jobset/submit.py` | a group's first launch: `_planned` sets `plan.save_before`, `send_launch` saves before it writes or sends; a sequence's groups save through the same launch, inside the job (`_plan_sequence`) |
 | `molbuilder/web/blueprints/build.py` | Task setup's Save: `save_before`, then `task.json` and `job-request.json` |
 | `molbuilder/jobset/commands.py` | reads a history, never writes one: a launched stage's way back finds its state by the note (`redo_launched`, `_state_before`) |

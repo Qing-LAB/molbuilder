@@ -487,6 +487,17 @@ $XDG_RUNTIME_DIR/molbuilder, else <state dir>/run
 └── jupyter-<port>.json    where the notebook is AND ITS TOKEN 0600 config_dir.jupyter_runtime()
 ```
 
+**A `report-cards.json` that does not read is refused**, its path and the
+reason, then its way on: *this machine's copy replaces the shipped layout
+whole and is optional: put it right, or move it aside and the shipped layout
+lays the cards out* (`report_cards.COPY_WAY`) — the monitor at its start, a
+channel's Test button and the This machine tab's reports alike, a page's as a
+400 ([`run-reports.md`](?doc=execution/run-reports.md) § 4.1c,
+[`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1). One a later
+molbuilder wrote is told the versions' words alone — what it says, what this
+molbuilder reads, and to open it with the molbuilder that wrote it — never
+this way on (`job-contracts.md` § 6.1, *The versions' words*).
+
 **The modes above are `molbuilder/placement.py`'s table**: one `Place` per
 entry it polices — the owner's resolver, the expected mode, why;
 `report-cards.json`, `environments/README` and the four entries inside
@@ -872,8 +883,15 @@ included, is refused. These are refused too, each naming its way out
 
 - a `--target` with no record of that name, or one that does not read;
 - no `--target` while records of other machines are on file and the calculation
-  has no copy yet — nobody said which machine;
-- a calculation copy that does not read, or names no machine.
+  has no copy yet — nobody said which machine; the question lists each, and
+  this machine's own record, when it is on file and does not read, is said in
+  its reader's words — never *this machine has no record yet* — an older
+  one's with the probe that writes it again, a later one's alone, its way on
+  the molbuilder that wrote it
+  ([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1);
+- a calculation copy that does not read, or names no machine — at every verb
+  that reads it, `jobset status` included, which says the copy's words rather
+  than a stage *ready to launch* with a launch line for each mode.
 
 **Preparing a calculation for another machine — or for a re-probed record of its
 own — is a new prep**, from a saved state before its first: `molbuilder
@@ -944,7 +962,10 @@ Its `scheduler` is the block M-2 names, and the reachable
 `(name, partition, qos, max_time)` **domains** are the record's. A record an
 older molbuilder wrote is refused by name — *an older molbuilder wrote it* —
 with the probe that writes it again: this machine's here, a named target's on
-that machine. A calculation's own copy, which no probe replaces (M-3), is
+that machine. Another artifact, or a record a later molbuilder wrote, is said
+in the versions' words — what it says, what this molbuilder reads, and for a
+later one the molbuilder that wrote it
+([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1). A calculation's own copy, which no probe replaces (M-3), is
 rewritten by `jobset migrate`: its scheduler word becomes the kind, each command
 by the name the kind gives it; its `script_generation` is carried as `env_init`
 with the same values — a copy holding both with different values is refused,

@@ -108,7 +108,7 @@ else), and `v.result_sha256` at the read door, whichever file:
 
 | attribute | what | from |
 |---|---|---|
-| `v.modes`, `v.mode(n)` | each mode — its number (`index_1based`), frequency, whether it is imaginary, its canonical eigenvector over the free atoms ($\sum_A m_A\lvert\mathbf L_A\rvert^2 = 1$), and the record's stored values ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.11 § 6) | the result's modes ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.3) — a result before schema 7, which states no masses, read with the table's, as its reader reads it |
+| `v.modes`, `v.mode(n)` | each mode — its number (`index_1based`), frequency, whether it is imaginary, its canonical eigenvector over the free atoms ($\sum_A m_A\lvert\mathbf L_A\rvert^2 = 1$), and the record's stored values ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.11 § 6) | the result's modes ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.3) |
 | `v.free_atom_idxs`, `v.masses_amu`, `v.element_symbols`, `v.positions_ang`, `v.species_labels`, `v.regions`, `v.mode_temperatures_k` | what every mode shares — the free atoms, every atom's mass, element (its species label's name) and position at the geometry the modes were taken at, the labels and regions as written, and the modes' temperatures the file states its spreads at; a mode reaches each through its vibration (`m.masses_amu`, …) | the result's `equilibrium.masses_amu`, its structure, its `modes_thermal` |
 | `v.structure` | the geometry the modes were taken at, in the user order, its labels, held atoms and box — frame 0, and every frame's atoms | the result's `structure` ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.10.1) |
 | `v.record_temperature_k` | the vibration record's temperature — the one an open thermal or classical start bound to a mode takes, said so (§ 2) | `thermo.temperature_K` |
@@ -121,8 +121,8 @@ else), and `v.result_sha256` at the read door, whichever file:
 its reader and gives the run, the JSON's sha256, the structure and frame 0's
 relaxation record, refusing by name what is no run of ours and a run with no
 result (`FrameSetError`, naming the run's folder, the one form it reads) and
-what the result's reader refuses — a result before schema 7 is read as that
-reader reads it, with the table's masses. `molbuilder frameset from-mode` and
+what the result's reader refuses — a result of an older schema among it
+([`engines/vibration.md`](?doc=engines/vibration.md) § 6.1). `molbuilder frameset from-mode` and
 *Write frame set…* ask it, and `read_frame_set` reopens a set's vibration
 through it (§ 5). **Either form → its `Vibration`, one door**:
 `vibration_frames.vibration_of(path)`, which `postprocess.vibration` hands on,
@@ -134,7 +134,14 @@ that holds no run's result (`FrameSetError`). `vibration` never asks the run
 door. A vibration not read from its run's folder — its result file, an export, a copy — writes a set with no
 `vibration_run` and no `info.calculation`, said with the way on (read the run's folder); a PySCF deck's, which
 records no relaxation, and a stated-relaxed structure that states none, write
-one with its `vibration_run` and no `info.calculation`, said so.
+one with its `vibration_run` and no `info.calculation`, said so. So does a
+stated-relaxed structure whose calculation's copy of it, `<label>.source.xyz`,
+does not read — its sidecar of a version this molbuilder does not read
+([`model/structure-molstruct.md`](?doc=model/structure-molstruct.md) § 2) —
+said in the words *the structure H2 measured was stated already relaxed, and
+the copy of it its calculation keeps, X.source.xyz, does not read -- its
+sidecar is version N, … -- so the set states no info.calculation and is no
+transport citation* (`vibration_frames._relaxation_record`).
 Such a set is no transport citation until its relaxation is recorded — said,
 never refused.
 

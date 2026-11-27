@@ -596,7 +596,7 @@ def seed_environment_record() -> Step:
     from ..scheduler import (machine_scope_path, read_environment,
                              write_environment)
     from ..diagnostics import probe_this_machine
-    from ..scheduler.record import why_unread
+    from ..scheduler.record import record_written_later, why_unread
     # Its own directory: a public function that worked only after another one
     # had made it is a trap (`_ensure_root`).
     _ensure_root()
@@ -605,7 +605,12 @@ def seed_environment_record() -> Step:
         before = read_environment(path)
         if before is None:
             # THERE AND NOT READ -- an older molbuilder's among them: said
-            # as that, with the probe that writes it again.
+            # as that, with the probe that writes it again; a later
+            # molbuilder's in its words alone, whose way on is that
+            # molbuilder (`job-contracts.md` § 6.1).
+            if record_written_later(path):
+                return Step(path, "kept",
+                            f"does not read -- {why_unread(path)}")
             return Step(path, "kept", (
                 f"does not read -- {why_unread(path)}; `{probe_command()}` "
                 f"writes it again"))

@@ -40,6 +40,7 @@ if TYPE_CHECKING:
 
 # TWO WAYS, because this module travels beside the job in both bundles.
 try:                                        # inside molbuilder
+    from ..persist import FileRefused
     from ..persist import json_text as _json_text
     from ..persist import object_of as _object_of
     from ..persist import sha256_of_bytes as _sha256_of_bytes
@@ -50,6 +51,7 @@ try:                                        # inside molbuilder
     from ..spectra.datafile import write_spectra_data as _write_spectra_data
     from ..spectra.derived import payload_with_derived as _payload_with_derived
 except ImportError:                         # beside a job, in a bundle
+    from persist import FileRefused  # type: ignore[no-redef]
     from persist import json_text as _json_text  # type: ignore[no-redef]
     from persist import object_of as _object_of  # type: ignore[no-redef]
     from persist import sha256_of_bytes as _sha256_of_bytes  # type: ignore[no-redef]
@@ -69,6 +71,15 @@ class SpectraJsonError(Exception):
     shape", for instance)."""
 
 
+class SpectraJsonUnreadable(SpectraJsonError, FileRefused):
+    """A RESULT FILE THAT IS THERE AND DOES NOT READ -- not JSON, of a
+    version this molbuilder does not read, a field that does not read: a
+    file its reader cannot read, carrying the mark the two edges say
+    (`persist.FileRefused`, `execution/job-contracts.md` § 6.1).  A file
+    not there yet (:class:`SpectraJsonNotFoundError`) is no file's refusal
+    and carries none."""
+
+
 class SpectraJsonNotFoundError(SpectraJsonError, FileNotFoundError):
     """The file does not exist (yet).  Inherits
     :class:`FileNotFoundError` so existing ``except
@@ -77,28 +88,27 @@ class SpectraJsonNotFoundError(SpectraJsonError, FileNotFoundError):
     handling all parse problems generically."""
 
 
-class SpectraJsonMalformedError(SpectraJsonError):
+class SpectraJsonMalformedError(SpectraJsonUnreadable):
     """The file exists but isn't valid JSON, isn't a JSON object at
     the top level, contains a non-standard token (``NaN`` /
     ``Infinity``), or can't be decoded as UTF-8."""
 
 
-class SpectraJsonSchemaError(SpectraJsonError):
-    """``schema_version`` is missing, the wrong type, or doesn't
-    match :data:`molbuilder.spectra.results.SCHEMA_VERSION`."""
+class SpectraJsonSchemaError(SpectraJsonUnreadable):
+    """``schema_version`` is missing, the wrong type, or not the version
+    this molbuilder reads (:data:`molbuilder.spectra.results.
+    READABLE_SCHEMA_VERSIONS`) -- ``said`` the reader's words for it, which
+    name both versions and the way on (`spectra.results.readable_version`);
+    ``expected`` and ``actual`` the two versions, for a caller that reacts
+    without reading words (the load route's 422)."""
 
-    def __init__(self, expected: int, actual: Any):
-        super().__init__(
-            f"spectra.json schema_version mismatch: expected "
-            f"{expected}, got {actual!r}.  Either the file was "
-            f"written by a different molbuilder version, or it "
-            f"isn't a Spectra-tab result file."
-        )
+    def __init__(self, expected: int, actual: Any, said: str):
+        super().__init__(said)
         self.expected = expected
         self.actual   = actual
 
 
-class SpectraJsonFieldError(SpectraJsonError):
+class SpectraJsonFieldError(SpectraJsonUnreadable):
     """A required field was missing / had the wrong type at the
     :meth:`SpectraResults.from_dict` reconstitution step.  Wraps
     the underlying ``KeyError`` / ``TypeError`` / ``ValueError``
@@ -184,15 +194,16 @@ def dump_spectra_json(results: "SpectraResults",
 # --------------------------------------------------------------------- #
 
 
-def _validate_schema_version(actual: Any) -> None:
+def _validate_schema_version(actual: Any, where: str) -> None:
     """The version, by the one rule (`spectra.results.readable_version`,
     which `SpectraResults.from_dict` asks too), refused in this reader's
-    own error."""
+    own error, its words the rule's, naming the file (``where``)."""
     from ..spectra.results import SCHEMA_VERSION, readable_version
     try:
         readable_version(actual)
-    except ValueError:
-        raise SpectraJsonSchemaError(SCHEMA_VERSION, actual) from None
+    except ValueError as exc:
+        raise SpectraJsonSchemaError(SCHEMA_VERSION, actual,
+                                     f"{where}: {exc}") from None
 
 
 def _validate_dict_to_results(d: Dict[str, Any],
@@ -220,7 +231,6 @@ def parse_spectra_json(
     :class:`SpectraJsonNotFoundError` / :class:`SpectraJsonMalformedError`
     / :class:`SpectraJsonSchemaError` / :class:`SpectraJsonFieldError`
     on the corresponding failure modes."""
-    from ..spectra.results import SCHEMA_VERSION
     p = os.fspath(path)
 
     if not os.path.exists(p):
@@ -245,9 +255,7 @@ def parse_spectra_json(
     except ValueError as e:
         raise SpectraJsonMalformedError(f"{p!r}: {e}") from e
 
-    if "schema_version" not in d:
-        raise SpectraJsonSchemaError(SCHEMA_VERSION, None)
-    _validate_schema_version(d["schema_version"])
+    _validate_schema_version(d.get("schema_version"), Path(p).name)
 
     return _validate_dict_to_results(d, repr(p))
 
@@ -318,6 +326,7 @@ __all__ = [
     "parse_spectra_json",
     "read_vibration_result",
     "SpectraJsonError",
+    "SpectraJsonUnreadable",
     "SpectraJsonNotFoundError",
     "SpectraJsonMalformedError",
     "SpectraJsonSchemaError",

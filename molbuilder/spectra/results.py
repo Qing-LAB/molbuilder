@@ -37,8 +37,8 @@ X cm⁻¹?".  None of those are bool-valued.  A future
 caller needs it) will return structured deltas instead.  Until
 then, accidental ``==`` raises with a pointer at the right API.
 
-Schema version: :data:`SCHEMA_VERSION`; the reader accepts
-:data:`READABLE_SCHEMA_VERSIONS`.
+Schema version: :data:`SCHEMA_VERSION`, the one the reader reads
+(:data:`READABLE_SCHEMA_VERSIONS`, :func:`readable_version`).
 """
 
 from __future__ import annotations
@@ -54,12 +54,12 @@ import numpy as np
 try:                                        # inside molbuilder
     from .derived import (THERMAL_KEY, disagreements, free_masses_of,
                           stated_temperatures, thermal_block, with_derived)
-    from .normal_modes import display_form, mode_temperatures
+    from .normal_modes import mode_temperatures
     from .result_keys import (CHARGE_STEP_KEYS, EQUILIBRIUM_KEYS, ES_KEYS,
                               MODE_KEYS, OPTICAL_KEYS, OPTICAL_MODE_KEYS,
                               PARTIAL_CHARGES_KEYS, RESULT_KEYS)
     from ..atom_permutation import MAP_KEY
-    from ..persist import check_keys
+    from ..persist import LATER_WAY, check_keys
     from ..structure import Structure as _Structure
     from ..parse.engines.siesta_grammar import (CHARGE_PARTITIONS,
                                                 FC_STEP_PATTERN,
@@ -69,13 +69,12 @@ except ImportError:                         # beside a job, in a bundle
     from derived import (  # type: ignore[no-redef]
         THERMAL_KEY, disagreements, free_masses_of, stated_temperatures,
         thermal_block, with_derived)
-    from normal_modes import (  # type: ignore[no-redef]
-        display_form, mode_temperatures)
+    from normal_modes import mode_temperatures  # type: ignore[no-redef]
     from result_keys import (  # type: ignore[no-redef]
         CHARGE_STEP_KEYS, EQUILIBRIUM_KEYS, ES_KEYS, MODE_KEYS,
         OPTICAL_KEYS, OPTICAL_MODE_KEYS, PARTIAL_CHARGES_KEYS, RESULT_KEYS)
     from atom_permutation import MAP_KEY  # type: ignore[no-redef]
-    from persist import check_keys  # type: ignore[no-redef]
+    from persist import LATER_WAY, check_keys  # type: ignore[no-redef]
     from structure import Structure as _Structure  # type: ignore[no-redef]
     from siesta_grammar import (  # type: ignore[no-redef]
         CHARGE_PARTITIONS, FC_STEP_PATTERN, fc_step_count)
@@ -83,80 +82,22 @@ except ImportError:                         # beside a job, in a bundle
         FAILED, NOT_DONE, NOT_RUN)
 
 
-# SCHEMA_VERSION (incremented when the on-disk JSON shape changes):
-#
-#  v4: ``runtime_info`` dict carrying CPU/thread and GPU facts the running
-#          script collected.  v3 documents fail with a clear
-#          schema-version error.
-#  v5: + the OPTIONAL `phase_relaxation` + `relaxation` progress block (the
-#          in-deck relaxation is a TRACKED step) and the OPTIONAL `thermo`
-#          block.  ADDITIVE -- a v4 file lacks them and reads whole, which is
-#          why the reader accepts a SET (the molstruct sidecar's own rule).
-#  v6: + the OPTIONAL `removed_motions` block -- how many whole-body motions
-#          the harmonic analysis projected out before diagonalising, and
-#          their Cartesian patterns over the free atoms (science/normal-modes.md
-#          R7: what was removed is stated beside what was kept).  ADDITIVE.
-#  v7: + `equilibrium.masses_amu`, every atom's mass as the deck stated it
-#          and the analysis weighted by it, beside the geometry (I3); and
-#          each mode's DERIVED values -- the activity classes, the zero-point
-#          amplitude and displacement -- written by every engine through
-#          `spectra.derived` and checked on read (engines/vibration.md
-#          § 6.6).  A v4-v6 file reads as before: no masses, its derived
-#          values computed on read.
-SCHEMA_VERSION = 15  # 15: each mode's MECHANICS, stated -- `motion_share`
-#                    (each free atom's share of the motion),
-#                    `largest_zero_point_move_ang`, `reduced_mass_amu` and
-#                    `force_constant_mdyn_per_ang` on every mode, and the
-#                    block `modes_thermal`, each mode's spread and mean
-#                    quanta at the modes' own temperatures -- written by
-#                    every engine through `spectra.derived` and checked on
-#                    read (engines/vibration.md § 6.11 § 3); a v4-v14 file
-#                    reads, each computed on read.
-#                    14: an optical frame's state may be `not run` --
-#                    its run's walk ended before starting it, never
-#                    `failed` -- or `not done` -- it ran to its end and is
-#                    not done (execution/runs-of-points.md § 1.3); a v4-v13
-#                    file reads as it is.
-#                    13: the OPTICAL CALLS' CITATION, `optical` -- on a
-#                    SIESTA run of points whose optical phase ran: the data
-#                    file they are recorded in and its sha256, the light's
-#                    direction, the displacement, the selection as asked and
-#                    as applied, and each frame's state -- the Raman strength
-#                    itself derived on request at a laser and a width
-#                    (engines/vibration.md § 5.11 § 8, § 10); null otherwise;
-#                    a v4-v12 file reads, null.
-#                    12: each mode's DIPOLE CHANGE, whole --
-#                    `dipole_derivative_d_per_ang_amu12`, dmu/dQ in
-#                    D/(A amu^1/2), on PySCF where infrared was computed
-#                    (engines/vibration.md § 4.6): the vector the IR
-#                    intensity is the orientation average of; a v4-v11 file
-#                    reads, the key absent.
-#                    11: the SIESTA force-constant run's CHARGES,
-#                    `partial_charges` -- every atom's Hirshfeld and Voronoi
-#                    charge at every step, in the user order, beside each
-#                    step's displaced atom, axis and side (engines/
-#                    vibration.md § 5.10 ②); null on PySCF and from a deck
-#                    that asked for none; a v4-v10 file reads, null.
-#                    10: the result states its ATOM INDEX MAP
-#                    (model/overview.md § 2.2b): listed by user index,
-#                    each atom's engine index its stages' deck order; a
-#                    v4-v9 file reads, its map made on read
-#                    (`atom_index_map_stated`).  9: the result states its
-#                    STRUCTURE whole
-#                    (engines/vibration.md § 6.10):
-#                    `Structure.to_dict(view=False)` of the equilibrium
-#                    structure -- the geometry, the box, the
-#                    labels, the held atoms; `frozen_atom_idxs` and
-#                    `equilibrium.elements` / `positions_ang` are read from
-#                    a v4-v8 file, never written, and its `structure_hash`
-#                    accepted and kept nowhere.  8: the SIESTA route's `engine_metadata` names
-#                    its force-constant range as SIESTA's numbering,
-#                    `fc_range_engine_1based` (model/overview.md § 2.2a); a
-#                    v4-v7 file reads as before, its range read under v8's
-#                    name (`from_dict`).
-#: Every version the reader serves as the v9 shape.
-READABLE_SCHEMA_VERSIONS = frozenset({4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
-                                      14, 15})
+#: THE ON-DISK JSON SHAPE'S VERSION, moved when the shape changes -- each
+#: version's change is `engines/vibration.md` § 6.1's table.  15: each mode's
+#: MECHANICS, stated -- `motion_share` (each free atom's share of the motion),
+#: `largest_zero_point_move_ang`, `reduced_mass_amu` and
+#: `force_constant_mdyn_per_ang` on every mode, and the block `modes_thermal`,
+#: each mode's spread and mean quanta at the modes' own temperatures --
+#: written by every engine through `spectra.derived` and checked on read
+#: (§ 6.11 § 3).
+SCHEMA_VERSION = 15
+#: THE RELEASE THAT FIRST WROTE IT, and its date -- said to a person whose
+#: result is older (:func:`readable_version`).
+SCHEMA_WRITTEN_SINCE = "2.79.0 (2026-11-23)"
+#: The versions the reader reads: the one this molbuilder writes -- a result
+#: of an older one is refused and the vibration run again (the user's
+#: decision, 2026-11-26).
+READABLE_SCHEMA_VERSIONS = frozenset({SCHEMA_VERSION})
 
 
 def readable_version(actual: Any) -> int:
@@ -164,22 +105,23 @@ def readable_version(actual: Any) -> int:
     asked by the sidecar reader and :meth:`SpectraResults.from_dict` alike:
     a whole number (never a bool, which ``True == 1`` would let past, nor a
     string or a float) of :data:`READABLE_SCHEMA_VERSIONS`; else
-    :class:`ValueError`, naming the versions it reads."""
-    if (not isinstance(actual, int) or isinstance(actual, bool)
-            or actual not in READABLE_SCHEMA_VERSIONS):
-        raise ValueError(
-            f"SpectraResults: schema_version {actual!r} is not supported; "
-            f"this molbuilder build reads "
-            f"{sorted(READABLE_SCHEMA_VERSIONS)} (v5 and v6 added only "
-            f"optional blocks -- relaxation/thermo, then removed_motions -- "
-            f"and v7 the masses and the stated derived values, so a v4 file "
-            f"reads whole; older versions do not).")
+    :class:`ValueError` in a person's words, naming the version the file
+    states, the one this molbuilder reads and the way on
+    (`engines/vibration.md` § 6.1, § 6.7)."""
+    reads = f"this molbuilder reads schema {SCHEMA_VERSION} alone"
+    if actual is None:
+        raise ValueError(f"the result states no schema version: {reads}")
+    if not isinstance(actual, int) or isinstance(actual, bool):
+        raise ValueError(f"the result's schema version {actual!r} is not a "
+                         f"whole number: {reads}")
+    if actual < SCHEMA_VERSION:
+        raise ValueError(f"the result is schema {actual}, written by a "
+                         f"molbuilder before {SCHEMA_WRITTEN_SINCE}: {reads} "
+                         f"-- run the vibration again")
+    if actual not in READABLE_SCHEMA_VERSIONS:
+        raise ValueError(f"the result is schema {actual}, written by a later "
+                         f"molbuilder than this one: {reads} -- {LATER_WAY}")
     return actual
-
-
-#: The schema that first carries a SIESTA force-constant run's charges,
-#: ``partial_charges`` (11, above): a file before it cannot state them.
-CHARGES_SCHEMA = 11
 
 
 # Phase status vocabulary -- per-layer flag carried on
@@ -192,9 +134,7 @@ PHASE_RUNNING  = "running"   # script is mid-way through this phase
                              # (live-watch / atomic-replace JSON updates)
 PHASE_COMPLETE = "complete"  # phase done, data is final for this run
 #: A phase the description never asked for -- written from the first
-#: write and never changed (a SIESTA finish before 2.44.0 left it as its
-#: analysis's default, which `spectra.infrared.asked` reads), so *nothing
-#: was asked* cannot be read as
+#: write and never changed, so *nothing was asked* cannot be read as
 #: *nothing yet* (empty) or *done with nothing behind it* (complete).
 #: Terminal: the viewer counts it finished (`engines/vibration.md` § 4.9).
 PHASE_NOT_REQUESTED = "not requested"
@@ -202,7 +142,7 @@ PHASE_NOT_REQUESTED = "not requested"
 #: HOW A RESULT'S STRENGTHS WERE OBTAINED, for the run as a whole
 #: (`engines/vibration.md` § 4.6): each route word the engine's own road
 #: writes, read by the Methods paragraph and the Raman view; checked at
-#: ``__post_init__``, ``""`` a file written before the field.
+#: ``__post_init__``.
 ROUTE_ANALYTIC = "analytic"
 ROUTE_FINITE_DIFFERENCE = "finite-difference"
 ROUTE_CHARGES = "charges"
@@ -399,15 +339,10 @@ def checked_optical(block: Mapping[str, Any]) -> Dict[str, Any]:
 
 def _optical_read(d: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
     """A file's ``optical`` as it states it: ``None`` where it states none;
-    a stated block for :func:`checked_optical` to judge; refused on a
-    schema before 13, which has no such key."""
-    block = d.get("optical")
+    a stated block for :func:`checked_optical` to judge."""
+    block = d["optical"]
     if block is None:
         return None
-    if int(d.get("schema_version", 0)) < 13:
-        raise ValueError(f"SpectraResults: a schema-{d.get('schema_version')} "
-                         f"result states optical, which schema 13 first "
-                         f"carries")
     if not isinstance(block, Mapping):
         raise ValueError(f"SpectraResults.optical is a block, not {block!r}")
     return dict(block)
@@ -416,15 +351,10 @@ def _optical_read(d: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
 def _partial_charges_read(d: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
     """A file's ``partial_charges`` as it states it: ``None`` where it states
     none; a stated block whatever it holds, for :func:`checked_partial_charges`
-    to judge -- never read as absent; refused on a schema before 11, which
-    has no such key (`engines/vibration.md` § 6.2)."""
-    block = d.get("partial_charges")
+    to judge -- never read as absent (`engines/vibration.md` § 6.2)."""
+    block = d["partial_charges"]
     if block is None:
         return None
-    if int(d.get("schema_version", 0)) < CHARGES_SCHEMA:
-        raise ValueError(f"SpectraResults: a schema-{d.get('schema_version')} "
-                         f"result states partial_charges, which schema "
-                         f"{CHARGES_SCHEMA} first carries")
     if not isinstance(block, Mapping):
         raise ValueError(f"SpectraResults.partial_charges is a block "
                          f"{{displacement_ang, steps, charges_e}}, not "
@@ -615,7 +545,7 @@ class ModeData:
     # ``ir_intensity_km_mol`` is the orientation average of, and every light
     # direction's strength is computed from (engines/vibration.md § 4.6).
     # ``None`` where the engine kept none (SIESTA, whose infrared is its
-    # charges'; a file before v12).
+    # charges'; PySCF where no infrared was asked).
     dipole_derivative_d_per_ang_amu12: Optional[Tuple[float, float, float]] = None
 
     __eq__ = _no_equality
@@ -680,18 +610,6 @@ class ModeData:
     def from_dict(cls, d: Dict[str, Any]) -> "ModeData":
         check_keys("ModeData", d, MODE_KEYS, needed=())
         es = d.get("electronic_structure")
-        # THE EIGENVECTOR PAIR: the canonical form as written; the display
-        # form as written, else derived.
-        ev_canon = np.asarray(d["eigenvector_canonical"], dtype=float)
-        _disp = d.get("eigenvector_display")
-        if _disp is None:
-            # DERIVED (`engines/vibration.md` § 6.4) by the one rule both
-            # writers take it from (`normal_modes.display_form`): the
-            # canonical vector rescaled so its largest absolute Cartesian
-            # component is 1 -- what the animation draws.
-            ev_disp = display_form(ev_canon[None])[0]
-        else:
-            ev_disp = np.asarray(_disp, dtype=float)
         return cls(
             index_1based          = int(d["index_1based"]),
             frequency_cm1         = float(d["frequency_cm1"]),
@@ -699,18 +617,20 @@ class ModeData:
                                      else float(d["raman_activity_a4_amu"])),
             ir_intensity_km_mol   = (None if d.get("ir_intensity_km_mol") is None
                                      else float(d["ir_intensity_km_mol"])),
-            eigenvector_canonical = ev_canon,
-            eigenvector_display   = ev_disp,
+            eigenvector_canonical = np.asarray(d["eigenvector_canonical"],
+                                               dtype=float),
+            eigenvector_display   = np.asarray(d["eigenvector_display"],
+                                               dtype=float),
             has_imag              = bool(d.get("has_imag", False)),
             electronic_structure  = (None if es is None
                                      else ModeElectronicStructure.from_dict(es)),
-            dipole_derivative_d_per_ang_amu12 = d.get(
-                "dipole_derivative_d_per_ang_amu12"),
+            dipole_derivative_d_per_ang_amu12 = d[
+                "dipole_derivative_d_per_ang_amu12"],
         )
 
 
 # --------------------------------------------------------------------- #
-#  The masses a result's modes are weighted by                          #
+#  The modes' temperatures a result states                              #
 # --------------------------------------------------------------------- #
 
 
@@ -720,18 +640,6 @@ def _stated_mode_temperatures(d: Mapping[str, Any]) -> Optional[List[float]]:
     -- ``None`` where it states none."""
     stated = stated_temperatures(d.get(THERMAL_KEY))
     return None if stated is None else mode_temperatures(None, stated)
-
-
-def mass_of(i: int, elements: Sequence[str],
-            masses_amu: Optional[Sequence[float]] = None) -> float:
-    """Atom ``i``'s mass a result is weighted by, in amu: as the result
-    states it (``equilibrium.masses_amu``, schema 7), or -- for a result
-    before it, which states none -- ``chemistry.atomic_mass``'s, the table
-    every deck's masses are stated from (`engines/vibration.md` § 6.6)."""
-    if masses_amu is not None:
-        return float(masses_amu[i])
-    from ..chemistry import atomic_mass
-    return atomic_mass(str(elements[i]))
 
 
 # --------------------------------------------------------------------- #
@@ -786,9 +694,7 @@ class SpectraResults:
     ("3 of 10 modes done").
 
     ``structure`` states the geometry the result was taken from, whole
-    (`engines/vibration.md` § 6.10); a v4-v8 file's ``structure_hash`` is
-    accepted and kept nowhere -- the structure is stated instead;
-    ``engine`` +
+    (`engines/vibration.md` § 6.10); ``engine`` +
     ``engine_version`` + ``molbuilder_version`` give the software
     stack used; ``timestamp`` is ISO-8601 UTC.
     """
@@ -841,9 +747,7 @@ class SpectraResults:
     #:                          them on request (`spectra.infrared`);
     #:   "none"              -- no route has produced it: not requested, or
     #:                          on PySCF, before its Hessian.
-    #: Older sidecars predate the field and parse as "" -- absence of a
-    #: record, which the viewer must not render as a claim either way.
-    ir_route:                  str = ""
+    ir_route:                  str = ROUTE_NONE
     #: The finite-difference step actually used for dmu/dR, in Angstrom,
     #: when (and only when) that route ran.  Carried because a Methods
     #: section quoting a finite-difference derivative has to state its
@@ -860,8 +764,7 @@ class SpectraResults:
     #:   "none"              -- Raman was not requested, the engine computes
     #:                          no intensities, or on PySCF, before its sweep
     #:                          has ended.
-    #: Older sidecars parse as "" -- absence of a record.
-    raman_route:               str = ""
+    raman_route:               str = ROUTE_NONE
     #: The step of that difference, in Angstrom, when the route ran.
     raman_fd_step_ang:         Optional[float] = None
     # EACH PHASE'S STATE -- one of :data:`_VALID_PHASE_STATES`: empty,
@@ -871,10 +774,9 @@ class SpectraResults:
     phase_raman:               str = PHASE_EMPTY
     #: The infrared intensities' own flag (`engines/vibration.md` § 4.9):
     #: closed with the Raman sweep that carries the dipole, or by the
-    #: dipole sweep alone.  Older sidecars parse as "" -- absence of a
-    #: record, which a reader must not take for *empty* (asked, not yet
-    #: started): a finished run written before the flag has none.
-    phase_ir:                  str = ""
+    #: dipole sweep alone; on SIESTA, complete once the run's charges are
+    #: stored.
+    phase_ir:                  str = PHASE_EMPTY
     phase_es:                  str = PHASE_EMPTY
     #: v5: the in-deck relaxation is a tracked step (user, 2026-08-20 --
     #: the viewer tracks ALL the steps; a silent gap while geomeTRIC works
@@ -901,30 +803,32 @@ class SpectraResults:
     #: free atoms}.  Every mode in `modes` is a vibration BECAUSE these were
     #: taken out first (science/normal-modes.md R3-R4); a reader that wants
     #: to see the difference between 3 N_free and len(modes) finds it here.
-    #: Empty on a file written before the block existed.
+    #: Empty before the harmonic analysis has run (§ 6.5).
     removed_motions:           Dict[str, Any] = field(default_factory=dict)
     #: v6: what the Hessian covered -- "free" (second derivatives for the
     #: free atoms only; atoms are held) or "all" (every atom; nothing held)
     #: -- and how many atoms that was.  A reader comparing two runs' costs
     #: or Methods paragraphs needs it stated, not inferred from the frozen
-    #: list.  "" on a file written before the field existed.
+    #: list.  "" before the Hessian is computed (§ 6.5).
     hessian_scope:             str = ""
     n_atoms_in_hessian:        Optional[int] = None
     #: v6: whether the Hessian itself was density fitted.  The SCF may be
     #: while the Hessian is not (the free-atom route), and a Methods
-    #: paragraph has to say which.  None on a file written before the field.
+    #: paragraph has to say which.  None before the Hessian, and on SIESTA.
     hessian_density_fit:       Optional[bool] = None
 
-    # Equilibrium geometry -- element symbols + Cartesian positions
-    # in Å.  Optional in the wire format.  When present, the UI animates modes directly
-    # from the loaded results without needing the user to keep the
-    # XYZ in the input form.
+    # Equilibrium geometry -- element symbols + Cartesian positions in Å:
+    # the structure's, filled from it where the result states one
+    # (``__post_init__``); handed in by a writer that builds the result in
+    # memory (`spectra.vibrational_analysis`), checked against the
+    # structure where both are stated.  ``None`` before any geometry
+    # exists; never a key of the file (§ 6.10.2).
     equilibrium_elements:      Optional[List[str]]  = None
     equilibrium_positions_ang: Optional[np.ndarray] = None
     #: v7: every atom's mass in amu, in the user order -- the masses the
     #: analysis weighted by, as the deck stated them (`engines/vibration.md`
-    #: § 6.2, I3).  Travels with the geometry: from v7 a file stating the
-    #: geometry states them, and a file before v7 states none.
+    #: § 6.2, I3).  Travels with the geometry: stated wherever the geometry
+    #: is, and refused without it.
     equilibrium_masses_amu:    Optional[np.ndarray] = None
 
     # Engine-specific noise (parsing diagnostics, version detail) --
@@ -941,41 +845,39 @@ class SpectraResults:
     # /results page display "this run used 20 PySCF threads, BLAS=1,
     # GPU ON (RTX 4090, CC 8.9, CUDA 12.4)" so users can verify
     # the resources actually matched what they expected -- a 40-on-
-    # 20-cores oversubscription leaves a clear trail.  Optional
-    # (older v4 results may not have all keys; the UI no-ops on
-    # missing keys).
+    # 20-cores oversubscription leaves a clear trail.  PySCF's: a SIESTA
+    # result states none, and the UI no-ops on missing keys.
     runtime_info:              Dict[str, Any] = field(default_factory=dict)
 
     #: v9: THE STRUCTURE, WHOLE -- `Structure.to_dict(view=False)` of the
     #: equilibrium structure (engines/vibration.md § 6.10): the geometry the Hessian is
-    #: taken at, its box, its labels, the held atoms as `frozen_atoms`.  A
-    #: v4-v8 file's is built from its old keys on read -- elements,
-    #: coordinates, the held list; no box, no other label: stated absent,
-    #: never invented.  ``None`` only while a PySCF run has no geometry yet.
+    #: taken at, its box, its labels, the held atoms as `frozen_atoms`.
+    #: ``None`` only while a PySCF run has no geometry yet.
     structure:                 Optional[Dict[str, Any]] = None
 
     #: v10: THE ATOM INDEX MAP (model/overview.md § 2.2b) -- the result is
     #: listed by user index, and each atom's engine index is its stages'
     #: deck order (held atoms first for SIESTA's; PySCF's the user order).
-    #: ``None`` on a file before v10, whose map is made on read
-    #: (:meth:`atom_index_map_stated`).
+    #: Every writer states it, from the run's first write; a result without
+    #: one is refused (:meth:`atom_index_map_stated`).
     atom_index_map:            Optional[Dict[str, Any]] = None
 
     #: v11: THE FORCE-CONSTANT RUN'S CHARGES (engines/vibration.md § 5.10
-    #: ②) -- :func:`checked_partial_charges`'s shape; ``None`` on PySCF,
-    #: before v11, and from a deck that asked for none.
+    #: ②) -- :func:`checked_partial_charges`'s shape; ``None`` on PySCF and
+    #: from a deck that asked for none.
     partial_charges:           Optional[Dict[str, Any]] = None
 
     #: v13: THE OPTICAL CALLS' CITATION (engines/vibration.md § 5.11 § 8,
     #: § 6.2) -- :func:`checked_optical`'s shape; ``None`` where no optical
-    #: call was planned, on PySCF, and before v13.
+    #: call was planned, and on PySCF.
     optical:                   Optional[Dict[str, Any]] = None
 
     #: v15: THE MODES' TEMPERATURES the file states its ``modes_thermal`` at
     #: (engines/vibration.md § 6.6) -- the file's own list, kept so a file
-    #: read and written again states the same block; ``None`` before v15 and
-    #: on a result built in memory, whose list is today's at the record's
-    #: temperature (`normal_modes.mode_temperatures`).
+    #: read and written again states the same block; ``None`` on a result
+    #: built in memory, whose list is today's at the record's temperature
+    #: (`normal_modes.mode_temperatures`), and on a file before its modes
+    #: exist, which states none (§ 6.5).
     mode_temperatures_k:       Optional[List[float]] = None
 
     __eq__ = _no_equality
@@ -1077,6 +979,7 @@ class SpectraResults:
         # Phase status validation.
         for name, val in (("phase_frequencies", self.phase_frequencies),
                           ("phase_raman",       self.phase_raman),
+                          ("phase_ir",          self.phase_ir),
                           ("phase_es",          self.phase_es),
                           ("phase_relaxation",  self.phase_relaxation)):
             if val not in _VALID_PHASE_STATES:
@@ -1087,21 +990,14 @@ class SpectraResults:
         for name, val, routes in (("ir_route", self.ir_route, IR_ROUTES),
                                   ("raman_route", self.raman_route,
                                    RAMAN_ROUTES)):
-            if val not in routes + ("",):
+            if val not in routes:
                 raise ValueError(
                     f"SpectraResults.{name}={val!r} is not a route; "
-                    f"expected one of {routes}, or '' for a file written "
-                    f"before the field")
-        if self.phase_ir not in _VALID_PHASE_STATES + ("",):
-            raise ValueError(
-                f"SpectraResults.phase_ir={self.phase_ir!r} is not a valid "
-                f"phase status; expected one of {_VALID_PHASE_STATES}, or "
-                f"'' for a file written before the flag")
-        # THE STRUCTURE, WHOLE (v9, § 6.10): stated, it IS the geometry --
-        # the file's own count, held list and coordinates are checked
-        # against it (§ 6.6).  A file before v9 states its geometry under
-        # `equilibrium`; the structure it emits is built from that on the
-        # way out (:meth:`structure_stated`).
+                    f"expected one of {routes}")
+        # THE STRUCTURE, WHOLE (§ 6.10): stated, it IS the geometry -- the
+        # file's own count, held list and coordinates are checked against it
+        # (§ 6.6).  A result built in memory from its geometry alone states
+        # the structure that geometry makes (:meth:`structure_stated`).
         if self.structure is not None:
             s = _Structure.from_dict(self.structure)
             if s.n_atoms != int(self.n_atoms_total):
@@ -1155,7 +1051,7 @@ class SpectraResults:
                     f"SpectraResults: geometry has {n_geom} atoms but "
                     f"n_atoms_total = {self.n_atoms_total}"
                 )
-        # THE MASSES TRAVEL WITH THE GEOMETRY (v7, I3): one positive finite
+        # THE MASSES TRAVEL WITH THE GEOMETRY (I3): one positive finite
         # number per atom, stated wherever the geometry is.
         if self.equilibrium_masses_amu is not None:
             if self.equilibrium_positions_ang is None:
@@ -1172,12 +1068,10 @@ class SpectraResults:
                     f"SpectraResults: equilibrium masses_amu must be one "
                     f"positive finite number per atom ({self.n_atoms_total}); "
                     f"got {m.tolist()}")
-        elif (int(self.schema_version) >= 7
-                and self.equilibrium_positions_ang is not None):
+        elif self.equilibrium_positions_ang is not None:
             raise ValueError(
-                f"SpectraResults: a schema-{self.schema_version} result states "
-                f"its geometry without its masses -- equilibrium.masses_amu "
-                f"travels with it")
+                "SpectraResults: the result states its geometry without its "
+                "masses -- equilibrium.masses_amu travels with it")
 
         # THE HESSIAN'S SCOPE, stated and checked (§ 6.6): `free` holds the
         # free atoms' count, `all` every atom's.
@@ -1219,8 +1113,7 @@ class SpectraResults:
 
         # THE ATOM INDEX MAP, checked by its one reader over these atoms
         # (`model/overview.md` § 2.2b) -- after the atom count is.
-        if self.atom_index_map is not None:
-            self.atom_index_map_stated()
+        self.atom_index_map_stated()
         # THE CHARGES, checked against the free atoms they were taken over.
         if self.partial_charges is not None:
             self.partial_charges = checked_partial_charges(
@@ -1244,15 +1137,8 @@ class SpectraResults:
     def _free_masses(self) -> Optional[List[float]]:
         """The free atoms' masses the modes were weighted by, in the free
         list's order (:meth:`atoms_weighted`); ``None`` before any geometry
-        exists, and for a result before schema 7 -- which states no masses
-        -- whose label names no element the table knows: its modes' masses
-        are unknown, so no shares are stated (`web/spectra.md` § 4.2)."""
-        try:
-            weighted = self.atoms_weighted(self.free_atom_idxs)
-        except KeyError:
-            if self.equilibrium_masses_amu is not None:
-                raise
-            return None
+        exists."""
+        weighted = self.atoms_weighted(self.free_atom_idxs)
         return None if weighted is None else weighted[1].tolist()
 
     def _mode_temperatures(self) -> List[float]:
@@ -1263,8 +1149,9 @@ class SpectraResults:
                                  self.mode_temperatures_k)
 
     def structure_stated(self) -> Optional[Dict[str, Any]]:
-        """THE STRUCTURE THE RESULT STATES (v9, § 6.10): the one it was read
-        with, or -- a file before v9, or one built in memory -- the one its
+        """THE STRUCTURE THE RESULT STATES (§ 6.10): the one it was read or
+        built with, or -- one built in memory from its geometry alone
+        (`spectra.vibrational_analysis` handed no structure) -- the one its
         equilibrium geometry and held list make (`Structure.to_dict`: no
         box, no other label -- stated absent, never invented); ``None``
         before any geometry exists (§ 4.9)."""
@@ -1285,31 +1172,31 @@ class SpectraResults:
         """EACH ATOM AS THE MODES WEIGHT IT -- its element, its species
         label's name (`Structure.chemical_symbols`: prep has made every
         label's name an element, `engines/vibration.md` § 6.11 § 3), and its
-        mass (:func:`mass_of`: the result's own, or the table's for a result
-        before schema 7): ``(elements, masses_amu)`` for the ``atoms``
+        mass, the result's own (``equilibrium.masses_amu``, which travels
+        with the geometry): ``(elements, masses_amu)`` for the ``atoms``
         asked, in the order asked -- every atom in the user's order where
         none are -- or ``None`` before any geometry exists.  The one reading
-        the load door's element shares (its free atoms alone) and
-        :meth:`vibration` (every atom) ask."""
+        the load door's element shares (its free atoms alone),
+        :meth:`vibration` (every atom), the free atoms' infrared
+        (`spectra.infrared`) and a displacement sweep's mode matching ask
+        (§ 6.6)."""
         stated = self.structure_stated()
         if stated is None:
             return None
         structure = _Structure.from_dict(stated)
-        labels = list(structure.elements)
         symbols = structure.chemical_symbols()
-        asked = (range(len(labels)) if atoms is None
+        asked = (range(len(symbols)) if atoms is None
                  else [int(i) for i in atoms])
+        masses = np.asarray(self.equilibrium_masses_amu, dtype=float)
         return (tuple(symbols[i] for i in asked),
-                np.array([mass_of(i, labels, self.equilibrium_masses_amu)
-                          for i in asked], dtype=float))
+                np.array([masses[i] for i in asked], dtype=float))
 
     def vibration(self, read_path: str = "", *,
                   result_sha256: Optional[str] = None):
         """THE RESULT'S MODES AS A PERSON COMPUTES WITH THEM
         (`vibration.Vibration`, `engines/vibration.md` § 6.11 § 6): each mode
         over every atom in the user's order, held atoms still, by the masses
-        the result states -- or, a result before schema 7, the table's
-        (:func:`mass_of`) -- each atom by its element (its species
+        the result states -- each atom by its element (its species
         label's name), each atom's species label and the structure's region
         labels as written, at the geometry the result states, the temperature
         its thermochemistry states and the modes' own temperatures its
@@ -1350,21 +1237,17 @@ class SpectraResults:
                          result_sha256=result_sha256)
 
     def atom_index_map_stated(self):
-        """THE ATOM INDEX MAP the result states (v10), or -- a file before
-        v10 -- the one its structure says: listed by user index (I1), its
-        engine index its stages' deck's, which the file alone does not
-        state (`model/overview.md` § 2.2b, F3)."""
+        """THE ATOM INDEX MAP the result states, read by the map's one reader
+        over the result's atoms (`model/overview.md` § 2.2b) -- refused by
+        that reader where the result states none, or not one of its
+        atoms."""
         try:
             from ..atom_permutation import AtomIndexMap
         except ImportError:                 # beside a job, in a bundle
             from atom_permutation import AtomIndexMap  # type: ignore
-        n = int(self.n_atoms_total)
-        if self.atom_index_map is not None:
-            return AtomIndexMap.from_dict(self.atom_index_map, n_atoms=n,
-                                          source="the result's atom_index_map")
-        return AtomIndexMap.of_user_structure(
-            n, said=("written before 2.32.0: its engine index is its "
-                     "stages' deck's"))
+        return AtomIndexMap.from_dict(self.atom_index_map,
+                                      n_atoms=int(self.n_atoms_total),
+                                      source="the result's atom_index_map")
 
     def to_dict(self) -> Dict[str, Any]:
         structure = self.structure_stated()
@@ -1438,7 +1321,7 @@ class SpectraResults:
             "engine_metadata":      dict(self.engine_metadata),
             "runtime_info":         dict(self.runtime_info),
             # THE ATOM INDEX MAP, always stated (§ 2.2b, F1): the result's
-            # own, or -- one written before v10 -- the user column alone.
+            # own.
             MAP_KEY:                self.atom_index_map_stated().to_dict(),
             "partial_charges":      self.partial_charges,
             "optical":              self.optical,
@@ -1449,21 +1332,15 @@ class SpectraResults:
         # THE ONE VERSION RULE, the reader's too (:func:`readable_version`):
         # a version missing or unreadable raises, never reconstituted at
         # whatever version the payload claims.
-        sv = readable_version(d.get("schema_version"))
+        readable_version(d.get("schema_version"))
         check_keys("SpectraResults", d, RESULT_KEYS, needed=())
-        # A v4-v7 FILE NAMES THE SIESTA ROUTE'S RANGE BY ITS OLD NAME; it is
-        # read under v8's, SIESTA's numbering said (engines/vibration.md 6.1).
-        meta = dict(d.get("engine_metadata", {}))
-        if int(sv) < 8 and "fc_range_1based" in meta:
-            meta["fc_range_engine_1based"] = meta.pop("fc_range_1based")
         eq = d["equilibrium"]
         check_keys("SpectraResults.equilibrium", eq, EQUILIBRIUM_KEYS,
                    needed=())
-        # THE HELD ATOMS: a v9 file states them in its structure's
+        # THE HELD ATOMS: the file states them in its structure's
         # `frozen_atoms` label, or -- written before any geometry exists
-        # (§ 6.10.2) -- as `frozen_atom_idxs`, which is also where a file
-        # before v9 states them.  Stated nowhere, the file is refused: the
-        # held set is never derived from the count.
+        # (§ 6.10.2) -- as `frozen_atom_idxs`.  Stated nowhere, the file is
+        # refused: the held set is never derived from the count.
         structure = d.get("structure")
         if "frozen_atom_idxs" in d:
             frozen = [int(i) for i in d["frozen_atom_idxs"]]
@@ -1477,21 +1354,19 @@ class SpectraResults:
             raise ValueError(
                 "SpectraResults: neither a structure nor frozen_atom_idxs "
                 "states which atoms were held")
-        # THE DERIVED VALUES A v7 FILE STATES ARE ITS INPUTS' (§ 6.6): each
-        # computed again by the one derivation, and a file stating another
-        # is refused by name.  A file before v7 states them or not; they are
-        # computed on read either way.
-        if int(sv) >= 7:
-            wrong = disagreements(
-                d, int(sv),
-                None if eq.get("masses_amu") is None else free_masses_of(d))
-            if wrong:
-                raise ValueError(
-                    "SpectraResults: the derived values this file states are "
-                    "not its own inputs' -- "
-                    + "; ".join(wrong[:5])
-                    + (f"; and {len(wrong) - 5} more" if len(wrong) > 5
-                       else ""))
+        # THE DERIVED VALUES THE FILE STATES ARE ITS INPUTS' (§ 6.6): each
+        # computed again by the one derivation, by the masses the modes were
+        # weighted by -- the file's own, refused by name where it has modes
+        # and states none, as its writer refuses (`derived.free_masses_of`)
+        # -- and a file stating another value is refused by name.
+        wrong = disagreements(d, free_masses_of(d) if d["modes"] else None)
+        if wrong:
+            raise ValueError(
+                "SpectraResults: the derived values this file states are "
+                "not its own inputs' -- "
+                + "; ".join(wrong[:5])
+                + (f"; and {len(wrong) - 5} more" if len(wrong) > 5
+                   else ""))
         return cls(
             schema_version       = int(d["schema_version"]),
             engine               = str(d["engine"]),
@@ -1511,15 +1386,7 @@ class SpectraResults:
             equilibrium_homo_idx       = (None if eq.get("homo_idx") is None
                                           else int(eq["homo_idx"])),
 
-            # Optional geometry: absent keys read as None.
-            equilibrium_elements       = (
-                [str(e) for e in eq["elements"]]
-                if "elements" in eq else None
-            ),
-            equilibrium_positions_ang  = (
-                np.asarray(eq["positions_ang"], dtype=float)
-                if "positions_ang" in eq else None
-            ),
+            # THE MASSES, stated with the geometry; none before it exists.
             equilibrium_masses_amu     = (
                 np.asarray(eq["masses_amu"], dtype=float)
                 if "masses_amu" in eq else None
@@ -1536,27 +1403,26 @@ class SpectraResults:
 
             phase_frequencies    = str(d.get("phase_frequencies", PHASE_EMPTY)),
             phase_relaxation     = str(d.get("phase_relaxation", PHASE_EMPTY)),
-            relaxation           = dict(d.get("relaxation") or {}),
-            thermo               = dict(d.get("thermo") or {}),
-            removed_motions      = dict(d.get("removed_motions") or {}),
+            relaxation           = dict(d["relaxation"]),
+            thermo               = dict(d["thermo"]),
+            removed_motions      = dict(d["removed_motions"]),
             hessian_scope        = str(d.get("hessian_scope", "")),
             n_atoms_in_hessian   = (None if d.get("n_atoms_in_hessian") is None
                                     else int(d["n_atoms_in_hessian"])),
             hessian_density_fit  = (None if d.get("hessian_density_fit") is None
                                     else bool(d["hessian_density_fit"])),
-            ir_route             = str(d.get("ir_route", "")),
+            ir_route             = str(d["ir_route"]),
             ir_fd_step_ang       = (None if d.get("ir_fd_step_ang") is None
                                     else float(d["ir_fd_step_ang"])),
-            raman_route          = str(d.get("raman_route", "")),
+            raman_route          = str(d["raman_route"]),
             raman_fd_step_ang    = (None if d.get("raman_fd_step_ang") is None
                                     else float(d["raman_fd_step_ang"])),
             phase_raman          = str(d.get("phase_raman",       PHASE_EMPTY)),
-            phase_ir             = str(d.get("phase_ir",          "")),
+            phase_ir             = str(d["phase_ir"]),
             phase_es             = str(d.get("phase_es",          PHASE_EMPTY)),
-            engine_metadata      = meta,
+            engine_metadata      = dict(d["engine_metadata"]),
             runtime_info         = dict(d.get("runtime_info", {})),
-            atom_index_map       = (dict(d[MAP_KEY])
-                                    if MAP_KEY in d else None),
+            atom_index_map       = dict(d[MAP_KEY]),
             partial_charges      = _partial_charges_read(d),
             optical              = _optical_read(d),
             mode_temperatures_k  = _stated_mode_temperatures(d),

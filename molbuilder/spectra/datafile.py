@@ -47,7 +47,6 @@ checked as it loads against the result's one table of keys
 from __future__ import annotations
 
 from pathlib import Path
-from dataclasses import replace
 from typing import Any, Dict, Mapping, Sequence, Tuple
 
 import numpy as np
@@ -57,22 +56,23 @@ try:                                        # inside molbuilder
     from ..atom_permutation import MAP_KEY, AtomIndexMap
     from ..ncdata import (NC_LOCK, Var, as_bytes, axis_values, checked,
                           coordinate, empty, flag, in_memory,
-                          json_attr, key_of, named_now,
+                          json_attr, key_of,
                           number_attr, read_structure_group, read_variables,
                           state, unflag, unjson_attr, unnumber_attr,
                           write_group, write_structure_group)
-    from ..persist import unknown_keys, write_bytes
+    from ..persist import FileRefused, unknown_keys, write_bytes
     from .derived import THERMAL_KEY
     from .result_keys import WRITTEN_KEYS
 except ImportError:                         # beside a job, in a bundle
     from atom_permutation import MAP_KEY, AtomIndexMap  # type: ignore[no-redef]
     from ncdata import (NC_LOCK, Var, as_bytes, axis_values, checked,
                         coordinate, empty, flag, in_memory,
-                        json_attr, key_of, named_now,
+                        json_attr, key_of,
                         number_attr, read_structure_group, read_variables,
                         state, unflag, unjson_attr, unnumber_attr,
                         write_group, write_structure_group)
-    from persist import unknown_keys, write_bytes  # type: ignore[no-redef]
+    from persist import (FileRefused, unknown_keys,  # type: ignore[no-redef]
+                         write_bytes)
     from derived import THERMAL_KEY  # type: ignore[no-redef]
     from result_keys import WRITTEN_KEYS  # type: ignore[no-redef]
 
@@ -82,34 +82,13 @@ UNSTATED = (".  A key this data file does not know how to state is refused "
             "rather than dropped")
 
 DATA_SCHEMA = "molbuilder/spectra-data@11"
-#: The schemas the reader reads: a file written before 2.32.0 (``@1``) holds
-#: the same variables without its atom index map, read as it is and never
-#: rewritten -- its map made as it is read (`engines/vibration.md`
-#: § 6.10.5; `model/overview.md` § 2.2b, F3); one written before 2.33.2
-#: (``@1``, ``@2``) names four axes' values otherwise, and before 2.33.3
-#: (``@3``) the temperatures' (each axis's ``earlier``); one before 2.36.0
-#: (``@1``-``@4``) holds no ``/partial_charges``; one before 2.43.0
-#: (``@1``-``@6``) no ``optical`` citation; one before 2.47.0 (``@1``-``@7``)
-#: keeps its numbers as attributes (:func:`_block_back`) and states no title
-#: or source; one before the framework's one structure layout (``@1``-``@8``)
-#: states each axis's kind over ``xyz`` -- the reader takes the structure
-#: from ``structure_json``, so each reads as it is (`model/datafiles.md`
-#: § 3a); one before 2.72.3 (``@1``-``@9``) names some variables and
-#: attributes by the result's keys -- read by them, each variable's
-#: ``earlier`` names, each attribute's key (`model/datafiles.md` § 2a
-#: rule 5); one before 2.79.0 (``@1``-``@10``) states no mode's mechanics
-#: and no ``/modes/thermal`` -- each computed as the result is read
-#: (`engines/vibration.md` § 6.11 § 5).
-READABLE_DATA_SCHEMAS = ("molbuilder/spectra-data@1",
-                         "molbuilder/spectra-data@2",
-                         "molbuilder/spectra-data@3",
-                         "molbuilder/spectra-data@4",
-                         "molbuilder/spectra-data@5",
-                         "molbuilder/spectra-data@6",
-                         "molbuilder/spectra-data@7",
-                         "molbuilder/spectra-data@8",
-                         "molbuilder/spectra-data@9",
-                         "molbuilder/spectra-data@10", DATA_SCHEMA)
+#: The schemas the reader reads: the one this molbuilder writes -- a file of
+#: an older one is refused by its version, the vibration run again (the
+#: user's decision, 2026-11-26; `engines/vibration.md` § 6.10.5).
+READABLE_DATA_SCHEMAS = (DATA_SCHEMA,)
+#: The way on a refused file's words name (`persist.check_schema`) -- this
+#: one's and the optical calls' (`spectra.optical_data`).
+REFUSED_WAY = "run the vibration again"
 #: The fill of an integer attribute that can be not stated.
 _INT_FILL = -1
 
@@ -119,24 +98,31 @@ class SpectraDataError(ValueError):
     key or shape, ready to surface verbatim."""
 
 
+class SpectraDataUnreadable(SpectraDataError, FileRefused):
+    """A ``<label>.spectra.nc`` read back that is not this file at a
+    version this molbuilder reads: a file its reader cannot read, carrying
+    the mark the two edges say (`persist.FileRefused`,
+    `execution/job-contracts.md` § 6.1).  The writer's checks carry
+    none."""
+
+
 # --------------------------------------------------------------------- #
 #  The scalar blocks -- each key's kind, so a round trip is exact         #
 # --------------------------------------------------------------------- #
 
 def _number(name: str, kind: str, units: str, long_name: str,
-            definition: str, source: str = "", earlier=()) -> Var:
+            definition: str, source: str = "") -> Var:
     """A block's number: a variable of no dimension, NaN where the result
-    states none (`model/datafiles.md` § 2); ``earlier`` the names an older
-    schema wrote it under -- its record key is the block table's."""
-    return Var(name, (), kind, units, long_name, definition, source=source,
-               earlier=tuple(earlier))
+    states none (`model/datafiles.md` § 2) -- its record key is the block
+    table's."""
+    return Var(name, (), kind, units, long_name, definition, source=source)
 
 
 #: The top-level scalars, as attributes of the root: ``key -> kind`` --
 #: ``text``, ``int``, ``int?`` (nullable), ``flag?``, ``json`` -- or
 #: ``(kind, name)`` for one the file names otherwise than the result keys it
-#: (`model/datafiles.md` § 2a rule 2; an older file names it by its key),
-#: and a number as its variable (:func:`_number`).
+#: (`model/datafiles.md` § 2a rule 2), and a number as its variable
+#: (:func:`_number`).
 _ROOT = {
     "engine": "text", "engine_version": "text",
     "molbuilder_version": "text", "timestamp": "text",
@@ -173,14 +159,12 @@ _RELAXATION = {
         "the largest absolute Cartesian component, at the geometry the "
         "Hessian is taken at -- the force the relaxation is judged by "
         "(engines/vibration.md 4.3)",
-        source="the engine's forces at that geometry",
-        earlier=("relaxation_max_force_eh_bohr",)),
+        source="the engine's forces at that geometry"),
     "max_force_all_atoms_eh_bohr": _number(
         "relaxation_max_force_all_atoms_eh_per_bohr", "raw", "Eh/bohr",
         "the largest force component on any atom",
         "the largest absolute Cartesian component, held atoms included, "
-        "at the same geometry", source="the engine's forces at that geometry",
-        earlier=("relaxation_max_force_all_atoms_eh_bohr",)),
+        "at the same geometry", source="the engine's forces at that geometry"),
     "converged": "flag?", "warning": "text?", "record": "json",
 }
 #: The ``thermo`` block but its grid, as attributes and variables of
@@ -189,8 +173,7 @@ _THERMO = {
     "regime": "text",
     "temperature_K": _number("temperature_k", "given", "K",
                              "the temperature",
-                             "the one the headline values are at",
-                             earlier=("temperature_K",)),
+                             "the one the headline values are at"),
     "pressure_atm": _number("pressure_atm", "given", "atm", "the pressure",
                             "of the gas-phase translational term; NaN where "
                             "the regime has none"),
@@ -207,32 +190,28 @@ _THERMO = {
                     "not an enthalpy, as the note says (engines/vibration.md "
                     "4.7)"),
     "s_eh_k": _number("s_eh_per_k", "derived", "Eh/K", "the entropy",
-                      "S at the temperature, as the regime defines it",
-                      earlier=("s_eh_k",)),
+                      "S at the temperature, as the regime defines it"),
     "g_eh": _number("g_eh", "derived", "Eh", "the free energy",
                     "G = H - T*S at the temperature"),
     "n_modes": "int",
     "n_imag_excluded": "int", "n_rigid_removed": "int", "note": "text",
 }
-#: ``/equilibrium``'s block: its energy, a variable (an attribute before
-#: @8), and its HOMO's index, an attribute (:data:`_ROOT`'s form).
+#: ``/equilibrium``'s block: its energy, a variable, and its HOMO's index,
+#: an attribute (:data:`_ROOT`'s form).
 _EQUILIBRIUM = {
     "scf_energy_eh": _number(
         "total_energy_eh", "raw", "Eh", "the total energy",
         "the converged SCF's total energy, E_SCF, at the equilibrium "
         "geometry; NaN where the engine reports none -- the orbital "
-        "energies with it", source="the equilibrium SCF",
-        earlier=("scf_energy_eh",)),
+        "energies with it", source="the equilibrium SCF"),
     "homo_idx": ("int?", "homo_index"),
 }
-#: ``/partial_charges``' block: the force-constant step, a variable (an
-#: attribute before @8).
+#: ``/partial_charges``' block: the force-constant step, a variable.
 _CHARGES = {
     "displacement_ang": _number(
         "fc_displacement_ang", "given", "angstrom",
         "the force-constant step's displacement",
-        "each step but 0 moves its atom by it, either way, along its axis",
-        earlier=("displacement_ang",)),
+        "each step but 0 moves its atom by it, either way, along its axis"),
 }
 #: The geometries the probe computes at: equilibrium and either way along
 #: the mode.
@@ -255,14 +234,13 @@ _GRID_CURVES = (
         "above the electronic energy, not an enthalpy (engines/vibration.md "
         "4.7)"),
     Var("s_eh_per_k", ("temperature_k",), "derived", "Eh/K", "the entropy",
-        "S at this temperature, as the regime defines it", key="s_eh_k",
-        earlier=("s_eh_k",)),
+        "S at this temperature, as the regime defines it", key="s_eh_k"),
     Var("g_eh", ("temperature_k",), "derived", "Eh", "the free energy",
         "G = H - T*S at this temperature"),
 )
 #: A mode's electronic-structure probe (`engines/vibration.md` § 4.8):
 #: its numbers and its orbital windows, each from its key in the probe's
-#: block -- a name otherwise than the key the name an older file wrote.
+#: block.
 _ES_SCALARS = (
     Var("amplitude_ang", ("probed_mode",), "given", "angstrom",
         "the displacement amplitude",
@@ -270,16 +248,14 @@ _ES_SCALARS = (
         "Cartesian component moves by it (engines/vibration.md 4.8)"),
     *(Var(f"total_energy_{at}_eh", ("probed_mode",), "raw", "Eh",
           f"the total energy at {where}", f"E_SCF {geometry}",
-          source="the probe's SCFs", key=f"scf_energy_{at}_eh",
-          earlier=(f"scf_energy_{at}_eh",))
+          source="the probe's SCFs", key=f"scf_energy_{at}_eh")
       for at, where, geometry in _PROBED_AT),
 )
 _ES_WINDOWS = tuple(
     Var(f"mo_energy_{at}_eh", ("probed_mode", "window"), "raw", "Eh",
         f"the orbital energies at {where}",
         "the orbital window's energies, ascending",
-        source="the probe's SCFs", key=f"mo_energies_{at}_eh",
-        earlier=(f"mo_energies_{at}_eh",))
+        source="the probe's SCFs", key=f"mo_energies_{at}_eh")
     for at, where, _ in _PROBED_AT)
 
 
@@ -346,21 +322,12 @@ def _block_numbers(block: Mapping[str, Any], table: Mapping[str, Any]
             {v.name: np.asarray(number_attr(block[k])) for k, v in held})
 
 
-def _numbers(table: Mapping[str, Any]) -> Tuple[Var, ...]:
-    """A block table's numbers -- its variables."""
-    return tuple(v for v in table.values() if isinstance(v, Var))
-
-
 def _block_back(attrs: Mapping[str, Any], held: Mapping[str, Any],
                 table: Mapping[str, Any], prefix: str) -> Dict[str, Any]:
     """The block back from a group's attributes and its variables
-    ``held`` -- read with the table's numbers (`ncdata.read_variables`) --
-    each under its name now (`ncdata.named_now`): a number from its
-    variable; an attribute by its name, one the file names otherwise than
-    the result's key named by the key before ``@10``."""
-    attrs = named_now(attrs, {prefix + kind[1]: (prefix + k,)
-                              for k, kind in table.items()
-                              if isinstance(kind, tuple)})
+    ``held`` (`ncdata.read_variables`), each under its result key: a number
+    from its variable; an attribute by the name the file gives it
+    (:func:`_attr_name`)."""
     out: Dict[str, Any] = {}
     for k, kind in table.items():
         if isinstance(kind, Var):
@@ -419,7 +386,7 @@ def _equilibrium_vars() -> Tuple[Var, ...]:
 
 def _mode_vars() -> Tuple[Var, ...]:
     return (
-        replace(coordinate("mode"), earlier=("index_1based",)),
+        coordinate("mode"),
         coordinate("xyz"),
         Var("removed", ("removed",), "coordinate", "1",
             "the removed motion's index", "from 0", dtype="i4"),
@@ -430,14 +397,12 @@ def _mode_vars() -> Tuple[Var, ...]:
             "the 0-based atom index, in the user order, of each free-atom "
             "row of the eigenvectors (free_atom_idxs) -- counting by the "
             "file's atom index map, in /structure", dtype="i4",
-            earlier=("free_atom_index",),
             atom_index=True),
         Var("eigenvector_canonical_per_amu12", ("mode", "free_atom", "xyz"),
             "derived", "amu^-1/2", "the Cartesian eigenvector",
             "normalised so that the sum over atoms of m |L|^2 is 1, m in "
             "amu: the form intensities and amplitudes pair with "
-            "(engines/vibration.md 6.3)", key="eigenvector_canonical",
-            earlier=("eigenvector_canonical",)),
+            "(engines/vibration.md 6.3)", key="eigenvector_canonical"),
         Var("eigenvector_display", ("mode", "free_atom", "xyz"), "derived",
             "1", "the eigenvector for drawing",
             "scaled so its largest Cartesian component is 1 "
@@ -454,14 +419,13 @@ def _mode_vars() -> Tuple[Var, ...]:
             "the IR intensity", "the orientation average of |dmu/dQ|^2, "
             "in km/mol (constants.IR_KM_MOL_PER_D2_A2_AMU; "
             "engines/vibration.md 4.6); NaN where not computed",
-            key="ir_intensity_km_mol", earlier=("ir_intensity_km_mol",)),
+            key="ir_intensity_km_mol"),
         Var("raman_activity_ang4_per_amu", ("mode",), "derived",
             "angstrom^4/amu", "the Raman activity",
             "Placzek's orientation-averaged activity "
             "45 a'^2 + 7 gamma'^2 from the polarizability's derivatives "
             "along the mode (engines/vibration.md 4.6); NaN where not "
-            "computed", key="raman_activity_a4_amu",
-            earlier=("raman_activity_a4_amu",)),
+            "computed", key="raman_activity_a4_amu"),
         Var("dipole_derivative_d_per_ang_amu12", ("mode", "xyz"), "derived",
             "D/(angstrom amu^1/2)", "the dipole change along the mode",
             "dmu/dQ: the engine's dipole derivatives dmu/dR projected on "
@@ -535,7 +499,7 @@ def _es_vars() -> Tuple[Var, ...]:
     return (
         Var("probed_mode", ("probed_mode",), "coordinate", "1",
             "the probed mode", "the 1-based index of the mode this row is of",
-            dtype="i4", earlier=("es", "mode_index_1based")),
+            dtype="i4"),
         Var("window", ("window",), "coordinate", "1",
             "the orbital's place in the window", "from 0, ascending energy",
             dtype="i4"),
@@ -550,8 +514,7 @@ def _es_vars() -> Tuple[Var, ...]:
 #: The thermo grid's axis, from its key in the grid block.
 _GRID_TEMPERATURE = Var(
     "temperature_k", ("temperature_k",), "coordinate", "K", "the temperature",
-    "each temperature the curves are drawn at", key="temperatures_K",
-    earlier=("temperature", "temperatures_K"))
+    "each temperature the curves are drawn at", key="temperatures_K")
 
 
 def _grid_vars() -> Tuple[Var, ...]:
@@ -821,12 +784,13 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
 def read_spectra_data(path, *, data=None) -> Dict[str, Any]:
     """``<label>.spectra.nc`` back as the payload the JSON holds -- the
     file's door (`runfiles.WRITTEN`); a schema it does not read
-    (:data:`READABLE_DATA_SCHEMAS`) refused by name."""
+    (:data:`READABLE_DATA_SCHEMAS`) refused by name, with the way on."""
     out: Dict[str, Any] = {}
-    with checked(path, schemas=READABLE_DATA_SCHEMAS, error=SpectraDataError,
-                 data=data) as (ds, attrs):
+    with checked(path, schemas=READABLE_DATA_SCHEMAS,
+                 error=SpectraDataUnreadable,
+                 way=REFUSED_WAY, data=data) as (ds, attrs):
         out["schema_version"] = int(attrs["spectra_schema_version"])
-        held = read_variables(ds, _numbers(_ROOT) + _numbers(_RELAXATION))
+        held = read_variables(ds)
         out.update(_block_back(attrs, held, _ROOT, ""))
         relaxation = _block_back(attrs, held, _RELAXATION, "relaxation_")
         out["relaxation"] = relaxation
@@ -841,11 +805,10 @@ def read_spectra_data(path, *, data=None) -> Dict[str, Any]:
         else:
             out["frozen_atom_idxs"] = [int(i) for i, h in enumerate(held_flags)
                                        if int(h) == 1]
-        if st["atoms"] is not None:
-            out[MAP_KEY] = st["atoms"].to_dict()
+        out[MAP_KEY] = st["atoms"].to_dict()
         # /equilibrium
         g = ds["equilibrium"]
-        qv = read_variables(g, _numbers(_EQUILIBRIUM))
+        qv = read_variables(g)
         eq: Dict[str, Any] = _block_back(
             {k: g.getncattr(k) for k in g.ncattrs()}, qv, _EQUILIBRIUM, "")
         eq["mo_energies_eh"] = (
@@ -856,11 +819,11 @@ def read_spectra_data(path, *, data=None) -> Dict[str, Any]:
         out["equilibrium"] = eq
         # /modes
         g = ds["modes"]
-        mv = read_variables(g, tuple(MODE.values()))
+        mv = read_variables(g)
         out["free_atom_idxs"] = [int(i) for i in mv["free_atom"]["data"]]
         n_modes = int(mv["mode"]["data"].shape[0])
         es_rows: Dict[int, Dict[str, Any]] = {}
-        ev = read_variables(g["electronic_structure"], _es_vars())
+        ev = read_variables(g["electronic_structure"])
         for k, idx in enumerate(ev["probed_mode"]["data"]):
             es_rows[int(idx)] = {
                 **{key_of(v): [float(x) for x in ev[v.name]["data"][k]]
@@ -897,32 +860,28 @@ def read_spectra_data(path, *, data=None) -> Dict[str, Any]:
                 "zero_point_displacement_ang": (
                     None if amplitude is None else
                     mv["zero_point_displacement_ang"]["data"][k].tolist()),
+                # THE MODE'S MECHANICS.
+                "motion_share": mv["motion_share"]["data"][k].tolist(),
+                **{name: unnumber_attr(mv[name]["data"][k])
+                   for name in ("largest_zero_point_move_ang",
+                                "reduced_mass_amu",
+                                "force_constant_mdyn_per_ang")},
             }
-            # THE MODE'S MECHANICS, where the file keeps them (@11).
-            if "motion_share" in mv:
-                m["motion_share"] = mv["motion_share"]["data"][k].tolist()
-                for name in ("largest_zero_point_move_ang",
-                             "reduced_mass_amu",
-                             "force_constant_mdyn_per_ang"):
-                    m[name] = unnumber_attr(mv[name]["data"][k])
-            # THE DIPOLE CHANGE, where the file keeps the variable (@6): the
-            # fill value says the engine kept none.
-            if "dipole_derivative_d_per_ang_amu12" in mv:
-                v = np.asarray(
-                    mv["dipole_derivative_d_per_ang_amu12"]["data"][k],
-                    dtype=float)
-                m["dipole_derivative_d_per_ang_amu12"] = (
-                    None if not np.all(np.isfinite(v)) else v.tolist())
+            # THE DIPOLE CHANGE: the fill value says the engine kept none.
+            v = np.asarray(mv["dipole_derivative_d_per_ang_amu12"]["data"][k],
+                           dtype=float)
+            m["dipole_derivative_d_per_ang_amu12"] = (
+                None if not np.all(np.isfinite(v)) else v.tolist())
             modes.append(m)
         out["modes"] = modes
-        # /modes/thermal, where the file keeps it (@11): null with no mode
-        # on it, before the modes exist (§ 6.5).
-        if "thermal" in g.groups and not n_modes:
+        # /modes/thermal: null with no mode on it, before the modes exist
+        # (§ 6.5).
+        if not n_modes:
             out[THERMAL_KEY] = None
-        elif "thermal" in g.groups:
+        else:
             tvars = _thermal_vars()
             _, temperature, spread, quanta = tvars
-            tv = read_variables(g["thermal"], tvars)
+            tv = read_variables(g["thermal"])
             # AN IMAGINARY MODE'S ROW IS NONE, by the mode's own flag.
             rows = {v.name: [None if modes[k]["has_imag"] else
                              np.asarray(tv[v.name]["data"][k],
@@ -942,28 +901,25 @@ def read_spectra_data(path, *, data=None) -> Dict[str, Any]:
         # /thermo
         g = ds["thermo"]
         thermo = _block_back({k: g.getncattr(k) for k in g.ncattrs()},
-                             read_variables(g, _numbers(_THERMO)), _THERMO,
+                             read_variables(g), _THERMO,
                              "")
         gg = g["grid"]
         if "curves" in gg.ncattrs():
-            gv = read_variables(gg, _grid_vars())
+            gv = read_variables(gg)
             grid = {key_of(_GRID_TEMPERATURE): [float(t) for t in
                                        gv["temperature_k"]["data"]]}
-            # THE CURVES THE FILE NAMES, each under its name now
-            # (`ncdata.named_now`).
-            named = named_now(
-                dict.fromkeys(unjson_attr(gg.getncattr("curves"))),
-                {v.name: v.earlier for v in _GRID_CURVES})
+            # THE CURVES THE FILE NAMES.
+            named = set(unjson_attr(gg.getncattr("curves")))
             for v in _GRID_CURVES:
                 if v.name in named:
                     grid[key_of(v)] = [float(x) for x in gv[v.name]["data"]]
             thermo["grid"] = grid
         out["thermo"] = thermo
-        # /partial_charges, where the file holds them (from @5).
+        # /partial_charges, where the result states them.
         out["partial_charges"] = None
         if "partial_charges" in ds.groups:
             g = ds["partial_charges"]
-            pv = read_variables(g, _numbers(_CHARGES))
+            pv = read_variables(g)
             partitions = unjson_attr(g.getncattr("partitions"))
             steps = []
             for i in range(int(pv["fc_step"]["data"].shape[0])):
@@ -987,11 +943,11 @@ def json_sha256_of(path) -> str:
     (:func:`write_spectra_data`): the result's identity whichever of its two
     files a person reads (`engines/vibration-frames.md` § 1)."""
     with checked(path, schemas=READABLE_DATA_SCHEMAS,
-                 error=SpectraDataError) as (_ds, attrs):
+                 error=SpectraDataUnreadable, way=REFUSED_WAY) as (_ds, attrs):
         return str(attrs["json_sha256"])
 
 
-__all__ = ["DATA_SCHEMA", "GRID_VARS", "MODE", "MODE_VARS",
+__all__ = ["DATA_SCHEMA", "GRID_VARS", "MODE", "MODE_VARS", "REFUSED_WAY",
            "SpectraDataError", "UNSTATED",
            "json_sha256_of", "write_spectra_data", "read_spectra_data"]
 

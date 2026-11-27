@@ -663,8 +663,8 @@ def entering(struct: Structure, *, keep_engine_frame: bool = False
     """THE STRUCTURE AS A NEW CALCULATION TAKES IT (§ 6.0, *Entering a new
     calculation*; user, 2026-10-11): an offset the ENGINE stated -- the
     origin of coordinates read back from a run -- is not carried over, so
-    the one rule places the atoms; an origin the person assigned is kept (a
-    v7-v11 sidecar's is read as theirs); ``keep_engine_frame`` keeps the
+    the one rule places the atoms; an origin the person assigned is kept,
+    and one whose kind nothing states; ``keep_engine_frame`` keeps the
     engine's too -- for an input stated relaxed (``already_relaxed``, a
     vibration's item: only its form and template carry it), used as the
     force minimum on the grid it was found on, where a rigid shift would

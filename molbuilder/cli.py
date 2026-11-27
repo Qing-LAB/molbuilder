@@ -35,6 +35,7 @@ from .builders.backends import (BACKENDS, DEFAULT_FORM, DEFAULT_TERMINAL,
                                  KIND_FORMS, TERMINALS)
 from .chemistry import BackendUnavailable as _BackendUnavailable
 from .chemistry import BuildRefused as _BuildRefused
+from .cli_edge import GroupSayingFileRefusals
 from .envs._cli import envs_group
 from .identity import MODULE, PROG, as_typed
 from .runtime_config import RuntimeConfigError, get_tls, read_config
@@ -197,7 +198,10 @@ def _build(kind: str, sequence: str, **asked) -> Structure:
 # --------------------------------------------------------------------- #
 
 
+# THE EDGE, the group's own (`cli_edge`): a file a command cannot read is
+# said as a refusal, in its reader's words, whichever command met it.
 @click.group(
+    cls=GroupSayingFileRefusals,
     context_settings={"help_option_names": ["-h", "--help"]},
 )
 def cli() -> None:
@@ -230,7 +234,8 @@ cli.add_command(jobs_group)
 
 
 # `molbuilder pseudo ...`  (screen a pseudopotential set).
-@click.group("pseudo", context_settings={"help_option_names": ["-h", "--help"]})
+@click.group("pseudo",
+             context_settings={"help_option_names": ["-h", "--help"]})
 def pseudo_group() -> None:
     """Screen pseudopotential (.psml) sets before a run."""
 

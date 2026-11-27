@@ -8,6 +8,8 @@ Routes:
                                         the typed SpectraResults shape
     POST /api/spectra/frameset          a mode of the result shown, as a
                                         frame set
+    GET  /api/spectra/sweep             a SIESTA vibration's displacement
+                                        sweep, read through its reader
 
 The tab's compute half renders the CATALOGUE's vibration form (``GET /api/build/schema/pyscf?calculation=
 vibration``, build.py) and hands the description to Task setup
@@ -197,17 +199,11 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
     hydrogen has the largest displacement in almost every mode of an organic
     molecule while carrying almost none of the motion.  The browser has no
     masses.  Each free atom's share (``motion_share``, weighted by the masses
-    the modes were weighted by) is the result's own: stored from schema 15,
-    checked on read against the one derivation and worked out again by it
-    (``to_dict``, `engines/vibration.md` § 6.6) -- for an older result,
-    worked out on read.  This sums them by each atom's element, its species
-    label's name (``SpectraResults.atoms_weighted``): a view of the panel's,
-    so made here, where the request is.
-
-    A mode that states no shares -- a result before schema 7, which states
-    no masses, whose label names no element the mass table knows -- is
-    served without the field: the panel drops one clause, and the spectrum
-    still opens.
+    the modes were weighted by) is the result's own: stored, checked on read
+    against the one derivation and worked out again by it (``to_dict``,
+    `engines/vibration.md` § 6.6).  This sums them by each atom's element,
+    its species label's name (``SpectraResults.atoms_weighted``): a view of
+    the panel's, so made here, where the request is.
     """
     payload = results.to_dict()
     # THE PAGE'S CONSTANTS RIDE WITH THE RESULTS: the reply the page already
@@ -264,8 +260,8 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
                                              read_ask, source_of)
     from molbuilder.spectra.infrared import asked as infrared_asked
     # WHETHER THE RUN ASKED FOR ITS INFRARED, read once from the result's
-    # own facts, older files included (`infrared.asked`): the page's
-    # column, CSV, sentence and summary read this, never `phase_ir`.
+    # own facts (`infrared.asked`): the page's column, CSV, sentence and
+    # summary read this, never `phase_ir`.
     payload["infrared_asked"] = infrared_asked(results)
     from molbuilder.spectra.methods import with_infrared_view
     # WHERE ITS INFRARED COMES FROM, and held or free -- whether the light's
@@ -275,8 +271,8 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
         payload["infrared_source"] = source
         payload["infrared_orientation"] = orientation_of(results)
     # ...A RESULT THAT CARRIES NONE says why, once, from its own facts
-    # (`infrared.infrared_absent`): not computed yet, Compute IR off,
-    # written before charges were kept, or recorded none.
+    # (`infrared.infrared_absent`): not computed yet, Compute IR off, or
+    # recorded none.
     absent = infrared_absent(results)
     if absent is not None:
         payload["infrared_absent"] = absent
@@ -460,6 +456,32 @@ def api_spectra_frameset():
     except FrameSetError as exc:
         return err(str(exc), 400)
     return jsonify({"ok": True, **got.to_wire(root)})
+
+
+# ===================================================================== #
+# /api/spectra/sweep                                                    #
+# ===================================================================== #
+
+
+@bp.route("/api/spectra/sweep", methods=["GET"])
+def api_spectra_sweep():
+    """A SIESTA VIBRATION'S DISPLACEMENT SWEEP -- the ``<label>.fc-sweep.json``
+    ``?path=`` names, fenced inside the tree (`web-api.md` § 2.1) -- read
+    through its reader, the registry's ``fc-sweep-json``
+    (`parse/sidecars/fc_sweep.py`), the record the Results tab's sweep page
+    draws (`web/results.md` § 0.2): ``{ok, record}``.  A record of another
+    version, or one that does not read, is its reader's refusal, said at the
+    edge as every file's is -- a 400 in its words, its way on among them
+    (`job-contracts.md` § 6.1); a file that is no sweep's record, 400; a
+    path outside the tree, 400; nothing there, 404."""
+    from molbuilder.parse.sidecars.fc_sweep import FcSweepRecordFileParser
+    from .files import _existing, _resolve_within_roots
+    path = _existing(_resolve_within_roots(
+        str(request.args.get("path") or "")), "file")
+    if not FcSweepRecordFileParser.can_parse(path):
+        return err(f"{path.name} is no displacement sweep's record", 400)
+    return jsonify({"ok": True,
+                    "record": FcSweepRecordFileParser.parse(path).payload})
 
 
 # ===================================================================== #

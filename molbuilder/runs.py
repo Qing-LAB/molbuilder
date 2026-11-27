@@ -46,8 +46,8 @@ class Place:
     calculation's root, what the folder is, the stage, run, trial and point
     it sits in -- and the description, ``task``, read once.  A folder no
     calculation claims has neither: it holds no run of ours and is read
-    alone.  ``problem`` is a description that does not read, in its
-    reader's words."""
+    alone.  ``problem`` is a description that does not read, or the
+    folder's own record (`calcdir.json`), in its reader's words."""
     where: calcdirs.Where = field(default_factory=calcdirs.Where)
     task: Any = None
     problem: Optional[str] = None
@@ -82,7 +82,9 @@ def place_of(directory) -> Place:
     from molbuilder.task import of as task_of
     at = calcdirs.where(directory)
     if at.root is None:
-        return Place(where=at)
+        # A FOLDER WHOSE OWN RECORD DOES NOT READ is said in its reader's
+        # words (`calcdirs.unread`), never as one nothing marks.
+        return Place(where=at, problem=calcdirs.unread(directory))
     try:
         task = task_of(at.root)
     except Exception as exc:                               # noqa: BLE001
@@ -1526,7 +1528,13 @@ def folder_answer(directory) -> Dict[str, Any]:
                       # it (`calcdirs.Where.of_points`) -- read with its
                       # view (`runstatus.views_of`).
                       "of_points": at.of_points,
-                      "says": PLACE_SAYS.get(place.role)},
+                      # WHAT THE PAGE SAYS OF THE FOLDER: its role's
+                      # sentence -- or, no role said because the folder's
+                      # own record or its description does not read, that
+                      # file's words (`place_of`'s ``problem``), never
+                      # *not marked* (`job-contracts.md` § 6.1).
+                      "says": (PLACE_SAYS.get(place.role) if place.role
+                               else place.problem)},
             "engine": engine,
             "engine_words": engine_words,
             "noun": noun,

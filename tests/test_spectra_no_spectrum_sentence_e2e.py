@@ -27,7 +27,7 @@ sweep ran (`support.real_runs._result_kept_as_it_grows`).
 
 What no run writes goes unseen here: the sentence for an infrared asked of the
 charges that could not be given (`infrared_said`) -- a run's charges state both
-partitions, and the door's other refusal needs a file from before schema 12.
+partitions.
 
 MUTATIONS THIS MUST FAIL AGAINST: the sentence's running test without
 `phase_ir` (a run mid-sweep is told it recorded none); the done-rule without

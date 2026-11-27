@@ -1679,11 +1679,6 @@ class PrepAnswer:
     (`job-system.md` § 5.0, *What prep answers*)."""
     kind: str
     stage: Optional[str]
-    #: WITH NO GROUP NAMED, what the calculation's own record took: a
-    #: junction whose sidecar states no order record, its order found and
-    #: written, in one sentence (`engines/transport.md` § 1.1, *No group left
-    #: to prepare*); ``None`` for every answer about a stage.
-    recorded: Optional[str] = None
     #: A STAGE OF A GROUP ALREADY AS THIS PREP PLANS IT -- prepared, never
     #: launched, its decks, scripts and row what prep writes now: the
     #: sentence both doors say, nothing written for it (`job-system.md`
@@ -1832,8 +1827,8 @@ class PrepAnswer:
         the prep says once above its stages (:func:`prep_said`)."""
         from .ledger import rel_to
         from .placement import placement_line, stated_line
-        if self.recorded or self.unchanged:
-            return [self.recorded or self.unchanged]
+        if self.unchanged:
+            return [self.unchanged]
         base, stage = Path(base), self.stage
         prepared, brought, again = _PREPARED_WORDS[self.preview]
         notes = [n for n in self.notes if n not in above]
@@ -2575,49 +2570,6 @@ def prep_task(calc, kind: str, *, groups: Sequence[int] = (),
                             one_job=one_job)
 
 
-def _record_the_order(calc, record_order, *, refuse, asked, preview,
-                      plan_id) -> Optional[PrepAnswer]:
-    """`prep task` with no group named, on a calculation whose kind records
-    its citation's atom order (its description's ``order_record`` part,
-    `kind_table.description_part` -- a junction whose sidecar states no
-    order record, `engines/transport.md` § 1.1, *No group left to
-    prepare*): the part plans the record and says what it recorded, the
-    folder's state saved first, nothing else written; ``None`` when it has
-    nothing to record.  ``refuse`` and ``asked`` are the prep's own
-    (:func:`_prep_groups`)."""
-    from .ledger import save_then_carry_out
-    from .ledger import record as ledger
-    from .planned import Plan
-    base, task = calc.base, calc.task
-    plan = Plan()
-    try:
-        said = record_order(calc, plan)
-    except PrepError as exc:
-        raise refuse(str(exc)) from None
-    if said is None:
-        return None
-    written = [str(w.relative_to(base)) for w in plan.writes()]
-    answer = PrepAnswer(
-        kind="task", stage=None,
-        recorded=f"{said}: {', '.join(written)} written; no group prepared")
-    identity = plan.identity()
-    if preview:
-        answer.preview, answer.plan_id = True, identity
-        return answer
-    if plan_id is not None and plan_id != identity:
-        raise refuse(PLAN_CHANGED)
-    kept = save_then_carry_out(
-        plan, base, "prep task: the citation's order record",
-        engine=str(task.engine),
-        say=lambda decision, **facts: ledger(
-            base, "prep", decision, groups=[], **facts),
-        refuse=refuse, stopped=PrepStopped, nothing="written",
-        asked=lambda _kept: asked())
-    ledger(base, "prep", "order recorded", writes=written)
-    answer.saved = kept.said()
-    return answer
-
-
 class Walk(NamedTuple):
     """The one header of a job that walks several members, where it is
     written, and the members' one request's fit on its queue
@@ -2795,19 +2747,6 @@ def _prep_groups(calc, numbers: List[int], *, target, allocation,
     task, request = description.task, calc.request
     described = request.numbers
     if not numbers:
-        # NO GROUP NAMED: the calculation's own record of its citation's
-        # atom order, where its kind keeps one and it states none, is
-        # recorded, and nothing else (its description's `order_record`
-        # part; `engines/transport.md` § 1.1, *No group left to prepare*).
-        from ..kind_table import description_part
-        record_order = description_part(str(task.calculation),
-                                        "order_record")
-        if record_order is not None:
-            got = _record_the_order(description.calc, record_order,
-                                    refuse=_refuse, asked=_asked,
-                                    preview=preview, plan_id=plan_id)
-            if got is not None:
-                return [got]
         # THE GROUPS IT OFFERS, the one offer (`ready.prep_offer`: every one
         # that needs a prep and may be prepared now), and why each
         # other may not; none offered, each group's next step says how it is

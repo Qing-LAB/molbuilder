@@ -968,6 +968,37 @@ calculation's copy of its machine's record, a run's files and the template.
   so** — `<calc> is current -- nothing to migrate: …`, what was checked, no
   failure; the ledger records `migrate` `current` *(the user, 2026-10-22:
   "change the word of migrate so it does not look like an error")*.
+- **A file of a version it does not translate is refused by name, first** —
+  `task.json` of any version but `molbuilder/task@1` and `@2`, and
+  `job-request.json`, a `job-set.json`, the template or the calculation's own
+  `warm-files.toml` of any version but the one its reader reads; the
+  calculation's copy of its machine's record of any version but this
+  molbuilder's and the older ones it rewrites; and the files it reads and
+  never rewrites, asked of their own readers before it calls a calculation
+  current — the copy of its structure it keeps beside it
+  (`<label>.source.molstruct.json`, through the codec) and a transport
+  calculation's composition record (`slot-provenance.json`,
+  `compose.read_provenance`) of any version but the one read, and its
+  composed junction (`compose.recorded_junction`) a later molbuilder wrote:
+  *`jobset migrate` does not translate `<file>`, so nothing was written:*
+  then its reader's words — what it says, what is read, and the way on, its
+  family's ([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1): an
+  older version belongs to a calculation described before 2026-11-04 —
+  *describe the calculation again* (`calcdirs.DESCRIBE_AGAIN`); a later one
+  was written by a later molbuilder — *open it with the molbuilder that wrote
+  it*. Never *current*, and never a rewrite its reader *would still refuse*:
+  no rewrite of it is this command's. The readers refuse the same file with
+  the same way on.
+- **A composed junction that does not read — an older molbuilder's, one
+  edited since prep, one whose sidecar does not parse — is answered by the
+  calculation's state, as its next prep answers it**
+  (`transport.gather.no_usable_record`,
+  [`engines/transport.md`](?doc=engines/transport.md) § 1.1): none of its
+  stages launched, the migration says its next prep composes the junction
+  again from its citation — exit 0, the line written in the ledger, nothing
+  written, never *current*; one launched, it is refused in the junction's
+  words and the way back to a state saved before that launch, as prep
+  refuses it.
 
 **What it rewrites** — each change in a few words, the detail below:
 
@@ -1043,8 +1074,10 @@ start is [`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1.
 
 **What it leaves:** a transmission point's digest of another version is out of
 date, and the next reading of its data file writes it whole
-([`model/parse.md`](?doc=model/parse.md) § 5e); a vibration result is not
-rewritten — its map is made as it is read.
+([`model/parse.md`](?doc=model/parse.md) § 5e); a file read at its current
+version alone is not rewritten, one of another version refused by name with
+its way on — the list, and each one's way on, is
+[`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1.
 
 **After a migration:**
 

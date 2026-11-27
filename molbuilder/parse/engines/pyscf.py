@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import os
 
-from ..errors import ParseError
+from ..errors import FileUnreadable
 from ...runfiles import compose as _rf_compose, stem_before as _rf_stem_before
 from ...runfiles import named_beside as _rf_named_beside
 from ...runfiles import role_of as _rf_role_of
@@ -408,7 +408,7 @@ class PySCFOutFileParser(FileParser):
         try:
             traj = _parse_pyscf_xyz(str(path))
         except RunFileError as exc:
-            raise ParseError(
+            raise FileUnreadable(
                 f"{Path(path).name}: this is a readable XYZ, but its name is "
                 f"not one molbuilder composes, so the companions it would be "
                 f"read with cannot be named -- {exc}") from exc

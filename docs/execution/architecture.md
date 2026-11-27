@@ -202,7 +202,7 @@ assumed is that reach.
   - `runtime_info` — a run's own set-up, and two of the things `nvidia-smi` says, read once (`gpu_models`, `gpu_reading`).
   - `kind_table` · `engine_table` — the two tables, each read once from its data file (`kind`, `CalculationKind.on`, `run_of_points`, `rung_label`, `engine`; § 3.3).
   - `scheduler/` — the machine record (`machine_for`, `calculation_environment`, `calculation_machine`, `resolve_environment`), the probe, the fit (`fit`), the queue a job names bound to the record (`place`), a queue job's cluster, listing and cancel (`queue.cluster`, `listed`, `cancel`).
-  - `persist` (`read_object`, `read_json`, `write_json`; a record's unknown keys, `unknown_keys`, `check_keys`; a record reader's refusals, `RecordRefusals`) · `parse/` (`run_status`) · `wrapper_log` (a run's session log, `log_of_run`) · `monitor_log` (the words of the monitor's two files) · `pipeline_log` (prep's log, written by its two callers, [`script-preparation.md`](?doc=execution/script-preparation.md) § 4.5).
+  - `persist` (`read_object`, `read_json`, `write_json`; a record's unknown keys, `unknown_keys`, `check_keys`; a record reader's refusals, `RecordRefusals`; the one mark of a file its reader cannot read, `FileRefused`, and the record's own, `RecordUnreadable`, `SchemaMismatch`) · `parse/` (`run_status`) · `wrapper_log` (a run's session log, `log_of_run`) · `monitor_log` (the words of the monitor's two files) · `pipeline_log` (prep's log, written by its two callers, [`script-preparation.md`](?doc=execution/script-preparation.md) § 4.5).
   - `joblist` — each launch's address and whether that job is going (`write`, `every`, `going_here`, `signal_here`, `is_going`, `holding`, `inside`, `Asked`, `scheduler_of`; [`job-system.md`](?doc=execution/job-system.md) § 6.0a).
   - `jobset/ledger` (`record`, `read`; the one save-then-write step every writing verb takes, `save_then_carry_out`; a run folder named from the calculation, `rel_to`) · `jobset/errors` (`PrepError`) · `jobset/machine` (`machine_record`, `set_machine`, `require_activation`) · `jobset/planned` (a plan's writes as values, `Plan`) · `jobset/sequence` (a sequence of groups' launch record: `write_record`, `read_record`, `sent`).
 - **Floor 2 — description.** `task` (`of`, `from_text`, `write_task`) · `job_request` (`of`; a run card's names, `why_not_on_card`) · `template_file` (`of`) · `runs`, the run door (`run_of`, `place_of`, `state_of`, `concluded`, `engine_at`, `record_of`, `on_label_at`, `about`, `catalogue_row`, `openable`, `declared`, `view_of`, `folder_answer`) · `task_reader` (the Results tab's reader of a transport calculation's description).
@@ -210,7 +210,7 @@ assumed is that reach.
 - **Floor 4 — layout.** `jobset/materialize` (`open_run`, `prepare_attempt`, `hand_over`, `gather_into`, `latest_attempt`, `newest_launched`, `runs_launched`, `ever_launched`, `job_folder`, `scratch_in`) · `jobset/continuation` (`continuation_answer`, `usable`, `relaunch`, `point_rows`, `points_state`) · the transport calculation's gather (`transport/gather`: `gather_sources`, `composed_for_prep`) and rung builder (`transport/rung`), on this floor by what they hold — the composed junction and a launched rung's records · `jobset/ready` (`task_state`, `readiness`, `first_launch_takes`, `launched_without`, `regrouped`, `held_by_sequence`) · the transport calculation's reuse of a finished one (`transport/reuse`: the doors `kind_table.REUSE_DOORS` lists, and the writer of an extension, `write_reusing`) and the one way it is described (`transport/describe`: the doors `kind_table.DESCRIBE_DOORS` lists) · `jobset/points` (`points_of`, `point_of`) and each kind's declaration (`transport/points`, `spectra/vibration_points`) · `jobset/prepared_with` (what a stage was prepared with, and what changed since: `values_of`, `changes`).
 - **Floor 5 — launch.** `jobset/submit` (the one sender, `_go`; launch's entry, `plan_launch` and `send_launch`, lives in this module and is a conductor, § 2.2) · `jobset/agreement` (`check_trial_starts_cold`) · `jobset/ask`.
 - **Floor 6 — observe.** `jobset/runstatus` (`jobset_status`, `every_run`, `points_view`, `views_of`, `run_answer`, `render_status`, `render_stage_status`, `job_members`, `run_folders`, `scratch_answer`) · `jobset/summarize` (`run_summarize_jobset`) · `jobset/memory` (`need`, `largest`) · each kind's sum (`transport/sum`, `spectra/vibration_sum`).
-- **Floor 7 — surfaces.** `cli` · `jobset/_cli` · `jobs_cli` · `web`. The verbs: `molbuilder describe`, `molbuilder jobset {prep, launch, status, summarize, scratch, export, probe, machines, migrate}`, `molbuilder jobs {status, stop}`, and the web blueprints. Each appends its verb's decisions to the ledger, but prep's, launch's and migrate's, whose entries append them.
+- **Floor 7 — surfaces.** `cli` · `jobset/_cli` · `jobs_cli` · `web` · `cli_edge` (the one `click.Group` the command line is made of, `cli`, inside whose edge every group added to it runs, which says a file a command cannot read as a refusal, `GroupSayingFileRefusals`; [`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1). The verbs: `molbuilder describe`, `molbuilder jobset {prep, launch, status, summarize, scratch, export, probe, machines, migrate}`, `molbuilder jobs {status, stop}`, and the web blueprints. Each appends its verb's decisions to the ledger, but prep's, launch's and migrate's, whose entries append them.
 
 **What floor 2's run door must never do.** It answers the one folder it is
 handed, reading only that folder, the folder its run's launch record lies in,
@@ -650,8 +650,7 @@ loads, and a name with no record is refused naming the file and the key.
   deck); and the code each shared door asks of a kind that cites or extends,
   a part each *(names, the user 2026-11-02)*: the limits of extending a
   finished calculation (`extension`, where the description carries
-  `reuses`), the frames its citation holds (`cited_frames`), the citation's
-  atom order recorded at a prep that names no group (`order_record`), how
+  `reuses`), the frames its citation holds (`cited_frames`), how
   it is described from its citation or from the calculation it extends
   (`describe`, a module named whole, providing every door
   `kind_table.DESCRIBE_DOORS` lists — the one describe the command line and
@@ -795,7 +794,7 @@ ladder (floor 3) a linked kind's inputs and the stage a stage continues from;
 the ready door its gather, which launch hands over
 (`materialize.gather_into`); `summarize` (floor 6) its sum; Task setup a
 description's `extension` (its Save and its folder answer) and
-`cited_frames` (its frame set); prep its `order_record`; `molbuilder
+`cited_frames` (its frame set); `molbuilder
 describe` its `describe` part; prep and launch its `reuse`; the settings gate
 (`validation.validate`) an engine's and a kind's checks; `deck_record` an
 engine's reading of the same calculation; `jobset/engines.engine_seam`

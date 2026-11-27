@@ -425,7 +425,6 @@ def test_channel(name: str):
     producing.
     """
     from ...monitor import delivery_failure, load_channels, webhook_request
-    from ...report_cards import LayoutError
     dest = load_channels().get(name)
     if not dest:
         stored = _stored().get(name)
@@ -444,16 +443,14 @@ def test_channel(name: str):
     # THE MONITOR'S OWN PRODUCER, not a second one: the button that exists
     # to prove the path must not be a DIFFERENT path (`run-reports.md`
     # § 4.1b).  The card is laid out by this server's layout file; one
-    # that does not read is this answer (§ 4.1c).
-    try:
-        body, headers = webhook_request(dest, {
-            "event": "test",
-            "text": f"a test report from molbuilder, for the channel {name!r}",
-            "state": "test",
-            "run": "notify-setup-test",
-        })
-    except LayoutError as exc:
-        return err(str(exc), 500)
+    # that does not read is the edge's refusal, a 400 in its words, its way
+    # on among them (§ 4.1c; `web/app.py`).
+    body, headers = webhook_request(dest, {
+        "event": "test",
+        "text": f"a test report from molbuilder, for the channel {name!r}",
+        "state": "test",
+        "run": "notify-setup-test",
+    })
     req = urllib.request.Request(dest["url"], data=body, method="POST",
                                  headers=headers)
     try:
@@ -558,7 +555,7 @@ def reports():
 
     from ...monitor import card, is_notify_user, read_notify_keys
     from ...parse.instruments.reports import read_reports
-    from ...report_cards import LayoutError, load as load_layout
+    from ...report_cards import load as load_layout
     from .notify import reports_path
     _route, keys = read_notify_keys()
     # THE SIGNED-IN PERSON is the session's user as the sign-in stores it
@@ -588,11 +585,9 @@ def reports():
     path = reports_path(user)
     got = read_reports(path, since=since_f, limit=limit)
     # THE LAYOUT ONCE for the page, the server's own (`run-reports.md`
-    # § 4.1c); one that does not read is this answer.
-    try:
-        layout = load_layout()
-    except LayoutError as exc:
-        return err(str(exc), 500)
+    # § 4.1c); one that does not read is the edge's refusal, a 400 in its
+    # words, its way on among them (`web/app.py`).
+    layout = load_layout()
     for r in got["reports"]:
         r["card"] = card(r, receiver="web", layout=layout)
     return jsonify({"ok": True, "user": user, "file": str(path),

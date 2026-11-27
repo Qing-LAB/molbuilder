@@ -163,7 +163,8 @@ def _calc_of(folder):
         raise click.ClickException(str(exc)) from None
 
 
-@click.group("jobset", short_help="run a calculation (stage ladder / sweep)")
+@click.group("jobset",
+             short_help="run a calculation (stage ladder / sweep)")
 def jobset_group() -> None:
     """The calculation's verbs, one grammar.
     Describing is not one of them: ``describe``, molbuilder's own command,
@@ -1265,8 +1266,7 @@ def _ask_which_groups(calc, named) -> tuple:
     ``asked``, which the entry writes down after its save.  With
     nobody to ask, refused, naming the line that picks them; with none to
     offer, the groups shown and none named, ``([], None)``: `prep task` with
-    no group named records a junction's order or refuses, naming the groups
-    (`prep._prep_groups`; `engines/transport.md` § 1.1)."""
+    no group named refuses, naming the groups (`prep._prep_groups`)."""
     from .ask import choose
     from .commands import block, prep_group_lines
     from .ledger import record
@@ -1292,9 +1292,8 @@ def _ask_which_groups(calc, named) -> tuple:
         return list(named), None
     pre = state.prep_offer
     if not pre:
-        # NO GROUP TO OFFER: prep, asked with none named, records a
-        # junction's order or refuses, naming the groups (`prep._prep_groups`;
-        # `engines/transport.md` § 1.1, *No group left to prepare*).
+        # NO GROUP TO OFFER: prep, asked with none named, refuses, naming
+        # the groups (`prep._prep_groups`).
         click.echo(text)
         return [], None
     # WHAT EACH GROUP OFFERED COPIES, AND WHAT IT RUNS, for a calculation
@@ -1327,8 +1326,8 @@ def _ask_which_groups(calc, named) -> tuple:
 
 
 def _echo_next_step(ans, base, *, ladder_next: bool) -> None:
-    """What comes next, after a prep's last answer: nothing after the
-    calculation's own record; a benchmark's launch and its report, one
+    """What comes next, after a prep's last answer: a benchmark's launch
+    and its report, one
     command a line, prose after `#`; a sequence of groups' one job; the
     ladder's own step when the prep opened no run of its own -- every group
     copied in, already as it plans it, or launched and prepared again for its
@@ -1336,8 +1335,6 @@ def _echo_next_step(ans, base, *, ladder_next: bool) -> None:
     nothing named.  The page's card lists these itself (`task-setup.md`
     § 11)."""
     from .commands import block, command, launch_lines
-    if ans.recorded:
-        return
     if ans.kind == "bench":
         # The report's `execution` block is the person's to copy into
         # job-request.json (job-system.md § 7).

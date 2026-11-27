@@ -9,16 +9,18 @@ Public surface:
 * Result types — :class:`ParseResult` and its frozen subclasses
   (trajectory / structure / sidecar / instrument / engine parameters).
 * Registry / dispatch — :func:`detect`, :func:`parse`, :func:`register`.
-* Exceptions — :exc:`ParseError` and its two children
-  :exc:`UnknownFormatError` / :exc:`AmbiguousFormatError`.  Detection
-  raises BOTH, and they are SIBLINGS: a caller that catches only the
-  first turns a registry overlap into an unhandled exception.
+* Exceptions — :exc:`ParseError` and its three children: a parser's
+  refusal of its file, :exc:`FileUnreadable` (carrying the mark of a file
+  its reader cannot read), and the registry's :exc:`UnknownFormatError` /
+  :exc:`AmbiguousFormatError`.  Detection raises BOTH of the last two, and
+  they are SIBLINGS: a caller that catches only the first turns a registry
+  overlap into an unhandled exception.
 """
 
 import importlib
 
 from .base import FileParser
-from .errors import (AmbiguousFormatError, ParseError,
+from .errors import (AmbiguousFormatError, FileUnreadable, ParseError,
                      UnknownFormatError)
 from .registry import detect, parse, register
 from .types import (
@@ -47,5 +49,6 @@ __all__ = [
     # Registry / dispatch
     "detect", "parse", "register",
     # Exceptions
-    "ParseError", "UnknownFormatError", "AmbiguousFormatError",
+    "ParseError", "FileUnreadable", "UnknownFormatError",
+    "AmbiguousFormatError",
 ]

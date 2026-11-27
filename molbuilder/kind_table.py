@@ -89,13 +89,11 @@ PART_REFS = ("points", "rung", "inputs", "gather", "continues", "sum",
 
 #: The parts a kind's description may name for the shared doors that ask of
 #: a kind that cites or extends (:func:`description_part`): the limits of
-#: extending a finished calculation, the frames its citation holds, the
-#: citation's atom order recorded at a prep that names no group, how it is
-#: described from its citation or the calculation it extends, and the reuse
+#: extending a finished calculation, the frames its citation holds, how it
+#: is described from its citation or the calculation it extends, and the reuse
 #: of the calculation it extends -- each ``module:NAME``, or a module named
 #: whole where :data:`WHOLE_MODULE_PARTS` says so.
-DESCRIPTION_PARTS = ("extension", "cited_frames", "order_record", "describe",
-                     "reuse")
+DESCRIPTION_PARTS = ("extension", "cited_frames", "describe", "reuse")
 #: THE DOORS A ``reuse`` PART PROVIDES, asked of the module it names: by
 #: prep (``decide``, ``copy_in``) and launch (``takes_over``,
 #: ``take_into``, ``shared_into``, ``carry_shared``).
@@ -683,7 +681,6 @@ def _kind(name: str, body: object, engines: Tuple[str, ...]
     for key, needs, has in (
             ("cited_kind", "cites", "cites" in desc),
             ("cited_frames", "cites", "cites" in desc),
-            ("order_record", "cites", "cites" in desc),
             ("describe", "cites or carries reuses",
              "cites" in desc or "reuses" in carries),
             ("extension", "carries reuses", "reuses" in carries),

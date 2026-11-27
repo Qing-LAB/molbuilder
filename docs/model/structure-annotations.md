@@ -148,9 +148,10 @@ The channels persist **identically wherever a structure is saved**:
   `sidecars/molstruct.READABLE_VERSIONS` — cite the constants, never re-spell
   them.
   v7 moved the reserved `frozen_atoms` label into `regions` and stopped writing
-  a top-level key for it — one store means one key. **Schema 3–6 do not load**:
-  the reader accepts nothing before 7, and `apply_metadata_dict`
-  raises on a top-level `frozen_atoms` because it is not a metadata field. Envelope + version details
+  a top-level key for it — one store means one key; the reader accepts
+  `READABLE_VERSIONS` alone (saved from 2026-11-04), and
+  `apply_metadata_dict` raises on a top-level `frozen_atoms`
+  because it is not a metadata field. Envelope + version details
   are in `structure-molstruct.md`.
 - **The `.fdf` / `.py` ATOM-METADATA reserved comment block.** The *same* data
   embedded in the generated script's comment area — the script's

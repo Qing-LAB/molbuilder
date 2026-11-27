@@ -1,7 +1,10 @@
 """Versioned-document helpers — the shared ``molbuilder/<name>@<major>``
 schema convention + JSON IO (`execution/job-contracts.md` § 6).
 
-The one place the major-version check lives, for every persisted artifact.
+The one place the major-version check lives, for every persisted artifact,
+and the one mark every reader's refusal of a file carries
+(:class:`FileRefused`), which the command line and the web server say at
+their edge (`job-contracts.md` § 6.1).
 
 L1: the standard library and `runfiles` (the catalogue's temp name, the
 lowest floor), so any layer may use it; it travels beside a job with
@@ -51,15 +54,73 @@ def schema_name(schema: str) -> str:
     return s.rsplit("@", 1)[0]
 
 
-def check_schema(got: str, want, *, label: str = "", error=ValueError,
+class FileRefused(Exception):
+    """THE ONE MARK OF A FILE MOLBUILDER KEEPS THAT ITS READER CANNOT READ
+    -- a version it does not read, or a content -- refused in words: what it
+    found, what this molbuilder reads, and the way on, its family's
+    (`execution/job-contracts.md` § 6.1).  Every reader's own refusal type
+    carries it beside its own base, and the two edges say it -- the command
+    line as ``Error: <the words>``, exit 1; the web server as a 400 -- so no
+    command and no page dies of a file it cannot read, one added later
+    included.
+
+    A MIXIN, never a :class:`ValueError` itself: were it one, a refusal
+    whose own type is an ``Exception`` (a parser's, a checkpoint's) would
+    newly fall into every ``except ValueError`` a door keeps for its own
+    answers, and change what that door says."""
+
+
+class RecordUnreadable(ValueError, FileRefused):
+    """A RECORD THAT DOES NOT READ -- not UTF-8, not JSON, not one object
+    (:func:`object_of`), or refused by its reader's kit
+    (:meth:`RecordRefusals.refuse`, :func:`check_keys`): a
+    :class:`ValueError`, as every reader's refusal of a record was, and
+    marked."""
+
+
+class SchemaMismatch(RecordUnreadable):
+    """A file of another artifact, or of a major its reader does not read
+    (:func:`check_schema`)."""
+
+
+#: THE WAY ON FOR A FILE A LATER MOLBUILDER WROTE, every family's
+#: (`job-contracts.md` § 6.1, *The versions' words*) -- said by
+#: :func:`check_schema` and by the two bare-integer versions' readers.
+LATER_WAY = "open it with the molbuilder that wrote it"
+
+
+def written_later(got: str, want) -> bool:
+    """Whether ``got`` names an artifact of ``want`` -- one schema, or every
+    one its reader reads -- at a major numerically greater than every major
+    its reader reads of it: a file a later molbuilder than this one wrote,
+    whose way on is that molbuilder (:func:`check_schema`)."""
+    wants = [want] if isinstance(want, str) else list(want)
+    majors = [schema_major(w) for w in wants
+              if schema_name(w) == schema_name(got)]
+    try:
+        return bool(majors) and all(int(schema_major(got)) > int(m)
+                                    for m in majors)
+    except ValueError:
+        return False
+
+
+def check_schema(got: str, want, *, label: str = "", error=SchemaMismatch,
                  way: str = "") -> None:
-    """Raise ``error`` (:class:`ValueError`) unless ``got`` names the SAME
-    artifact at the same major as ``want`` -- one schema, or every one its
-    reader reads (a data file's older versions read as they are,
+    """Raise ``error`` (:class:`SchemaMismatch`) unless ``got`` names the
+    SAME artifact at the same major as ``want`` -- one schema, or every one
+    its reader reads (a data file's reader reads its own version alone,
     `model/datafiles.md` § 3a) -- tolerating same-major minor bumps,
     rejecting a different major.  ``label`` prefixes the message so the
-    artifact is obvious; ``way`` is the way on, said after it (a data file
-    written again by its command).
+    artifact is obvious; ``way`` is the way on, its family's, said after it
+    (a data file written again by its command).  A caller that passes
+    ``error`` passes a class carrying :class:`FileRefused`.
+
+    THE VERSIONS' WORDS (`job-contracts.md` § 6.1): another artifact, no
+    schema, or an older major says what it found and what this molbuilder
+    reads, then the way on; a LATER major (:func:`written_later`) says a
+    later molbuilder than this one wrote it, to be opened with that one --
+    never an older file's way on, which would send a person to remake what
+    only a newer molbuilder reads.
 
     The single enforcement point for the schema convention, every record's
     and every data file's.  The NAME half is what says which artifact this
@@ -67,15 +128,20 @@ def check_schema(got: str, want, *, label: str = "", error=ValueError,
     other, and ``task.json`` handed to the Environment reader would sail
     through the gate and fail later."""
     wants = [want] if isinstance(want, str) else list(want)
-    if not any(schema_name(got) == schema_name(w)
-               and schema_major(got) == schema_major(w) for w in wants):
-        prefix = f"{label} " if label else ""
-        raise error(
-            f"{prefix}schema mismatch: "
-            + (f"it says {got!r}" if got else "it names no schema")
-            + ", this molbuilder reads "
-            + ", ".join(f"{schema_name(w)}@{schema_major(w)}" for w in wants)
-            + (f" -- {way}" if way else "") + ".")
+    if any(schema_name(got) == schema_name(w)
+           and schema_major(got) == schema_major(w) for w in wants):
+        return
+    prefix = f"{label} " if label else ""
+    reads = ", ".join(f"{schema_name(w)}@{schema_major(w)}" for w in wants)
+    if written_later(got, wants):
+        raise error(f"{prefix}schema mismatch: it says {got!r}, written by a "
+                    f"later molbuilder than this one -- this molbuilder "
+                    f"reads {reads} -- {LATER_WAY}.")
+    raise error(
+        f"{prefix}schema mismatch: "
+        + (f"it says {got!r}" if got else "it names no schema")
+        + f", this molbuilder reads {reads}"
+        + (f" -- {way}" if way else "") + ".")
 
 
 class RecordRefusals:
@@ -90,7 +156,7 @@ class RecordRefusals:
             name, default=default)
 
     def refuse(self, msg: str, *, where: str = "") -> NoReturn:
-        raise ValueError(
+        raise RecordUnreadable(
             f"{self.source.get()}{': ' + where if where else ''}: {msg}")
 
     def as_object(self, value: Any, *, where: str) -> Mapping[str, Any]:
@@ -150,15 +216,16 @@ def check_keys(what: str, d, known, *, needed=None) -> None:
     """A record's keys against ``known``, the keys its reader reads: one
     not there is refused naming the known ones, and one of ``needed``
     (every known key, unless said) left out is refused -- a
-    :class:`ValueError` prefixed ``what``: a record that does not read,
-    never read past.  Asked by the readers that hold every key they read
-    (`jobset.model`, `bench.result`, `spectra.results`)."""
+    :class:`RecordUnreadable` prefixed ``what``: a record that does not
+    read, never read past.  Asked by the readers that hold every key they
+    read (`jobset.model`, `bench.result`, `spectra.results`)."""
     said = unknown_keys(d, known)
     if said:
-        raise ValueError(f"{what}: {said}")
+        raise RecordUnreadable(f"{what}: {said}")
     gaps = [k for k in (known if needed is None else needed) if k not in d]
     if gaps:
-        raise ValueError(f"{what}: no {', '.join(repr(k) for k in gaps)}")
+        raise RecordUnreadable(
+            f"{what}: no {', '.join(repr(k) for k in gaps)}")
 
 
 def unread_words(exc: ValueError) -> str:
@@ -233,9 +300,10 @@ def object_of(data: bytes, *, schema: Optional[str] = None,
     value refused, never a reader's crash on the value it did not expect --
     and, given ``schema``, the artifact it names at that major
     (:func:`check_schema`).  Every way it does not read is a
-    :class:`ValueError` in words -- text that is not UTF-8 or not JSON as
-    :func:`unread_words` says it; the reader that asked names the file and
-    the way out.  The core of :func:`read_object`
+    :class:`RecordUnreadable` in words -- text that is not UTF-8 or not
+    JSON as :func:`unread_words` says it, its schema a
+    :class:`SchemaMismatch`; the reader that asked names the file and the
+    way out.  The core of :func:`read_object`
     and of a prep plan's (`jobset.planned.Plan.read_object`), so a record
     reads one way from the disk and through a plan.  ``refuse_non_finite``:
     a number JSON cannot hold refused too (:func:`json_of`), as the writer's
@@ -243,9 +311,9 @@ def object_of(data: bytes, *, schema: Optional[str] = None,
     try:
         obj = json_of(data, refuse_non_finite=refuse_non_finite)
     except ValueError as exc:
-        raise ValueError(unread_words(exc)) from exc
+        raise RecordUnreadable(unread_words(exc)) from exc
     if not isinstance(obj, dict):
-        raise ValueError("not a JSON object")
+        raise RecordUnreadable("not a JSON object")
     if schema is not None:
         check_schema(obj.get("schema"), schema)
     return obj
@@ -482,7 +550,8 @@ def sha256_of_bytes(data: bytes) -> str:
 
 
 __all__ = ["schema_major", "schema_name", "check_schema", "check_keys",
-           "RecordRefusals",
+           "LATER_WAY", "written_later", "FileRefused", "RecordUnreadable",
+           "SchemaMismatch", "RecordRefusals",
            "read_json", "object_of", "read_object", "unread_words",
            "unknown_keys",
            "json_text", "write_json", "stage_bytes", "write_bytes",

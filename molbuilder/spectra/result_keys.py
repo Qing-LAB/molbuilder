@@ -9,8 +9,8 @@ ROLE    the keys of each block the reader reads key by key
         (:data:`RESULT_KEYS`, :data:`EQUILIBRIUM_KEYS`, :data:`MODE_KEYS`,
         :data:`ES_KEYS`, :data:`PARTIAL_CHARGES_KEYS`,
         :data:`CHARGE_STEP_KEYS`, :data:`OPTICAL_KEYS`,
-        :data:`OPTICAL_MODE_KEYS`), and what a writer states of the four the
-        data file lays out key by key (:data:`WRITTEN_KEYS`); the
+        :data:`OPTICAL_MODE_KEYS`), and the four the data file lays out key
+        by key (:data:`WRITTEN_KEYS`); the
         `relaxation`, `thermo` and `modes_thermal` blocks are their
         builders' (`results.relaxation_block`, `normal_modes.thermo_block`,
         `derived.thermal_block`), which the data file's tables state
@@ -47,17 +47,15 @@ MODE_KEYS = frozenset({
     "ir_intensity_km_mol", "eigenvector_canonical", "eigenvector_display",
     "has_imag", "electronic_structure", "dipole_derivative_d_per_ang_amu12",
     # DERIVED (`spectra.derived`, `engines/vibration.md` § 6.6) -- stated by
-    # every writer, the classes and zero-point values from v7, each mode's
-    # mechanics from v15; checked on read.
+    # every writer, checked on read.
     *DERIVED_MODE_KEYS,
 })
 EQUILIBRIUM_KEYS = frozenset({
-    "scf_energy_eh", "mo_energies_eh", "homo_idx", "elements", "positions_ang",
-    "masses_amu",
+    "scf_energy_eh", "mo_energies_eh", "homo_idx", "masses_amu",
 })
 RESULT_KEYS = frozenset({
     "schema_version", "engine", "engine_version", "molbuilder_version",
-    "timestamp", "structure_hash", "n_atoms_total", "free_atom_idxs",
+    "timestamp", "n_atoms_total", "free_atom_idxs",
     "frozen_atom_idxs", "structure", "equilibrium", "modes",
     "selected_mode_idxs_1based",
     "config", "methods_text", "bibliography_keys", "phase_frequencies",
@@ -66,7 +64,7 @@ RESULT_KEYS = frozenset({
     "ir_fd_step_ang", "raman_route", "raman_fd_step_ang", "phase_raman",
     "phase_ir", "phase_es", "engine_metadata", "runtime_info",
     MAP_KEY, "partial_charges", "optical",
-    # DERIVED (v15): each mode's spread and mean quanta at the modes' own
+    # DERIVED: each mode's spread and mean quanta at the modes' own
     # temperatures (`engines/vibration.md` § 6.2).
     THERMAL_KEY,
 })
@@ -82,15 +80,13 @@ OPTICAL_KEYS = frozenset({"data_file", "data_sha256", "direction",
 OPTICAL_MODE_KEYS = frozenset({"mode", "frequency_cm1", "dq_amu12_ang",
                                "plus", "minus"})
 
-#: WHAT A WRITER STATES OF EACH BLOCK -- every key the reader takes but those
-#: only an older file holds, read and never written (v9): the result's
-#: `structure_hash`, accepted and kept nowhere, and its equilibrium's
-#: `elements` / `positions_ang`, the structure's now.  The data file states
-#: each, and checks so as it loads (`spectra.datafile`), so a key a writer
-#: starts stating is a row there too, never dropped from the ``.nc``.
+#: WHAT A WRITER STATES OF EACH BLOCK -- every key the reader takes.  The
+#: data file states each, and checks so as it loads (`spectra.datafile`), so
+#: a key a writer starts stating is a row there too, never dropped from the
+#: ``.nc``.
 WRITTEN_KEYS = {
-    "result": RESULT_KEYS - {"structure_hash"},
-    "equilibrium": EQUILIBRIUM_KEYS - {"elements", "positions_ang"},
+    "result": RESULT_KEYS,
+    "equilibrium": EQUILIBRIUM_KEYS,
     "mode": MODE_KEYS,
     "electronic_structure": ES_KEYS,
 }

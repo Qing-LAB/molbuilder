@@ -78,8 +78,14 @@ def reused(raw, *, tree_root):
     Refused (:class:`ReuseError`): a calculation in no projects tree
     (``tree_root`` ``None``); a folder outside the tree; one that is not a
     described calculation, in the door's words; one whose description does
-    not read, in its reader's; another kind of calculation."""
+    not read, in its reader's; another kind of calculation; one whose
+    composition record is of another format -- composed before 2.10.0 -- in
+    its reader's (`compose.read_provenance`, `engines/transport.md` § 1.1).
+    THE ONE DOOR every reuse opens a finished calculation through:
+    `molbuilder describe --reuses`, the Transport tab's pick and its
+    describe."""
     from .. import calculation
+    from .compose import read_provenance
     from ..projects import OutsideRoot, address, at
     if tree_root is None:
         raise ReuseError(f"{raw} cannot be found: the calculation that "
@@ -99,6 +105,10 @@ def reused(raw, *, tree_root):
             f"description says {calc.task.calculation!r}) -- a calculation "
             f"reuses a finished transport calculation"
             f".")
+    try:
+        read_provenance(calc.base)
+    except ValueError as exc:
+        raise ReuseError(f"{raw}: {exc}") from exc
     return calc, address(calc.base, root)
 
 
@@ -152,7 +162,7 @@ def frame_set_of(finished, citation: str, *, tree_root, composed=None):
     try:
         ran = load_compose_record(
             finished.base, citation=citation_of(finished.task),
-            engine=finished.task.engine, tree_root=tree_root, why=why,
+            tree_root=tree_root, why=why,
             swap_electrodes=finished.task.swap_electrodes)
     except compose_refusals() as exc:
         raise ReuseError(str(exc)) from exc
@@ -219,8 +229,7 @@ def finished_junction(finished, citation: str, *, tree_root, why: list):
         return frame_set_of(finished, citation, tree_root=tree_root)
     try:
         return load_compose_record(
-            finished.base, citation=citation, engine=finished.task.engine,
-            tree_root=tree_root, why=why,
+            finished.base, citation=citation, tree_root=tree_root, why=why,
             swap_electrodes=finished.task.swap_electrodes)
     except compose_refusals() as exc:
         raise ReuseError(str(exc)) from exc

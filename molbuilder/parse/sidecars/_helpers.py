@@ -12,14 +12,19 @@ from typing import Any, Dict
 from molbuilder.parse.types import ParseResult, SidecarResult
 
 
-def read_record(path, *, schema: str, refused, what: str) -> Dict[str, Any]:
+def read_record(path, *, schema: str, refused, what: str,
+                way: str = "") -> Dict[str, Any]:
     """A record of ours, read for its parser by the one record reader
-    (`persist.read_object`: one JSON object, of ``schema``) -- else
-    ``refused`` (the parser's error class) naming the file; ``what`` is the
-    record in words (*a transport record*)."""
-    from molbuilder.persist import read_object
+    (`persist.read_object`: one JSON object, of ``schema`` by its name and
+    major, `persist.check_schema`) -- else ``refused`` (the parser's error
+    class) naming the file; ``what`` is the record in words (*a transport
+    record*), ``way`` the way on for one of an older version, its family's
+    (`execution/job-contracts.md` § 6.1)."""
+    from molbuilder.persist import check_schema, read_object
     try:
-        return read_object(path, schema=schema)
+        got = read_object(path)
+        check_schema(str(got.get("schema") or ""), schema, way=way)
+        return got
     except (OSError, ValueError) as exc:
         raise refused(f"{Path(path).name} does not read as {what}: "
                       f"{exc}") from exc

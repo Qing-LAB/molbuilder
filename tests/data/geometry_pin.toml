@@ -102,7 +102,7 @@ name = "a save of a view of a run whose order nothing states writes not_stated, 
 door = "route_save"
 marked = true
 stated = "not_stated"
-read_said = { where = "structure.order_not_stated", severity = "warn", words = ["co.xyz states its atom order is not known", "saved from a view of a structure whose order nothing states"] }
+read_said = { where = "structure.order_not_stated", severity = "warn", words = ["co.xyz states its atom order is not known", "saved from a view of a run whose order nothing states"] }
 
 # ---- THE ORDER RECORD (v14) ----------------------------------------------- #
 # The silent failure: an engine's record read back without its order record,

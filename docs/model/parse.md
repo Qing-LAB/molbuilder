@@ -480,8 +480,11 @@ documents ([`engines/optimization-postprocessing.md`](?doc=engines/optimization-
 [`engines/vibration-postprocessing.md`](?doc=engines/vibration-postprocessing.md),
 [`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md)).
 
-**Errors** (`errors.py`): `UnknownFormatError` and `AmbiguousFormatError`, both on a `ParseError`
-base.
+**Errors** (`errors.py`), on a `ParseError` base: a parser's refusal of the
+file it was handed, `FileUnreadable`, which carries the mark of a file its
+reader cannot read (`persist.FileRefused`, § 6); and the registry's
+`UnknownFormatError` and `AmbiguousFormatError`, no file's refusal, which
+carry none.
 
 *A row names the function, never a line number: a line number measures where
 a thing sits and rots on the next edit of a file this document does not own.*
@@ -568,7 +571,7 @@ molbuilder/parse/
 ├── base.py        # the ABC                   (FileParser)
 ├── types.py       # ParseResult + 7 subclasses + ParseWarning
 ├── registry.py    # _FILE_PARSERS, detect/parse/register
-├── errors.py      # ParseError, UnknownFormatError, AmbiguousFormatError
+├── errors.py      # ParseError, FileUnreadable, UnknownFormatError, AmbiguousFormatError
 ├── contract.py    # what a DIRECTORY records about itself:
 │                  #   contract_of  — the electronic contract its deck states (§ 5b)
 │                  #   engine_of    — WHICH ENGINE RAN (`running-a-job.md` § 4.2)
@@ -602,7 +605,7 @@ molbuilder/parse/
 │   ├── pyscf_geom.py          # *_optimized.xyz
 │   ├── pdb.py                 # .pdb
 │   ├── pair.py                # a .xyz with its .molstruct.json, read whole through the codec (below)
-│   └── _helpers.py            # StructureResult envelope · the codec's read, wrapped as the registry's ParseError
+│   └── _helpers.py            # StructureResult envelope · the codec's read, wrapped as a parser's FileUnreadable
 │
 ├── instruments/   # what the WRAPPER measured → InstrumentResult (FileParsers, § 5c)
 │   ├── reports.py  # registered reports-log: the listener's reports/<user>.jsonl; read_reports answers GET /api/notify/reports
@@ -2208,13 +2211,14 @@ from pathlib import Path
 from molbuilder.parse.base import FileParser
 from molbuilder.parse.types import SidecarResult
 from molbuilder.runfiles import ROLE_MYKIND, role_of   # ".mykind.json", its row
-from molbuilder.mykind import MYKIND_SCHEMA  # its record's `molbuilder/mykind@<major>`, its owner's
+from molbuilder.mykind import MYKIND_SCHEMA, WRITTEN_AGAIN  # its schema, its family's way on
+from ..errors import FileUnreadable          # a parser's refusal of its file, marked
 from ._helpers import build_sidecar_result   # fills the envelope: schema_version,
                                              # parsed_at, parser_name, source
 from ._helpers import read_record            # persist's one reader, its schema checked
 
 
-class MyKindError(ValueError):
+class MyKindError(FileUnreadable):
     """A ``.mykind.json`` that does not read, naming the file."""
 
 class MyKindSidecarFileParser(FileParser):
@@ -2230,7 +2234,7 @@ class MyKindSidecarFileParser(FileParser):
     @classmethod
     def parse(cls, path: Path) -> SidecarResult:
         payload = read_record(path, schema=MYKIND_SCHEMA, refused=MyKindError,
-                              what="a mykind record")
+                              what="a mykind record", way=WRITTEN_AGAIN)
         return build_sidecar_result(payload=payload, kind="mykind",
                                     parser_name=cls.name, source=path)
 ```
@@ -2238,6 +2242,29 @@ class MyKindSidecarFileParser(FileParser):
 **A result's tag is its format's name and the version of the record it was read from**
 (`build_sidecar_result` composes it from the record's own `schema`, or its integer
 `schema_version`) — never typed by hand, so it cannot fall behind the file.
+
+**It claims by its role and refuses on parse.** `can_parse` asks the name
+alone, never the file's version — a benchmark's plan, `job-set.json` as a
+ladder's is, by its name and its place, a benchmark's folder
+(`calcdirs.where`; `job-set-sweep`); a transport calculation's description,
+`task.json` as every calculation's is, by its name and its kind, its own
+`calculation` read as the file holds it (`transport-task`): a record of
+another version is listed as
+this parser's, and opened, `parse` refuses it in its reader's words — what it
+says, what this molbuilder reads and the way on, its family's
+(`read_record`'s `way`; [`job-contracts.md`](?doc=execution/job-contracts.md)
+§ 6.1): a transport calculation's `<label>.transport.json` and a displacement
+sweep's `<label>.fc-sweep.json`, *jobset summarize task writes it again*
+(the command as a person types it); a run of points' index, a run's
+`notified.json`, a benchmark's plan and a transport calculation's
+description, each with its reader's words. A
+`can_parse` that read the version would hide the file — listed as no
+parser's, opened *No registered file parser knows how to handle …* — where
+the person was owed why it does not open. Every refusal of its file a parser
+raises carries the mark of a file its reader cannot read
+(`persist.FileRefused`) — a `ParseError`'s file refusal,
+`parse.errors.FileUnreadable`, or its reader's own marked type — so the
+command line and the web server say it at their edge.
 
 Then **register it at import** in the sub-package's `__init__.py`
 (`from .mykind import MyKindSidecarFileParser` → `register(MyKindSidecarFileParser)`)

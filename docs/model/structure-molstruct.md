@@ -30,7 +30,7 @@ plus the structure's **metadata fields** spread in alongside them.
 
 ```json
 {
-  "schema_version": 17,
+  "schema_version": <SCHEMA_VERSION>,
   "n_atoms_total": 2,
   "n_frames_total": 2,
   "geometry_hash": "3b7e…(sha256 hex)",
@@ -58,6 +58,9 @@ plus the structure's **metadata fields** spread in alongside them.
 }
 ```
 
+`<SCHEMA_VERSION>` is the integer `sidecars.molstruct.SCHEMA_VERSION`, the one
+version the reader reads (§ 2).
+
 The identity block (schema 8, 2026-08-20) is **optional and real-only**: a
 column appears only when it says something the server would not have
 synthesized itself (names ≠ elements, residues ≠ `MOL`, chains ≠ `A`,
@@ -81,7 +84,7 @@ atom; a sidecar that states none leaves the file's symbols as the labels.
 | `schema_version` | the on-disk schema (§ 2) — the reader checks it first |
 | `n_atoms_total` | atom count the metadata was computed against; a mismatch on load is refused, never mis-applied |
 | `n_frames_total` | *(v11)* frame count of the paired document — what `customized.frames` is indexed against; a mismatch on load is refused like the atom count's (§ 3) |
-| `geometry_hash` | *(v13)* sha256 of the paired geometry's atom lines and the cell they sit in (hex) — the integrity pin (§ 3); a v7–v12 file carries `structure_hash`, a hash of the geometry file's bytes, read and never compared |
+| `geometry_hash` | *(v13)* sha256 of the paired geometry's atom lines and the cell they sit in (hex) — the integrity pin (§ 3) |
 | `created_by` / `created_at` | provenance stamp (`created_at` is ISO-8601 UTC, `…Z`) |
 | `atom_index_map` | *(v15)* which index the atoms are listed by and each atom's indices (`model/overview.md` § 2.2b) — written by the codec from the door that writes the pair, never a `Structure` field and never edited; read, it is checked against `atom_order` |
 
@@ -144,13 +147,11 @@ Read, it is kept with the pair as the file states it and **checked against
 `atom_order`** through the map's own makers — listed by engine index with
 the record's columns, or, with no record, listed by user index, by engine
 index with both columns the identity (an engine record whose sort moved
-nothing), or `not_stated` — or the pair is refused by name. The reader keeps
-the version the file states (`schema_version`), never this build's.
+nothing), or `not_stated` — or the pair is refused by name.
 `atom_order` is the record the structure carries; the map is what every
-reader of a file reads. A pair saved from a view of a structure whose order
-nothing states (I9 — a run's deck, or a composed junction's sidecar, written
-before the rule) states `"atoms_listed_by": "not_stated"`, its
-`atom_index_why` saying so; a v7–v13 pair states nothing — both read as
+reader of a file reads. A pair saved from a view of a run whose order
+nothing states (I9 — its deck written before 2026-10-14) states
+`"atoms_listed_by": "not_stated"`, its `atom_index_why` saying so — read as
 listed by user index, with a warning (F4).
 
 It is **system** information (stored whole, never per atom), and it holds
@@ -180,108 +181,65 @@ is `structure.md § 2.2`.
 
 ---
 
-## 2. Schema versioning — a readable SET, strict about shape
+## 2. Schema versioning — one version read, strict about shape
 
-**Current schema: v17. The reader accepts {7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17} and nothing else.**
+**The current schema is `sidecars.molstruct.SCHEMA_VERSION`, and the reader
+reads it alone (`READABLE_VERSIONS`)** *(the user, 2026-11-26: "Drop all as
+asked" — told that every pair saved before 2026-11-04 — cited junctions,
+saved relaxations, frame sets — stops opening, with no rewrite command; and,
+of the composed junction every transport calculation keeps, "Everything
+before 2026-11-04")*.
 
-```python
-SCHEMA_VERSION    = 17                 # sidecars/molstruct.py
-READABLE_VERSIONS = frozenset({7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17})
-```
+**A file of any other version is refused by name**
+(`structure_pair.MolstructVersionError`): its version, the date before
+which such pairs were saved (`sidecars.molstruct.SCHEMA_SINCE`,
+2026-11-04), the one version read, and the way on — the pair made again,
+saved from the calculation it came from or built again; its `.xyz` opens
+alone with its `.molstruct.json` moved aside, its labels, cell and rows gone
+(*metadata is never required*, below). **The error also carries the fact
+alone** (`MolstructVersionError.fact`: *its sidecar is version N, saved
+before 2026-11-04, and this molbuilder reads version M alone* -- N the file's
+version, M `SCHEMA_VERSION`), so a door
+that holds such a pair for a calculation says that calculation's way on
+instead of the pair's. **A version above the one read was written by a later
+molbuilder** and says so, never *saved before 2026-11-04*: *schema_version is
+N, written by a later molbuilder than this one -- this molbuilder reads
+version M -- open it with the molbuilder that wrote it*, its fact the same
+without the way (*its sidecar is version N, written by a later molbuilder
+than this one, and this molbuilder reads version M*) and `later` set, so a
+calculation's door says that way on too, never *described before*
+([`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1, *The versions'
+words*). A transport calculation's composed junction of another
+version is no usable record: while none of the calculation's stages is
+launched, its next prep composes the junction again from its citation; with
+one launched, the prep is refused with the calculation's own way on — a new
+calculation described and run
+([`engines/transport.md`](?doc=engines/transport.md) § 1.1). A calculation's
+copy of its structure of another version is refused at its next prep, the
+calculation described again from the structure it was made from
+([`engines/stages.md`](?doc=engines/stages.md) § 6.3); a frame set of a
+vibration whose structure was stated already relaxed, its calculation's copy
+of another version, is written stating no `info.calculation`
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 1). What each
+version changed is the *Version history* below.
 
-*(v17.)* **`selection_rules` retired**: never written,
-read past (*Retired keys*). A v7–v16 file reads whole.
+**Retired keys.** A key the schema once wrote and no longer does — `pbc`
+and `cell_origin` (metadata; the second by decision, v10), `title`
+(identity, 2026-09-23), `structure_hash` (the envelope's, v13) and
+`selection_rules` (the envelope's, v17: how a region was selected, which no
+writer had filled since 2026-07-05 and nothing read; the user, 2026-11-03)
+— is in no file of the version read: a sidecar holding one is refused as
+holding a key it does not carry (`sidecars.molstruct.unread_keys`). **What still holds
+one is a run's deck**, read at any version (*What "refused" means*, below):
+an older release's ATOM-METADATA block may state `pbc` or `cell_origin`,
+ignored where the block is applied (`structure.RETIRED_METADATA_KEYS`), and
+a launched PySCF deck's embedded payload the retired envelope keys, which
+its comparison sets aside (`sidecars.molstruct.RETIRED_ENVELOPE_KEYS`).
 
-*(v16.)* **Additive**: the optional
-**`species_labels`** (§ 1), each atom's species label where one is not the
-name its geometry file holds — the file holds an element symbol for every
-atom, which its readers require. A v7–v15 file states none, and its file's
-symbols are its labels.
-
-*(v15.)* **Additive**: **`atom_index_map`** (§ 1),
-which index the atoms are listed by and each atom's indices
-([`model/overview.md`](?doc=model/overview.md) § 2.2b) — written into every
-pair from v15 on. A v14 file states none, and its map is made from its
-`atom_order` as it is read; a v7–v13 file states no order at all, and is read
-as listed by user index, warned (`model/overview.md` § 2.2b, F4).
-
-*(v14.)* **Additive**: the optional
-**`atom_order`** (§ 1), `null` for a structure in the user order — which every
-pair a person's save writes is — and an engine's record's order record. A
-v7–v13 file states none and is read as the user order.
-
-*(v13.)* **The pin is the geometry hash**
-(§ 3): `geometry_hash` replaces `structure_hash`, which a v7–v12 file still
-carries and the reader takes without comparing — a retired envelope key, never
-written again. A v7–v12 file has no geometry hash, so its pair opens unchecked:
-metadata is never required (below). **And every pair molbuilder writes has its
-sidecar**, a structure with nothing to say about its atoms included, because
-the sidecar holds the pin (`model/structure.md` § 2.4).
-
-*(v12, 2026-10-11.)* **Additive**: the optional **`offset_by`** beside
-`engine_offset` — whose the stated offset is, `person` (an origin assigned on
-the Cell page) or `engine` (coordinates read back from a run), `null` when the
-structure states none. A new calculation made from a structure drops an
-engine's offset and keeps a person's
-([`structure-periodicity.md`](?doc=model/structure-periodicity.md) § 6.0,
-*Entering a new calculation*). A v7–v11 file records no `offset_by`: a stated
-offset it carries is read as the person's, kept as stated.
-
-*(v11, 2026-10-09, `archive/2026-10-09-plan-consolidation.md` § 5z.8 F.)* **Additive**: the optional `customized`
-block (`model/structure.md` § 2.2d) and the envelope's `n_frames_total`,
-written by every v11 writer. A v7–v10 file has neither and holds nothing
-indexed by frame, so it reads whole: its labels, cell and `info` apply to every
-frame of its document, as they always did.
-
-*(v10, 2026-09-25.)* `cell_origin` is **retired** — a v7–v9 file that carries
-it is read with it ignored, and no writer emits it again (user: *"your option
-(a) is fine, and when files are saved, make sure no old retired key is written
-again"*) — and the optional **`engine_offset`** is added: the offset the
-structure STATES (an origin the person assigned, or an engine's `0`), `null`
-meaning the rule places the atoms
-([`structure-periodicity.md`](?doc=model/structure-periodicity.md) § 6.0). A
-corner a person typed by hand is assigned again on the Cell page; it was not
-migrated because v9 cannot tell a typed corner from the electrode builder's
-flush one, the placement TranSIESTA refused.
-
-*(Amended 2026-08-20 and again 2026-08-29, user rulings.)*  The
-strictness rule is about **where facts live**, not about the number:
-v8 only **added** the optional identity columns, and v9 only **added**
-the optional `info` block (metadata that is not part of the structure
-and not in the hash, and that travels unless explicitly stripped —
-`model/structure.md` § 2.2a;
-`archive/2026-09-01-structure-info-plan.md`; absent means "nothing recorded"), so a
-v7 or v8 file reads whole under v9 rules.  Refusing them would have
-invalidated every pair on disk for changes that lose nothing.  A
-version whose facts moved homes (v3's top-level frozen atoms) stays
-refused, with an error naming what changed and what to do — never
-partially read.
-
-**Retired keys.** A key the schema once wrote and no longer does — `pbc` and
-`cell_origin` (metadata; the second by decision, v10), `title` (identity),
-`structure_hash` (the envelope's, v13) and `selection_rules` (the envelope's,
-v17: how a region was selected, which no writer has filled since 2026-07-05
-and nothing read; the user, 2026-11-03) — is listed in `RETIRED_METADATA_KEYS` /
-`RETIRED_IDENTITY_KEYS` (`structure.py`) / `RETIRED_ENVELOPE_KEYS`
-(`sidecars/molstruct.py`) and passes **three gates**: tolerated
-on read, so a file already on disk is not refused as carrying a stray key;
-never applied; dropped on rewrite, so the pair heals on its next save. Every
-gate has to know every retired key — a guard that disagrees with its
-neighbours about what is retired is how a retirement reaches one gate of
-three. No test builds a file holding one (`process/testing.md`: no test of an
-older release's files).
-
-**This is deliberate, and it is not a transitional state.** molbuilder is a new
-product with no installed base to protect. Accepting several schemas costs more
-than it saves:
-
-- every reader, every test and every debugging session has to hold two shapes in
-  mind, and the second one is always the one nobody remembers;
-- a tolerant reader hands back a payload that **looks complete and quietly is
-  not** — a key an older version kept elsewhere is never looked for, so (v3's
-  top-level `frozen_atoms`) the held electrode atoms vanish and the SIESTA
-  input carries no `Geometry.Constraints` block;
-- the data is cheap to regenerate. The confusion is not.
+**One version is read today because the user dropped every pair saved
+before 2026-11-04** (above), and for no more general reason: the next change
+of the schema keeps or refuses the version before it by *Changing the schema*
+(below) — an additive change keeps it readable.
 
 **A version gate that admits a version the code cannot honour is worse than no
 gate**, because it converts a loud failure into a quiet one.
@@ -290,11 +248,11 @@ gate**, because it converts a loud failure into a quiet one.
 
 | Surface | On a payload of a version it does not read (outside `READABLE_VERSIONS`) |
 |---|---|
-| `molstruct.load` / `parse.sidecars.molstruct.load_record` (the `.molstruct.json` sidecar) | raises `MolstructJsonError`; nothing is read |
+| `molstruct.load` / `parse.sidecars.molstruct.load_record` (the `.molstruct.json` sidecar) | raises `MolstructVersionError` — a `MolstructJsonError`, carrying the fact alone for a calculation's door (§ 2, above); nothing is read. No surface forgives it: the browser's load route answers 400 |
 | the in-script `ATOM-METADATA` block, wherever it arrives from — a run directory, the transport composite, or `/api/build/load` — | **one reader**, `Structure.apply_atom_metadata`. The block is read as written today: a retired layout is not translated, so whatever it spells the current way applies and the rest simply is not there. The run still opens. The one refusal is a block whose `n_atoms_total` disagrees with the structure — `MolstructPairingError`, the same name the sidecar's identical guard uses |
 
-The sidecar file's message names the specific difference and says what to do:
-re-save the structure, or re-generate the script.
+The sidecar file's message names its version and says what to do: make the
+pair again, or open its geometry alone (above).
 
 ### Metadata is never required; only what is PRESENT can be wrong
 
@@ -314,7 +272,7 @@ did not read, reported as copied-through or unused, so the person knows we saw
 it and did nothing with it. That is a statement about something in the file,
 not about something missing from it.
 
-So: a run whose markings this build no longer reads opens quietly with
+So: a run whose markings this build does not read opens quietly with
 whatever it does read. It is not a degraded run; it is a run with less
 metadata, which is a thing a run is allowed to be.
 
@@ -329,8 +287,9 @@ never downstream of a normaliser that would already have dropped the key.
 
 ### Version history
 
-Kept as a record of what the numbers meant. **None of v1–v6 is readable**; a file
-at any of them is refused, not upgraded.
+Kept as a record of what the numbers meant. **Only `SCHEMA_VERSION` is
+readable** (`READABLE_VERSIONS`); a file at any other is refused, not
+upgraded (since 2.87.0; v7–v16 were read until then).
 
 | Version | What it was |
 |---|---|
@@ -339,17 +298,17 @@ at any of them is refused, not upgraded.
 | v4 | adds the extensible annotation channels (`structure-annotations.md`) |
 | v5 | drops `kgrid` — a `SiestaConfig` sampling knob, not geometry |
 | v6 | `cell_origin` persisted |
-| v7 | the reserved `frozen_atoms` label moves **into** `regions` with every other label, and the top-level key is no longer written. One store, one designated accessor (`molstruct.frozen_atoms(payload)`), interpreted where it means something. **Still readable** — v8 changed nothing it states |
-| v8 | the optional **identity columns** (`atom_names`, `residue_ids`, `residue_names`, `chain_ids` — `title` was a fifth until 2026-09-23 and is now a retired key, see *Retired keys* above), written only when real, applied **full-replace** on read (an absent column resets to the synthesized default, same as the metadata block) — so a PDB-born residue identity stops being erased by a save, and an xyz-born sidecar does not grow a byte. **Still readable** |
-| v9 | *(2026-08-29)* the optional **`info` block** (`structure-info`): a free key→value store of what the caller knows about these atoms that is not the atoms. Applied **full-replace** like every other block, so a stale store cannot survive a pair that no longer carries one | **Still readable**
-| v10 | *(2026-09-25)* — `cell_origin` **retired** (read and ignored, never written) and the optional stated **`engine_offset`** added (`null` = the rule). **Readable**: v7–v9 files open with their corner ignored
-| v11 | *(2026-10-09)* — the optional **`customized`** block (the structure's rows and each frame's) and the envelope's **`n_frames_total`**. **Readable**: a v7–v10 file holds nothing indexed by frame
-| v12 | *(2026-10-11)* — the optional **`offset_by`**: whose the stated `engine_offset` is, `person` or `engine`. **Readable**: a v7–v11 file's stated offset is read as the person's
-| v13 | *(2026-10-14)* — **`geometry_hash`**, the pin over the atom lines and the cell (§ 3), in place of `structure_hash`, which is retired. **Readable**: a v7–v12 file opens unchecked
-| v14 | *(2026-10-14)* — the optional **`atom_order`**, the order record of a structure in an engine's order (§ 1; `model/overview.md` § 2.2a). **Additive, readable**: a v7–v13 file is read as the user order. *A pair saved before v14 from a reordered run's view is in the engine's order with nothing to say so* — it cannot be told apart, and the release says it (I9)
-| v15 | *(2026-10-23)* — **`atom_index_map`**, which index the atoms are listed by and each atom's indices (§ 1; `model/overview.md` § 2.2b), written into every pair. **Additive, readable**: a v14 file's map is made from its `atom_order` as it is read; a v7–v13 file is read as listed by user index, warned (F4)
-| v16 | *(2026-10-31)* — the optional **`species_labels`**, each atom's species label where one is not the name the geometry file holds (§ 1; `model/chemistry.md` § 3). **Additive, readable**: a v7–v15 file's symbols are its labels
-| **v17** | **current** *(2026-11-04)* — **`selection_rules` retired**: never written, read past (*Retired keys* above). **Readable**: a v7–v16 file reads whole
+| v7 | the reserved `frozen_atoms` label moves **into** `regions` with every other label, and the top-level key is no longer written. One store, one designated accessor (`molstruct.frozen_atoms(payload)`), interpreted where it means something |
+| v8 | the optional **identity columns** (`atom_names`, `residue_ids`, `residue_names`, `chain_ids` — `title` was a fifth until 2026-09-23 and is now a retired key, see *Retired keys* above), written only when real, applied **full-replace** on read (an absent column resets to the synthesized default, same as the metadata block) — so a PDB-born residue identity stops being erased by a save, and an xyz-born sidecar does not grow a byte |
+| v9 | *(2026-08-29)* the optional **`info` block** (`structure-info`): a free key→value store of what the caller knows about these atoms that is not the atoms. Applied **full-replace** like every other block, so a stale store cannot survive a pair that no longer carries one |
+| v10 | *(2026-09-25)* — `cell_origin` **retired** (never written; *Retired keys* above) and the optional stated **`engine_offset`** added (`null` = the rule) |
+| v11 | *(2026-10-09)* — the optional **`customized`** block (the structure's rows and each frame's) and the envelope's **`n_frames_total`** |
+| v12 | *(2026-10-11)* — the optional **`offset_by`**: whose the stated `engine_offset` is, `person` or `engine` |
+| v13 | *(2026-10-14)* — **`geometry_hash`**, the pin over the atom lines and the cell (§ 3), in place of `structure_hash`, which is retired |
+| v14 | *(2026-10-14)* — the optional **`atom_order`**, the order record of a structure in an engine's order (§ 1; `model/overview.md` § 2.2a) |
+| v15 | *(2026-10-23)* — **`atom_index_map`**, which index the atoms are listed by and each atom's indices (§ 1; `model/overview.md` § 2.2b), written into every pair |
+| v16 | *(2026-10-31)* — the optional **`species_labels`**, each atom's species label where one is not the name the geometry file holds (§ 1; `model/chemistry.md` § 3) |
+| **v17** | **current** *(2026-11-04)* — **`selection_rules` retired**: never written (*Retired keys* above) — **the one version read** since 2.87.0 |
 
 ### Changing the schema
 
@@ -361,7 +320,10 @@ decision the reader enforces:
   refusing them would invalidate data for no protection.
 - **Shape-changing** (a fact moves or changes meaning): do **not** extend
   the set — the old version is refused with a message naming the move, and
-  the data is regenerated (re-save structures, re-generate scripts).
+  the data is regenerated (re-save structures, re-generate scripts). A reader
+  that took it would hand back a payload that looks complete and quietly is
+  not: v3's top-level `frozen_atoms`, never looked for, would leave the held
+  electrode atoms out of the SIESTA input's `Geometry.Constraints` block.
 
 ---
 
@@ -369,7 +331,7 @@ decision the reader enforces:
 
 *(v13.)* The pin leaves the comment line out, so a title a person edits
 (`model/structure.md` § 2.2c) never breaks it; `structure_hash`, a hash of the
-file's bytes, is a retired key, read and never compared.
+file's bytes, is a retired key, refused in a sidecar (§ 2, *Retired keys*).
 
 The sidecar's labels are indexed by atom, and its cell is the box these atoms
 sit in. Applied to a geometry that changed after it was written, they land on
@@ -419,16 +381,12 @@ differ:
   tab shows the structure with the sidecar's labels and cell, and saving it
   writes the pair anew, its hash made over what is saved.
 
-A sidecar written before v13 carries no geometry hash, and its pair opens
-unchecked (§ 2, *metadata is never required*).
-
 **The count guard is the other half, and it stays apart.** On apply
 (`apply_to_structure`) the sidecar's `n_atoms_total` must equal the
 structure's atom count, and its `n_frames_total` (v11) the frame count, or the
 apply is **refused** everywhere (`MolstructPairingError`, never partially
 applied): labels are indexed by atom and `customized.frames` by frame, so a
-near-miss puts a fact on the wrong one — there is nothing to open. A v7–v10
-file states no frame count and holds nothing indexed by frame.
+near-miss puts a fact on the wrong one — there is nothing to open.
 
 **What it is not.** It is not the identity of a structure across
 calculations, and there is no second hash over the labels and identity
@@ -465,7 +423,7 @@ flowchart LR
 | `load(path)` — its bytes read by `parse.sidecars.molstruct.load_record(data)` | read + validate the version → the payload, through the one builder |
 | `renewed(sidecar, …)` | a payload renewed for its moved geometry; a sidecar's `created_at` the moment it is written, by the clock every record of a run is stamped with (`runrecord.stamp`) |
 | `apply_to_structure(struct, dict)` | apply the metadata onto a `Structure` (via `apply_metadata_dict`); guards `n_atoms_total` and `n_frames_total` |
-| `MolstructJsonError` / `MolstructPairingError` / `GeometryChangedError` — named once in `structure_pair` (L1, standard library, travelling with the codec and the structure), raised by the codec and, for a deck's block, by the structure | the payload is unreadable / the payload is for a **different structure** (its atom or frame count) / the payload is for **these atoms at other coordinates** (§ 3's geometry hash). Separate types because each gets its own answer: a surface may forgive an unreadable *version*, none may forgive a wrong *pairing*, and the browser's load door opens a *changed geometry*, saying so, so it can be saved anew |
+| `MolstructJsonError` / `MolstructVersionError` / `MolstructPairingError` / `GeometryChangedError` — named once in `structure_pair` (L1, standard library, travelling with the codec and the structure), raised by the codec and, for a deck's block, by the structure | the payload is unreadable / the sidecar is of a **version this build does not read** — a `MolstructJsonError`, carrying the fact alone (`fact`) for a calculation's door (§ 2) / the payload is for a **different structure** (its atom or frame count) / the payload is for **these atoms at other coordinates** (§ 3's geometry hash). Separate types because each gets its own answer: no surface forgives a sidecar's *version* — the browser's load route answers 400, and only a deck's block is read at any age (§ 2, *What "refused" means*) — a door that holds the pair for a calculation says that calculation's way on, none may forgive a wrong *pairing*, and the browser's load door opens a *changed geometry*, saying so, so it can be saved anew |
 
 Callers do not touch the field list — `Structure`'s two metadata methods are the
 sole namers (`structure.md § 2.2`). The higher-level paired-file door

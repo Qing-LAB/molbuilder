@@ -4,20 +4,22 @@ order, each with the epoch second it was sent at.
 
 Its one reader is `runrecord.read_notified_file`; this parser is the
 registry's door to the same file, so the Results tab lists it as an aspect
-of the run (`web/results.md` § 0.1).
+of the run (`web/results.md` § 0.1).  It claims the file by its name and
+refuses on parse (`model/parse.md` § 6): one that does not read is listed
+and, opened, refused in its reader's words.
 """
 from __future__ import annotations
 
 from pathlib import Path
 
 from ..base import FileParser
-from ..errors import ParseError
+from ..errors import FileUnreadable
 from ..types import SidecarResult
 from ...runfiles import NOTIFIED_RECORD_FILE
 from ._helpers import build_sidecar_result
 
 
-class NotifiedRecordError(ParseError):
+class NotifiedRecordError(FileUnreadable):
     """A ``notified.json`` that is not one, or is not this version."""
 
 
@@ -34,15 +36,9 @@ class NotifiedFileParser(FileParser):
 
     @classmethod
     def can_parse(cls, path: Path) -> bool:
-        from molbuilder.runrecord import LaunchRecordError, read_notified_file
+        # BY ITS NAME: whether it reads is the parse's to say.
         p = Path(path)
-        if p.name != NOTIFIED_RECORD_FILE:
-            return False
-        try:
-            read_notified_file(p)
-        except (LaunchRecordError, OSError):
-            return False
-        return True
+        return p.name == NOTIFIED_RECORD_FILE and p.is_file()
 
     @classmethod
     def parse(cls, path: Path) -> SidecarResult:

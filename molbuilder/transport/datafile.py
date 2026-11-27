@@ -57,6 +57,7 @@ from ..runfiles import (CHANNEL_UNPOLARIZED, ROLE_TBT_DIGEST,
 _TBT = TBT_CHANNEL_TAGS[CHANNEL_UNPOLARIZED]
 from ..engine_table import engine as _engine
 from ..kind_table import kind as _kind
+from ..persist import FileRefused
 from ..units import volts_words
 from .sort import DEVICE_REGIONS
 from .stages import DEVICE_RUNG, ENGINE, same_volts, voltages_once
@@ -98,6 +99,14 @@ _EIG_SOURCE = ("<label>" + shown(TBTRANS_AVTEIG, tbt=_TBT, pair="<L>-<R>")
 class DataFileError(ValueError):
     """The record does not lay out on one grid -- the message names what
     disagrees, ready to surface verbatim."""
+
+
+class DataFileUnreadable(DataFileError, FileRefused):
+    """A ``<label>.transport.nc`` read back that is not this file at a
+    version this molbuilder reads (:func:`read_data_file`): a file its
+    reader cannot read, carrying the mark the two edges say
+    (`persist.FileRefused`, `execution/job-contracts.md` § 6.1).  The
+    writer's checks and a voltage the file does not hold carry none."""
 
 
 def _scf_columns() -> tuple:
@@ -654,7 +663,7 @@ def data_file_bytes(calc, record: Dict, *,
     from ..ncdata import NC_LOCK, as_bytes, empty, in_memory, state
     from .compose import recorded_junction
     from .rung import compose_refusals
-    from .record import iv_rows, order_unstated_said
+    from .record import iv_rows
     from ..paths import frame_token
     from .rung import frames_had
     from .stages import (TRANSPORT_STAGES,
@@ -666,17 +675,13 @@ def data_file_bytes(calc, record: Dict, *,
     tried = {o["file"]: o["said"] for o in readings
              if o.get("state") != "kept"}
     # THE ATOM AXIS IN THE USER ORDER (`model/overview.md` § 2.2a, I1): the
-    # composed junction, in the engine's order, restored through its record
-    # -- which a junction whose sidecar states none does not hold (I9).
+    # composed junction, in the engine's order, restored through its record.
     try:
         recorded = recorded_junction(base)
     except compose_refusals() as exc:
         # A JUNCTION THAT DOES NOT READ, refused in its reader's words
         # (F12's review, E-D1).
         raise DataFileError(str(exc)) from None
-    unstated = order_unstated_said(base, recorded)
-    if unstated:
-        raise DataFileError(unstated)
     junction = (recorded.structure.restored() if recorded is not None
                 else None)
     n_frames = frames_had(calc)
@@ -1157,9 +1162,9 @@ def read_data_file(path) -> Dict[str, Any]:
     (`ncdata.read_file`).  The file's door (`runfiles.WRITTEN`); refuses
     another schema by name."""
     from ..ncdata import read_file
-    return read_file(path, schemas=(DATA_SCHEMA,), error=DataFileError,
-                     way="jobset summarize task writes it again",
-                     records=RECORD_ATTRS)
+    from ..parse.sidecars.transport import WRITTEN_AGAIN
+    return read_file(path, schemas=(DATA_SCHEMA,), error=DataFileUnreadable,
+                     way=WRITTEN_AGAIN, records=RECORD_ATTRS)
 
 
 def point_groups(groups: Dict[str, Any]) -> Dict[str, Any]:

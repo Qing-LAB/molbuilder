@@ -185,8 +185,9 @@ Structure.apply_metadata_dict(d)  -> None   # JSON metadata dict → struct (THE
 **To add a metadata key:** (1) add the field to the dataclass with its
 `__post_init__` validation, and its name to `METADATA_FIELDS`; (2) add it to
 `metadata_to_dict()` + `apply_metadata_dict()` — nowhere else; (3) if it must
-survive the sidecar, bump `SCHEMA_VERSION` and add the new version to
-`READABLE_VERSIONS` (see `structure-molstruct.md`); (4) nothing in the browser:
+survive the sidecar, bump `SCHEMA_VERSION` — whether the version before it
+stays readable (`READABLE_VERSIONS`) is `structure-molstruct.md` § 2,
+*Changing the schema*; (4) nothing in the browser:
 MolView carries every metadata key it does not shape whole, in
 `otherMetadata`, through its two translators (`web/molview.md` § 6.2) — only a
 key MolView must show or edit in a shape of its own joins
@@ -199,10 +200,11 @@ free; a field a file must not state is the view's, added to `VIEW_FIELDS`.
 
 **To remove one:** delete it from the dataclass + both methods, and add its
 name to `RETIRED_METADATA_KEYS` — only when ignoring it loses nothing, or by a
-recorded decision. THREE gates REFUSE a key they do not know, and every sidecar
-on disk carries the key, so without that line every old pair would be refused;
-with it the key is read and ignored, and no writer emits it again
-(`structure-molstruct.md` § 2, *Retired keys*). Never
+recorded decision. THREE gates REFUSE a key they do not know, and that line
+spares a run's deck's ATOM-METADATA block alone — written at its own prep and
+read at any version — where the key is ignored as the block is applied; a
+sidecar holding it is refused as holding a key it does not carry, and no
+writer emits it again (`structure-molstruct.md` § 2, *Retired keys*). Never
 leave a "read-but-never-write" half-migration — that is the drift this contract
 exists to prevent.
 
@@ -407,13 +409,8 @@ never its title.
 comment line is never something the sidecar says; `apply_to_structure` leaves
 it alone — it neither applies a stored copy over the comment line nor resets
 it to `""` when the sidecar names none — so a comment line edited by hand is
-never overridden. `title` is a retired identity key (`RETIRED_IDENTITY_KEYS`),
-with the same three gates as `RETIRED_METADATA_KEYS`: tolerated on read, so a
-file the user already has is not refused as a stray key; never applied; and
-dropped on rewrite. All three gates know every retired key
-(`sidecars.molstruct.unread_keys`), so a payload built in code
-(`spectra.pyscf_vibration.equilibrium_structure`) and a file read from disk get
-one answer.
+never overridden. `title` is a retired identity key: no sidecar this build
+reads carries it (`structure-molstruct.md` § 2, *Retired keys*).
 
 **Pinned by**
 `tests/test_structure_authority_roundtrip.py::TestTitleBelongsToTheGeometryFile`.
@@ -455,7 +452,7 @@ refused by name, saying the fix: the ending it read and the rename (*the
 name ends in _a, which says its unit is 'A' (ampere) … (lattice_a_ang)*), or
 a unit stated, any spelling, `1` for a count. **A row in a record already
 written is read as it is** — a run's deck, a result, a data file, a pair an
-earlier molbuilder saved: nothing molbuilder wrote stops opening, and every
+earlier molbuilder saved, of a version this build reads, and every
 copy carries it as read — the save, the download and the hand-over from any
 tab, the motion toolkit's frame sets, a command's write, `molbuilder describe`, a deck
 compared for the same calculation. Read anywhere, the same unit beside a name
@@ -766,7 +763,7 @@ one spanning multiple segments is disambiguated by appending the segment index
 truncate to first char), or crashing on a TER between ATOM blocks.
 
 **The one reading door.** `StructureCodec().load(path, *, frame=None,
-frames=False, retired_out=None, stated_out=None, said_out=None, opened=(),
+frames=False, said_out=None, opened=(),
 in_user_order=False, a_copy=False)` — `molbuilder/workingcopy_structure.py`. Dispatches on
 the extension (`.xyz` / `.pdb`, anything else refused by name) and applies a
 `.xyz`'s `.molstruct.json` (`molstruct.paired_sidecar`; a `.pdb` holds none,
@@ -780,13 +777,14 @@ each a notice by its name and level — one table, `READ_NOTICES`, made by
 `read_notice`: `structure.lone_file` (info, below), `structure.geometry_changed`
 (warn, `structure-molstruct.md` § 3), `structure.order_unstated` (warn,
 `model/overview.md` § 2.2a, I9), `structure.restored` (info, I8) and
-`structure.order_not_stated` (warn — a pair that states no atom order, or
-states `not_stated`, read as listed by user index, `model/overview.md`
-§ 2.2b, F4). The first two warned states are refusals for a door that builds
+`structure.order_not_stated` (warn — a pair whose map states `not_stated`,
+saved from a view of a run whose order nothing states, read as listed by user
+index, `model/overview.md` § 2.2b, F4). The first two warned states are refusals for a door that builds
 from the file; a door that only shows it names them in `opened` and opens it,
 said. **`structure.order_not_stated` refuses nothing** — every door opens the
-pair, saying it — since a pair saved before the order was recorded is almost
-always in the user order and cannot be told otherwise. `in_user_order` is the
+pair, saying it: the person saved it so, warned (`model/overview.md` § 2.2a,
+I9), and saving it again on the Molbuilder tab records its order
+(`model/overview.md` § 2.2b, F4). `in_user_order` is the
 read of an editor or of `molbuilder describe`: a structure in an engine's order is put
 back in the user order and said, and a run whose order nothing states is refused —
 asking to open it as well is refused too. A calculation's own structure needs
@@ -968,7 +966,7 @@ class StructureCodec:                       # L2 (may use the L2 sidecar codec)
         sidecar applied; the web's paste and upload ask it for a text."""
 
     def load(self, source_path, *, frame=None, frames=False,
-             retired_out=None, stated_out=None, said_out=None, opened=(),
+             said_out=None, opened=(),
              in_user_order=False, a_copy=False) -> Structure:
         """BACK IN. Parse geometry (.pdb by extension, else .xyz) AND, for a
         .xyz, its paired sidecar (`molstruct.paired_sidecar`), applying metadata via molstruct.apply_to_structure
@@ -1154,7 +1152,7 @@ sequenceDiagram
 |---|---|---|
 | Molbuilder tab — Load / dblclick | `modify/selection-bootstrap.js:_commitFile` | `POST /api/build/load`; on a file of several frames, which frame (1 … F, frame 1 offered) and a second load of that one (§ 2.2e — the tab holds one frame); with a structure open, the add-or-clear question (`tabs.md` § 2, *Creating a structure*); then `structurePage.loadIntoCanvas(…, {replace})` — *Add* merges through `/api/modify/append` (§ 2.2b), *Clear* installs the file over the view |
 | Molbuilder tab — Save panel | `modify/structure/save.js:save` | `projects.molviewFiles.save("project", stem, exportFile())` — the door asks WHERE and owns the overwrite flow (`tabs.md` § 6) |
-| Transport report | `lib/inspectors/transport.js` | `molview.mount` + `openMolecule(handle, junction, {restore})` — in the user order, or marked where its order is not recorded |
+| Transport report | `lib/inspectors/transport.js` | `molview.mount` + `openMolecule(handle, junction, {restore})` — in the user order |
 | Results structure inspector | `lib/inspectors/structure.js` | `molview.mount` + `openMolecule(handle, path)` |
 | Structure-optimization and Spectrum — Load / dblclick | `lib/structure-card.js:loadNow` | `molview.mount` + `openMolecule(handle, path)`, one load on the canvas at a time, the newest asked winning (`tabs.md` § 3); reads state off the model |
 | Generators (smiles/dna/…) | `modify/structure/*.js` → `page.js` | `molview.data.installMolecule({structure, filename})` (not a door) |

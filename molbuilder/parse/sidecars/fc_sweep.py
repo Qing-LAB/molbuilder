@@ -6,9 +6,11 @@ writes it (`engines/vibration.md` § 5.9).
 
 `/api/results/dir` asks the registry what reads each file and offers only what
 something reads, so without this reader the sweep's record would sit at the
-calculation root unoffered.  It is the transport record's twin (`sidecars/transport.py`): it claims a file by
-its role in the catalogue AND by the schema its writer stamps, never by the
-suffix alone, so a record of another version is refused rather than misread.
+calculation root unoffered.  It is the transport record's twin
+(`sidecars/transport.py`): it claims a file by its role in the catalogue and
+refuses on parse (`model/parse.md` § 6) -- a record of another version is
+listed as this parser's and, opened, refused in its reader's words, its way
+on `jobset summarize task` writing it again, never misread.
 """
 from __future__ import annotations
 
@@ -16,13 +18,14 @@ from pathlib import Path
 from typing import Any, Dict
 
 from ..base import FileParser
-from ..errors import ParseError
+from ..errors import FileUnreadable
 from ..types import SidecarResult
 from ...runfiles import ROLE_FC_SWEEP, role_of
 from ._helpers import build_sidecar_result, read_record
+from .transport import WRITTEN_AGAIN
 
 
-class FcSweepRecordError(ParseError):
+class FcSweepRecordError(FileUnreadable):
     """A ``.fc-sweep.json`` that is not one, or is not this version."""
 
 
@@ -36,7 +39,8 @@ SWEEP_SCHEMA = "molbuilder/fc-displacement-sweep@2"
 def _load(path: Path) -> Dict[str, Any]:
     """The record as a dict, or raise — the one reader of this file."""
     return read_record(path, schema=SWEEP_SCHEMA, refused=FcSweepRecordError,
-                       what="a displacement sweep's record")
+                       what="a displacement sweep's record",
+                       way=WRITTEN_AGAIN)
 
 
 class FcSweepRecordFileParser(FileParser):
@@ -55,13 +59,8 @@ class FcSweepRecordFileParser(FileParser):
 
     @classmethod
     def can_parse(cls, path: Path) -> bool:
-        if role_of(Path(path).name) != ROLE_FC_SWEEP:
-            return False
-        try:
-            _load(Path(path))
-        except (FcSweepRecordError, OSError):
-            return False
-        return True
+        # BY ITS ROLE: the version is the parse's to refuse.
+        return role_of(Path(path).name) == ROLE_FC_SWEEP and Path(path).is_file()
 
     @classmethod
     def parse(cls, path: Path) -> SidecarResult:

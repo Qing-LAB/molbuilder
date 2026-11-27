@@ -42,7 +42,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from .persist import check_schema, unknown_keys
+from .persist import FileRefused, check_schema, unknown_keys
 from .runfiles import WARM_FILES_FILE as FILENAME  # the catalogue's name (B13)
 
 SCHEMA = "molbuilder/warm-files@1"
@@ -52,7 +52,7 @@ _ROW_KEYS = ("suffix", "carry", "requires_same", "honoured_by")
 _CARRY_VALUES = ("when-continuing",)
 
 
-class WarmFilesError(ValueError):
+class WarmFilesError(ValueError, FileRefused):
     """The rules file is malformed, missing, or names nothing usable -- a
     file that does not read, which every reader says by name, as it says a
     launch record that does not read (`runrecord.LaunchRecordError`)."""
@@ -284,13 +284,18 @@ def _load(engine: str, base_dir=None) -> WarmFilesDoc:
             f"no {FILENAME} for engine {engine!r} (expected {path}). "
             f"An engine's warm-state vocabulary is this ONE file"
             f".")
-    # A FILE THAT DOES NOT READ is this module's refusal, naming it -- the
-    # kind every door that reads the vocabulary says as the person's
-    # (a launch's among them), never a parser's own exception.
+    # A FILE THAT DOES NOT READ is this module's refusal, naming it once --
+    # the kind every door that reads the vocabulary says as the person's
+    # (a launch's among them), never a parser's own exception.  A
+    # calculation's own copy of another version takes its family's way on
+    # (`job-contracts.md` § 6.1); the engine's own is molbuilder's.
+    from .calcdirs import DESCRIBE_AGAIN
     try:
         with open(path, "rb") as fh:
             raw = tomllib.load(fh)
-        check_schema(str(raw.pop("schema", "")), SCHEMA, label=str(path))
+        check_schema(str(raw.pop("schema", "")), SCHEMA,
+                     way=DESCRIBE_AGAIN if path != _rules_path(engine)
+                     else "")
     except (tomllib.TOMLDecodeError, ValueError) as exc:
         raise WarmFilesError(f"{path} does not read: {exc}") from None
     file_engine = raw.pop("engine", None)

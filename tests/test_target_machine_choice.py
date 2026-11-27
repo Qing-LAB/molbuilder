@@ -223,8 +223,12 @@ class TestTheUserChoosesTheMachine:
         """`read_environment` answers absent / unreadable / wrong-schema
         with one `None` so callers have one thing to check.  For a NAMED
         target that single answer must not mean "try the next scope":
-        the user said which machine, and silence hands them another."""
-        machines.write("sol", '{"schema": "molbuilder/environment@99"}')
+        the user said which machine, and silence hands them another.  A
+        record that does not read is written again by the probe, on that
+        machine (`configuration.md` § 5); one a later molbuilder wrote is
+        told the later words instead (`job-contracts.md` § 6.1), a row of
+        `test_a_file_that_does_not_read.py`."""
+        machines.write("sol", "{ not JSON")
         machines.this_machine()
         res = _prep("P/optimization/x", "--target", "sol")
         assert res.exit_code != 0, res.output

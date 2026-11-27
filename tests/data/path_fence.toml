@@ -463,6 +463,14 @@ name = "path"
 request = { json = { path = "{outside_file}" } }
 
 [[route]]
+rule = "/api/spectra/sweep"
+method = "GET"
+[[route.path]]
+where = "query"
+name = "path"
+request = { query = { path = "{outside_file}" } }
+
+[[route]]
 rule = "/api/spectra/frameset"
 method = "POST"
 [[route.path]]

@@ -75,22 +75,32 @@ def values_of(calc, stage: str, *, read=None) -> Dict[str, Any]:
 
 def _stages_in(load, path: Path) -> Dict[str, Dict[str, Any]]:
     """The record's stages, by stage name, from what ``load`` reads of it
-    (`persist.read_object`, or a prep plan's) -- or ``ValueError`` naming
-    ``path`` when it does not read as this record: not text, not JSON, not
+    (`persist.read_object`, or a prep plan's) -- or a
+    :class:`persist.RecordUnreadable` naming ``path`` when it does not read
+    as this record: not text, not JSON, not
     one object, or another file's schema, or a stage's entry not an object
-    -- with the way back.  A stage's entry that does not hold every one of
-    :data:`RECORDED_KEYS` is left out: what it was prepared with is not
-    recorded as this molbuilder reads it."""
+    -- with the way back; one a later molbuilder wrote in its words alone,
+    whose way on is that molbuilder (`job-contracts.md` § 6.1).  A stage's
+    entry that does not hold every one of :data:`RECORDED_KEYS` is left
+    out: what it was prepared with is not recorded as this molbuilder reads
+    it."""
+    from ..persist import RecordUnreadable, check_schema, written_later
+    later = False
     try:
-        d = load(path, schema=SCHEMA)
+        d = load(path)
+        got = str(d.get("schema") or "")
+        later = written_later(got, SCHEMA)
+        check_schema(got, SCHEMA)
         stages = dict(d.get("stages") or {})
         bad = [name for name, entry in stages.items()
                if not isinstance(entry, dict)]
         if bad:
             raise ValueError(f"stage {bad[0]!r}'s entry is not an object")
     except ValueError as exc:
+        if later:
+            raise RecordUnreadable(f"{path} does not read ({exc})") from None
         from ..identity import checkpoint_words
-        raise ValueError(
+        raise RecordUnreadable(
             f"{path} does not read ({exc}) -- prep's record of what each "
             f"stage was prepared with: give it back from the state saved "
             f"before the last prep ({checkpoint_words(path.parent)}), or "
@@ -248,8 +258,12 @@ def changes(calc, stage: str) -> Tuple[bool, List[Difference]]:
     none does.  A template that does not resolve now is said as the one
     difference, in its reader's words; a record that does not read raises
     ``ValueError`` naming it (:func:`read`) -- the stage's answer is then
-    *unreadable*, never a change with its way on."""
+    *unreadable*, never a change with its way on -- and so does a file the
+    values are read from that does not read (`persist.FileRefused`: a
+    template of another version, a composition record), in its reader's
+    words and with its way on: never a change, nor the template blamed."""
     from ..identity import stage_key
+    from ..persist import FileRefused
     held = read(calc.base)
     was = next((v for k, v in held.items()
                 if stage_key(k) == stage_key(stage)), None)
@@ -257,6 +271,8 @@ def changes(calc, stage: str) -> Tuple[bool, List[Difference]]:
         return False, []
     try:
         now = values_of(calc, stage)
+    except FileRefused:
+        raise
     except ValueError as exc:
         return True, [Difference(SETTINGS,
                                  f"its template does not resolve now: {exc}")]

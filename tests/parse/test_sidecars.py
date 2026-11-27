@@ -33,21 +33,25 @@ def test_a_structures_sidecar_is_read_by_its_parser(tmp_path):
 #  A benchmark sweep's plan                                             #
 # --------------------------------------------------------------------- #
 
-def _job_set(tmp_path, kind):
-    """A real `job-set.json` of either kind, through `JobSet.write`.
+def _plans(tmp_path, monkeypatch):
+    """The road's H2 (`support.road`), its benchmark prepared and its first
+    group: ``(the benchmark's plan, in its stage's `bench/` folder; the
+    calculation's ladder, `job-set.json` at its root)`` -- as `prep bench`
+    and `prep task` write them, so the parser is never tested against a
+    file nothing writes, nor a place nothing puts one."""
+    from support.road import (declare_bench, described, jobset, prep_groups,
+                              road_tree)
+    calc = described(road_tree(tmp_path, monkeypatch))
+    declare_bench(calc, {"mpi_np": [2], "omp_threads": [1]})
+    r = jobset("prep", "bench", "coarse", "--bundle", calc, "--target",
+               "this")
+    assert r.exit_code == 0, r.output
+    prep_groups(calc, 1)
+    return calc / "01_coarse" / "bench" / "job-set.json", calc / "job-set.json"
 
-    The fixture goes through the WRITER, so the parser cannot be tested
-    against a shape nothing emits.
-    """
-    from molbuilder.jobset.model import Job, JobSet, Resources
 
-    js = JobSet(name="JOB", engine="siesta", kind=kind, shared=[],
-                jobs=[Job(name="p1", script="p1.run.sh",
-                          resources=Resources(mpi_np=4))])
-    return js.write(tmp_path)
-
-
-def test_a_sweep_is_read_by_a_parser_so_the_door_can_offer_it(tmp_path):
+def test_a_sweep_is_read_by_a_parser_so_the_door_can_offer_it(tmp_path,
+                                                              monkeypatch):
     """The bench viewer was unreachable from the Results tab for a day.
 
     `/api/results/dir` sends each file the registry's verdict and the
@@ -59,14 +63,17 @@ def test_a_sweep_is_read_by_a_parser_so_the_door_can_offer_it(tmp_path):
 
     The e2e suite could not catch it: its `_mount` helper calls
     `inspectors.pick(path)` directly, which is the one path that skips
-    the picker's gate.  This asserts the gate.
+    the picker's gate.  This asserts the gate, on the plan `prep bench`
+    writes in its benchmark's folder (`model/parse.md` § 6: claimed by its
+    name and its place).
     """
-    kind = detect(str(_job_set(tmp_path, "sweep")))
+    plan, _ladder = _plans(tmp_path, monkeypatch)
+    kind = detect(str(plan))
     assert kind.name == "job-set-sweep"
-    got = kind.parse(_job_set(tmp_path, "sweep"))
+    got = kind.parse(plan)
     assert got.schema == "job-set/v1"
     assert got.payload["kind"] == "sweep"
-    assert got.payload["jobs"][0]["name"] == "p1"
+    assert got.payload["jobs"], got.payload
 
 
 def _task(tmp_path, calculation):
@@ -116,20 +123,23 @@ def test_a_transport_description_is_read_by_a_parser_so_the_root_opens_its_repor
         detect(str(_task(tmp_path, "optimization")))
 
 
-def test_an_ordinary_ladder_is_refused_though_the_filename_matches(tmp_path):
-    """The DISCRIMINATOR, not the name.
+def test_an_ordinary_ladder_is_refused_though_the_filename_matches(
+        tmp_path, monkeypatch):
+    """The PLACE, not the name alone (`model/parse.md` § 6).
 
     A calculation's stage ladder is also called `job-set.json`, and its
     `/api/bench/summary` answers 400 because there is no sweep to
     summarise.  Offering it would mount the bench viewer on a refusal.
-    It is declined for the reason stated on disk (`kind: ladder`) rather
-    than by the whole name being excluded, which would take the sweep with
-    it.
+    It is declined because it lies at the calculation's root, no
+    benchmark's folder (`calcdirs.where`) -- never by its content, which
+    would hide a benchmark's plan of another version as no parser's.
 
-    MUTATION THIS MUST FAIL AGAINST: drop the `kind` test from
-    `_load_sweep`, keeping only the schema check.
+    MUTATION THIS MUST FAIL AGAINST: drop the place test from
+    `JobSetSweepFileParser.can_parse`, keeping only the name.
     """
     from molbuilder.parse.errors import UnknownFormatError
 
+    _plan, ladder = _plans(tmp_path, monkeypatch)
+    assert ladder.is_file(), ladder
     with pytest.raises(UnknownFormatError):
-        detect(str(_job_set(tmp_path, "ladder")))
+        detect(str(ladder))

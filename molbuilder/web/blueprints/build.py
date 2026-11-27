@@ -531,7 +531,6 @@ def api_build_load():
     path = body.get("path")
     if path:
         resolved = _existing(_resolve_within_roots(path))
-        retired: Dict[str, Any] = {}
         read_said: list = []
         # A PAIR WHOSE GEOMETRY CHANGED OPENS HERE, said: this is the door the
         # Molbuilder tab fixes it through (`structure-molstruct.md` § 3) --
@@ -544,8 +543,7 @@ def api_build_load():
         restore = body.get("restore") is True
         try:
             whole = StructureCodec().load(
-                resolved, frames=True, retired_out=retired,
-                said_out=read_said,
+                resolved, frames=True, said_out=read_said,
                 opened=((GEOMETRY_CHANGED,) if restore
                         else (GEOMETRY_CHANGED, ORDER_UNSTATED)),
                 in_user_order=restore)
@@ -557,24 +555,11 @@ def api_build_load():
             return err(str(exc), 400)
         # The conditions for THIS structure are produced on the way out by
         # `ok_structure_response`, which validates every structure it sends.
-        # What only the read knows is a retired corner it did not apply: said
-        # here, naming it, because a person who typed it assigns it again on
-        # the Cell page (plan § 5q D14).
-        from molbuilder.issues import Issue
         from molbuilder.periodicity_gate import notices_for_report
         # WHAT THE READ SAID, each notice at its level (`workingcopy_structure
         # .READ_NOTICES`): a lone file, a changed geometry, a run whose order
         # nothing states, a structure put back in the user order.
         said = notices_for_report(read_said)
-        if retired.get("cell_origin") is not None:
-            corner = ", ".join(f"{float(v):g}" for v in retired["cell_origin"])
-            said += notices_for_report([Issue(
-                "info",
-                f"This file stored a box origin ({corner}) the way molbuilder "
-                f"no longer reads it, so it was not applied: the atoms are "
-                f"centred in the cell (Automatic). If you placed the box "
-                f"there, set the origin again on the Cell page.",
-                "cell.origin_retired")])
         return ok_structure_response(struct, extra={
             "n_frames": whole.n_frames,
             **({"notices": said} if said else {}),
@@ -809,6 +794,14 @@ def api_build_preflight():
 #: says what it is; ``check_schema`` refuses a wrong artifact BY NAME, so this
 #: cannot be mistaken for a description anywhere.
 TASK_HANDOVER_SCHEMA = "molbuilder/task-handover@1"
+
+#: THE WAY ON FOR A HAND-OVER THAT DOES NOT READ, its family's
+#: (`execution/job-contracts.md` § 6.1): the tab that made it sends it
+#: again, and the hand-over door replaces the one there whole
+#: (`web/handover-procedure.md` § 2).  A later molbuilder's is told the
+#: versions' words alone.
+HANDOVER_WAY = ("hand it over again from the tab that made it, which "
+                "replaces it whole")
 
 #: What the hand-over is called on disk.  The extension is LAST on purpose --
 #: `task.1st.json`, not `task.json.1st` -- so the editor's suffix map gives it
@@ -1312,6 +1305,7 @@ def api_task_setup_prep():
     from molbuilder.jobset.model import Resources
     from molbuilder.jobset.errors import PrepError, PrepStopped
     from molbuilder.jobset.prep import prep_said, prep_task
+    from molbuilder.persist import FileRefused
     try:
         calc = open_calc(dest)
     except (NotACalculation, OSError, ValueError) as exc:
@@ -1337,8 +1331,12 @@ def api_task_setup_prep():
             400,
             findings=[i.to_json() for i in exc.findings],
             notes=list(exc.notes))
+    except FileRefused:
+        # A FILE THE PREP CANNOT READ is the edge's refusal, a 400 in its
+        # reader's words (`web/app.py`, `job-contracts.md` § 6.1).
+        raise
     except Exception as exc:                      # pragma: no cover
-        return err(f"{type(exc).__name__}: {exc}", 500)
+        return err(str(exc), 500)
     # THE MACHINE IT IS FOR, in the tab's word: the entry's answer -- the
     # one named, else the one the calculation's copy of its record names.
     from molbuilder.scheduler.record import LOCAL_LABEL, LOCAL_TARGET
@@ -2290,15 +2288,24 @@ def api_task_setup_folder():
         another major, one that does not read, or one whose proposal its
         readers refuse is said in the reader's words, never read as this
         one's; the page refuses it as it opens."""
-        from molbuilder.persist import read_object
+        from molbuilder.persist import check_schema, read_object, written_later
         f = folder / TASK_HANDOVER_NAME
         if not f.is_file():
             return None, None, None
+        later = False
         try:
-            obj = read_object(f, schema=TASK_HANDOVER_SCHEMA)
+            obj = read_object(f)
+            got = str(obj.get("schema") or "")
+            later = written_later(got, TASK_HANDOVER_SCHEMA)
+            check_schema(got, TASK_HANDOVER_SCHEMA)
             return (obj, *_proposal(obj))
         except Exception as exc:                  # noqa: BLE001
-            return {"error": f"{TASK_HANDOVER_NAME}: {exc}"}, None, None
+            # ITS WORDS, then its family's way on -- none after a later
+            # molbuilder's, whose words say it (`job-contracts.md` § 6.1).
+            said = str(exc).rstrip(".")
+            return ({"error": f"{TASK_HANDOVER_NAME}: {said}"
+                              + ("" if later else f" -- {HANDOVER_WAY}")},
+                    None, None)
 
     def _described():
         """The description, through its one door (`task.of`,
@@ -2566,6 +2573,7 @@ def _folder_ladder(calc) -> dict:
     from molbuilder.jobset.group import why_not_join
     from molbuilder.jobset.ready import task_state, why_group_fixed
     from molbuilder.jobset.runstatus import ladder_view
+    from molbuilder.persist import FileRefused
     try:
         state = task_state(calc)
         task, text = calc.task, calc.template_text
@@ -2618,9 +2626,11 @@ def _folder_ladder(calc) -> dict:
                  "said": g.said,
                  "preparable": g.preparable, "why": g.why} for g in gs]},
             "steps": ladder["steps"]}
-    except (OSError, ValueError, PrepError) as exc:
-        # WHAT ITS READERS REFUSE, said on the card; a defect in this code
-        # is not one of them.
+    except (OSError, ValueError, PrepError, FileRefused) as exc:
+        # WHAT ITS READERS REFUSE, said on the card -- a file that does not
+        # read whatever its own type (`persist.FileRefused`: the
+        # calculation's copy of its machine's record among them); a defect
+        # in this code is not one of them.
         return {"ladder": {"error": str(exc), "stages": [], "offer": []},
                 "groups": {"error": str(exc), "stages": [], "groups": []},
                 "steps": []}
@@ -2662,7 +2672,15 @@ def _folder_frame_set(task, folder) -> Dict[str, Any]:
     frames = cited_frames(str(cited_at), tree, pathlib.Path(folder))
     if "why" not in frames:
         from molbuilder.transport.compose import read_provenance
-        pinned = (read_provenance(pathlib.Path(folder)) or {}).get("files")
+        try:
+            pinned = (read_provenance(pathlib.Path(folder)) or {}).get(
+                "files")
+        except ValueError as exc:
+            # A COMPOSITION RECORD OF ANOTHER FORMAT -- composed before
+            # 2.10.0 -- said in its reader's words; the folder still opens
+            # (`engines/transport.md` § 1.1).
+            return {"frame_set": {"n_frames": None, "definition": None,
+                                  "why": str(exc)}}
         frames["said"] = cited_pair_said(cited_at, tree, pinned)
     return {"frame_set": frames}
 

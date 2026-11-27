@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from .config_dir import jobs_dir
+from .persist import FileRefused
 from .runrecord import stamp
 
 #: Every job's file, at one major (`persist.check_schema`).
@@ -63,8 +64,21 @@ def inside_job() -> Optional[Tuple[str, str]]:
 
 
 class JobFileError(ValueError):
+    """A job asked of the jobs list that it cannot answer -- none on file
+    by that id, one on file for two clusters, or its file that does not
+    read (:class:`JobFileUnreadable`).  ``path`` is the file, where the
+    refusal is one file's."""
+
+    def __init__(self, message: str, *, path: Optional[Path] = None):
+        super().__init__(message)
+        self.path = path
+
+
+class JobFileUnreadable(JobFileError, FileRefused):
     """A job's file that is there and does not read -- said with its path,
-    and never taken for a job that has ended."""
+    and never taken for a job that has ended: a file its reader cannot
+    read, carrying the mark the two edges say (`persist.FileRefused`,
+    `execution/job-contracts.md` § 6.1)."""
 
 
 class NotGoing(ValueError):
@@ -404,7 +418,7 @@ def read(path: Path) -> Job:
                    cluster=None if here else d.get("cluster"),
                    sequence=_sequence_of(d.get("sequence")), path=path)
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
-        raise JobFileError(f"{path}: {exc}") from None
+        raise JobFileUnreadable(f"{path}: {exc}", path=Path(path)) from None
 
 
 def _sequence_of(raw) -> Optional[dict]:
@@ -441,8 +455,17 @@ def find(job_id: str) -> Optional[Job]:
     number -- read by what each file on the list says, whatever its file's
     name; ``None`` when none is on file.  Two clusters' jobs of that number:
     the one this machine's scheduler answers for (:func:`asked_here`), and
-    :class:`JobFileError` naming both when neither or both are."""
-    hits = [j for j in every() if isinstance(j, Job) and j.id == str(job_id)]
+    :class:`JobFileError` naming both when neither or both are.  A file
+    named for ``job_id`` (:func:`_file_of`'s names) that does not read is its
+    :class:`JobFileError`, never *none on file*: the job's address is there,
+    and what it says cannot be told."""
+    got = every()
+    hits = [j for j in got if isinstance(j, Job) and j.id == str(job_id)]
+    if not hits:
+        unread = [j for j in got if isinstance(j, JobFileError)
+                  and _named_for(j.path, str(job_id))]
+        if unread:
+            raise unread[0]
     if len(hits) < 2:
         return hits[0] if hits else None
     here = Asked()
@@ -453,6 +476,14 @@ def find(job_id: str) -> Optional[Job]:
         f"job {job_id} is on file for clusters "
         f"{', '.join(sorted(str(j.cluster) for j in hits))} -- ask on the "
         f"cluster that ran it")
+
+
+def _named_for(path: Optional[Path], job_id: str) -> bool:
+    """Whether ``path`` is a file :func:`_file_of` names for a job of
+    ``job_id`` -- a run here by its id, a queue job by its number, alone or
+    after its cluster."""
+    return path is not None and (path.stem == job_id
+                                 or path.stem.endswith(f"-{job_id}"))
 
 
 def holding(base, run) -> List[Job]:

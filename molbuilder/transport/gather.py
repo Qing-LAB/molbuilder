@@ -313,42 +313,16 @@ def composed_junction(calc):
     return composed
 
 
-def order_record(calc, plan) -> Optional[str]:
-    """THE TRANSPORT KIND'S ``order_record`` PART: at a prep that names no
-    group, a junction whose sidecar states no order record has it recorded
-    -- its order found by composing the citation again and comparing it
-    atom for atom, its record written again by the one writer
-    (:func:`composed_for_prep`, never composing afresh) into ``plan`` --
-    and the words prep says of it; ``None`` when the record states its
-    order, nothing to record.  A record that does not read is refused
-    (:class:`PrepError`)."""
-    from .compose import recorded_junction
-    from .rung import compose_refusals
-    try:
-        recorded = recorded_junction(calc.base)
-    except compose_refusals() as exc:
-        raise PrepError(str(exc)) from None
-    if recorded is None or not recorded.order_unstated:
-        return None
-    composed_for_prep(calc, plan, afresh=False)
-    return ("the composed junction's order recorded -- checked against its "
-            "citation, atom for atom")
-
-
-def composed_for_prep(calc, plan, *, afresh: bool = True):
+def composed_for_prep(calc, plan):
     """The junction a transport calculation's rungs describe: the record
     beside ``task.json`` when it is usable for THIS citation (the folder
-    travels, `project-layout.md` § 2.1) -- written again when its order was
-    found rather than read (`ComposedJunction.order_found`, a junction whose
-    sidecar states none); an extension's, at its first prep, the junction
-    its finished calculation ran or the frame set cited in its place,
-    written here (`rung.junction_record`, `engines/transport.md` § 2a.16)
-    -- else composed afresh from the projects tree,
-    when ``afresh`` and no stage is launched.  With a stage launched, the
-    recorded junction is never replaced: its runs ran on it; `prep task`
-    with no group named writes only an order it found (``afresh`` false;
-    `engines/transport.md` § 1.1, *The first prep*).  Refused otherwise,
-    by state (:func:`no_usable_record`).
+    travels, `project-layout.md` § 2.1); an extension's, at its first prep,
+    the junction its finished calculation ran or the frame set cited in its
+    place, written here (`rung.junction_record`, `engines/transport.md`
+    § 2a.16) -- else composed afresh from the projects tree, when no stage
+    is launched.  With a stage launched, the recorded junction is never
+    replaced: its runs ran on it.  Refused otherwise, by state
+    (:func:`no_usable_record`).
 
     Written into ``plan`` (`jobset.planned.Plan`), with everything else this
     prep writes, by one road (`transport.rung.written_and_read_back`)."""
@@ -359,18 +333,13 @@ def composed_for_prep(calc, plan, *, afresh: bool = True):
     composed, why, root = junction_record(calc)
     try:
         if composed is not None:
-            # ITS ORDER FOUND (`engines/transport.md` § 1.1, *The first
-            # prep*): the record written again by its one writer -- the
-            # recorded junction's atoms, places, cell and labels as they
-            # were, its sidecar stating the order record.  And A JUNCTION
-            # NOT YET HERE -- an extension's, taken from its finished
-            # calculation at its first prep (§ 2a.16) -- written here by
-            # the same writer.
+            # A JUNCTION NOT YET HERE -- an extension's, taken from its
+            # finished calculation at its first prep (§ 2a.16) -- written
+            # here by the record's one writer.
             here = read_provenance(base) is not None
-            return (written_and_read_back(base, composed, plan, root=root,
-                                           task=task)
-                    if composed.order_found or not here else composed)
-        refusal = no_usable_record(calc, why, root=root, afresh=afresh)
+            return (composed if here else written_and_read_back(
+                base, composed, plan, root=root, task=task))
+        refusal = no_usable_record(calc, why, root=root, afresh=True)
         if refusal is not None:
             raise PrepError(refusal)
         return written_and_read_back(

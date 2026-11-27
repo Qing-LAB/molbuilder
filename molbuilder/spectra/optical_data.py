@@ -42,37 +42,36 @@ try:                                        # inside molbuilder
     from ..atom_permutation import AtomIndexMap
     from ..ncdata import (NC_LOCK, Var, as_bytes, axis_values, checked,
                           coordinate, empty, in_memory, key_of,
-                          named_now, json_attr, number_attr, read_variables,
+                          json_attr, number_attr, read_variables,
                           scf_cycles_var, state, unjson_attr, unnumber_attr,
                           write_group)
-    from ..persist import unknown_keys, write_bytes
+    from ..persist import FileRefused, unknown_keys, write_bytes
     from ..runfiles import ROLE_SIESTA_OUT, SIESTA_EPSIMG, compose
     from ..structure import Structure as _Structure
     from ..ncdata import read_structure_group, write_structure_group
-    from .datafile import UNSTATED
+    from .datafile import REFUSED_WAY, UNSTATED
 except ImportError:                         # beside a job, in mb_vibration.pyz
     from atom_permutation import AtomIndexMap  # type: ignore[no-redef]
     from ncdata import (NC_LOCK, Var, as_bytes,  # type: ignore[no-redef]
                         axis_values, checked, coordinate, empty, key_of,
-                        named_now, in_memory, json_attr, number_attr,
+                        in_memory, json_attr, number_attr,
                         read_variables, scf_cycles_var, state,
                         unjson_attr, unnumber_attr, write_group)
-    from persist import unknown_keys, write_bytes  # type: ignore[no-redef]
+    from persist import (FileRefused, unknown_keys,  # type: ignore[no-redef]
+                         write_bytes)
     from runfiles import (  # type: ignore[no-redef]
         ROLE_SIESTA_OUT, SIESTA_EPSIMG, compose)
     from structure import Structure as _Structure  # type: ignore[no-redef]
     from ncdata import (  # type: ignore[no-redef]
         read_structure_group, write_structure_group)
-    from spectra_datafile import UNSTATED  # type: ignore[no-redef]
+    from spectra_datafile import (  # type: ignore[no-redef]
+        REFUSED_WAY, UNSTATED)
 
 DATA_SCHEMA = "molbuilder/optical-data@5"
-#: ``@1`` kept ``δ`` as an attribute of ``/settings``, read as it is; ``@1``
-#: and ``@2`` kept one Fermi level a frame, read as the level of each of its
-#: channels -- they were written only where SIESTA printed one ``Ef``.
-READABLE_DATA_SCHEMAS = ("molbuilder/optical-data@1",
-                         "molbuilder/optical-data@2",
-                         "molbuilder/optical-data@3",
-                         "molbuilder/optical-data@4", DATA_SCHEMA)
+#: The schemas the reader reads: the one this molbuilder writes -- a file of
+#: an older one is refused by its version, the vibration run again (the
+#: user's decision, 2026-11-26; `engines/vibration.md` § 5.11 § 8).
+READABLE_DATA_SCHEMAS = (DATA_SCHEMA,)
 
 #: WHAT THE CALCULATION IS, in words -- the file's own title.
 WHAT = ("SIESTA's optical calculation: the imaginary part of the dielectric "
@@ -94,14 +93,17 @@ _SETTINGS_KEYS = ("keywords", "direction", "selection", "delta_ang",
                   "deck_name", "deck_text", "deck_sha256")
 
 
-#: The root's attributes an older file names otherwise: the engine's
-#: version, ``siesta_version`` before @4.
-_EARLIER_ATTRS = {"engine_version": ("siesta_version",)}
-
-
 class OpticalDataError(ValueError):
     """The payload does not lay out as this file, or the file is not one
     this molbuilder reads -- the message names the key or the schema."""
+
+
+class OpticalDataUnreadable(OpticalDataError, FileRefused):
+    """A ``<label>.optical.nc`` read back that is not this file at a
+    version this molbuilder reads: a file its reader cannot read, carrying
+    the mark the two edges say (`persist.FileRefused`,
+    `execution/job-contracts.md` § 6.1).  The writer's checks carry
+    none."""
 
 
 #: The settings' one number, ``/settings``' variable.
@@ -160,7 +162,7 @@ def _frame_vars(label: str) -> Tuple[Var, ...]:
             "one a warm launch took the call over from; empty while pending",
             dtype=str),
         scf_cycles_var(("frame",), whose="the call's SCF",
-                       key="scf_iterations", earlier=("scf_iterations",)),
+                       key="scf_iterations"),
         Var("total_energy_ev", ("frame",), "raw", "eV", "the total energy",
             "E_KS of the call's SCF", source=out),
         Var("fermi_level_ev", ("frame", "spin"), "raw", "eV",
@@ -182,7 +184,7 @@ def _frame_vars(label: str) -> Tuple[Var, ...]:
             "the Drude plasma frequency squared",
             "the intraband term SIESTA computes beside eps2 and leaves out "
             "of it", source=f"{epsimg}, its header",
-            key="drude_wp2_ha2", earlier=("drude_wp2_ha2",)),
+            key="drude_wp2_ha2"),
         Var("eps2", ("frame", "photon_energy_ev", "spin"), "raw", "1",
             "the imaginary part of the dielectric function",
             "for a field along /settings' direction, each transition spread "
@@ -315,17 +317,18 @@ def read_optical_data(path, *, data=None) -> Dict[str, Any]:
     """``<label>.optical.nc`` back as the payload it was written from, its
     engine apart (the file says it in its ``source``, in the engine table's
     words) -- the file's door (`runfiles.WRITTEN`); a schema it does not
-    read refused by name.  A frame not run reads its fills as ``None``.  ``data``, the
-    file's bytes already in hand, is read from memory (`ncdata.reading`)."""
+    read refused by name, with the way on.  A frame not run reads its fills
+    as ``None``.  ``data``, the file's bytes already in hand, is read from
+    memory (`ncdata.reading`)."""
     out: Dict[str, Any] = {}
-    with checked(path, schemas=READABLE_DATA_SCHEMAS, error=OpticalDataError,
-                 data=data) as (ds, attrs):
-        attrs = named_now(attrs, _EARLIER_ATTRS)
+    with checked(path, schemas=READABLE_DATA_SCHEMAS,
+                 error=OpticalDataUnreadable,
+                 way=REFUSED_WAY, data=data) as (ds, attrs):
         for key in ("label", "run", "engine_version", "molbuilder_version"):
             out[key] = str(attrs.get(key, ""))
         g = ds["settings"]
         sa = {k: g.getncattr(k) for k in g.ncattrs()}
-        held = read_variables(g, _SETTINGS_VARS)
+        held = read_variables(g)
         out["settings"] = {
             "keywords": unjson_attr(sa["keywords"]),
             "direction": unjson_attr(sa["direction"]),
@@ -337,10 +340,9 @@ def read_optical_data(path, *, data=None) -> Dict[str, Any]:
         st = read_structure_group(ds["structure"],
                                   source=f"{Path(path).name}/structure")
         out["structure"] = st["structure"]
-        out["atom_index_map"] = (st["atoms"].to_dict()
-                                 if st["atoms"] is not None else None)
+        out["atom_index_map"] = st["atoms"].to_dict()
         out["masses_amu"] = st["masses"]
-        fv = read_variables(ds["frames"], tuple(FRAME.values()))
+        fv = read_variables(ds["frames"])
         out["photon_energy_ev"] = [float(x) for x in
                                    fv["photon_energy_ev"]["data"]]
         out["spin"] = [str(s) for s in fv["spin"]["data"]]
@@ -350,10 +352,7 @@ def read_optical_data(path, *, data=None) -> Dict[str, Any]:
             pos = np.asarray(fv["position_ang"]["data"][k], dtype=float)
             eps2 = np.asarray(fv["eps2"]["data"][k], dtype=float).T
             f_sum = np.asarray(fv["f_sum"]["data"][k], dtype=float)
-            # ONE LEVEL A FRAME before @3, each of its channels' (above).
-            fermi = np.broadcast_to(
-                np.asarray(fv["fermi_level_ev"]["data"][k], dtype=float),
-                (len(out["spin"]),))
+            fermi = np.asarray(fv["fermi_level_ev"]["data"][k], dtype=float)
             drude = np.asarray(fv["drude_wp2_eh2"]["data"][k], dtype=float)
             iters = int(fv["scf_cycles"]["data"][k])
             frames.append({
@@ -387,8 +386,8 @@ __all__ = ["DATA_SCHEMA", "READABLE_DATA_SCHEMAS", "OpticalDataError", "WHAT",
 
 
 #: The frames' variables by name -- what the writer asks a variable's
-#: record key of (`ncdata.key_of`), and the reader reads the frames with,
-#: an older file's names under its own (`ncdata.read_variables`).
+#: record key of (`ncdata.key_of`), and the reader reads a frame's keys
+#: by.
 FRAME = {v.name: v for v in _frame_vars("label")}
 
 

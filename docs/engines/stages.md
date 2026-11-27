@@ -908,7 +908,18 @@ calculation is of the one structure it was described with, and describing
 again is the way to build on an edit *(user, 2026-10-14: a person who edits
 a calculation's structure between its stages breaks the agreement)*. A
 description written before the fingerprint was recorded states none, and is
-checked by `formula` and `atoms` alone.
+checked by `formula` and `atoms` alone. **A calculation described before
+2026-11-04 is refused at its next prep the same way**: the copy of its
+structure it keeps is a pair of a version this molbuilder does not read
+([`model/structure-molstruct.md`](?doc=model/structure-molstruct.md) § 2),
+said as *this calculation was described before 2026-11-04: the copy of its
+structure it keeps, X.source.xyz, does not read -- its sidecar is version
+N, saved before 2026-11-04, and this molbuilder reads version M alone.
+Describe it again from the structure it was made from* (N the file's
+version, M `sidecars/molstruct.SCHEMA_VERSION`)
+(`jobset.rung.structure_for`; [`execution/job-system.md`](?doc=execution/job-system.md)
+R-P16) *(the user, 2026-11-26: "Everything
+before 2026-11-04")*.
 
 **The structure FILE is copied into the calculation at `describe`, exactly
 like the pseudopotentials**. What

@@ -1081,8 +1081,7 @@ drawn one way everywhere — an error never in the tone of a remark.
 Every one of them is worded by the server — the conditions by `cell.check`, the
 receipts by `periodicity_gate`, and what a read says about the file by the load
 door: a lone `.xyz` read as atoms and coordinates, its comment line quoted
-(`structure.lone_file`, `model/structure.md` § 2.3), and a retired corner it did
-not apply (`cell.origin_retired`), both receipts of the read — MolView writes none and
+(`structure.lone_file`, `model/structure.md` § 2.3), a receipt of the read — MolView writes none and
 rewords none, because the numbers in them (determinants, per-axis clearances)
 were computed there and a second author would be writing a sentence only one of
 them can. They reach it through three doors:

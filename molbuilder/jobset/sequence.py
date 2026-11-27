@@ -16,13 +16,22 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from ..persist import FileRefused
+
 #: Every sequence's launch record, at one major (`persist.check_schema`).
 SEQUENCE_SCHEMA = "molbuilder/sequence-launch@1"
 
 
 class SequenceError(ValueError):
-    """A sequence's launch record that is not there, or does not read --
-    said with its path."""
+    """A sequence's launch record that is not there, or does not read
+    (:class:`SequenceRecordUnreadable`) -- said with its path."""
+
+
+class SequenceRecordUnreadable(SequenceError, FileRefused):
+    """A sequence's launch record that is there and does not read, said
+    with its path: a file its reader cannot read, carrying the mark the two
+    edges say (`persist.FileRefused`, `execution/job-contracts.md`
+    § 6.1)."""
 
 
 @dataclass(frozen=True)
@@ -108,7 +117,7 @@ def read_record(path) -> Record:
             placed_on=d["placed_on"], scheduler=d["scheduler"],
             launched_at=d["launched_at"], job_id=d["job_id"])
     except (OSError, ValueError, KeyError, TypeError) as exc:
-        raise SequenceError(f"{path}: {exc}") from None
+        raise SequenceRecordUnreadable(f"{path}: {exc}") from None
 
 
 def sent(path, *, job_id: Optional[str]) -> Path:

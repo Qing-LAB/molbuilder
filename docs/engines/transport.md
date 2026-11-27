@@ -687,36 +687,54 @@ seam verdict says (§ 7.1). Nothing about a lead is typed
 by a person: it is derived from the labels (§ 4). The composition is written as
 a record beside `task.json`, and **every later prep reads that record** while
 it is for the cited junction. **No usable record** is one of three: none yet
-(before the first prep), one composed for another citation or with the leads
-named the other way round (`swap_electrodes`), or an older one whose junction
-composed again is another (below). A prep composes afresh — and writes the
+(before the first prep); one composed for another citation or with the
+leads named the other way round (`swap_electrodes`); or one whose composed
+junction does not read — **a calculation composed before 2026-11-04**, its
+junction's sidecar of a version this molbuilder does not read
+([`model/structure-molstruct.md`](?doc=model/structure-molstruct.md) § 2)
+*(the user, 2026-11-26: "Everything before 2026-11-04")*
+(`compose.load_compose_record`). A prep composes afresh — and writes the
 record again — only when there is no usable one and no stage is launched
-(`gather.composed_for_prep`); the gather reads the same record, by
-the same one read (`transport.rung.junction_record`), and compares an older
-one in memory, writing nothing. **A calculation that reuses a finished one**
+(`gather.composed_for_prep`): such a calculation's next prep, while none of
+its stages is launched, composes its junction again from its citation, since
+nothing ran on the old one; with one launched, the prep is refused (below),
+in the junction's words — *the composed junction, junction.xyz, was composed
+before 2026-11-04: its sidecar is version N, … reads version M alone.
+Describe a new transport calculation of the same junction and run it* (N the
+file's version, M `sidecars/molstruct.SCHEMA_VERSION`)
+(`compose.recorded_junction`) — and R-P21's way back. The gather reads the
+same record, by the same one read (`transport.rung.junction_record`),
+writing nothing; the Results tab's report and card say the junction does
+not read, in those words (`junction_unread`, § 2a.12); a junction a later
+molbuilder wrote says so instead — *…, does not read: its sidecar is version
+N, written by a later molbuilder than this one … -- open it with the
+molbuilder that wrote it* — and is **never taken as no usable record**: its
+record is there and only that molbuilder reads it, so every prep refuses it
+in those words, launched or not, and nothing composes again over it
+(`compose.JunctionOfAnotherVersion`). **The composition record is read by its name and
+its major** (`persist.check_schema`,
+[`job-contracts.md`](?doc=execution/job-contracts.md) § 6.1): a same-major
+addition (`@2.1`) reads. **A record of another format** —
+`slot-provenance@1`, a calculation composed before 2.10.0 — is refused by name
+wherever it is read — prep, `status`, `launch` (the device rung's points ask
+it), `summarize`, the Results tab's record, its readings list and PDOS, and
+extending it (`molbuilder describe --reuses`, the Transport tab's pick:
+`reuse.reused`, the one door a reuse opens a finished calculation through);
+Task setup opens its folder, its frames saying why — in
+`compose.read_provenance`'s words: *…: 'molbuilder/slot-provenance@1' -- a
+transport calculation composed before 2.10.0 -- and this molbuilder reads
+molbuilder/slot-provenance@2 alone: describe a new transport calculation of
+the same junction and run it*; a record a later molbuilder wrote, in the
+versions' words — *… written by a later molbuilder than this one -- this
+molbuilder reads molbuilder/slot-provenance@2 -- open it with the molbuilder
+that wrote it*. The refusal is said at the command line's and the web
+server's edge, a verb and a route that never ask for it included
+(`persist.FileRefused`).
+**A calculation that reuses a finished one**
 takes, at its first prep, the junction that one ran — or the frame set cited in
 its place — instead of composing its citation again, and writes it here by the
 same writer; until then the one read answers that junction to every reader
 (§ 2a.16, *Describing it*).
-
-**A junction whose sidecar states no order record** — written before the
-field, `atom_order` absent — is known by what the file states, never by the
-molbuilder that wrote it *(the user, 2026-10-15: "feature/format detection")*
-([`model/overview.md`](?doc=model/overview.md) § 2.2a, I9; the codec's read,
-`compose.recorded_junction`). Its record is usable when the junction composed
-again from the same citation, in memory, is the recorded one *(decided with
-the user 2026-10-15)* — compared in TranSIESTA's order: the same
-number of atoms and frames; atom *i* the same element, at the same place
-within 10⁻⁶ Å in every frame; the same cell vectors within 10⁻⁶ Å and the same
-kind on each axis; every label the same set of atoms (the electrode blocks,
-the bridge, a buffer, the held atoms) (`compose.junction_difference`). **The
-same**: the prep writes the record again through the composition's one writer
-(`compose.write_compose_record`) — `junction.xyz` the recorded junction, its
-atoms, places, cell and labels as they were, its sidecar now stating the
-order record, and `slot-provenance.json` at `@2`; no run folder is touched,
-and the prep saves the folder's state first, as every prep does. **Not the
-same**: no usable record, the first difference named — the atom and what
-differs.
 
 **With a group launched, the recorded junction is never replaced** *(the
 user, 2026-10-15: "i don't want to invalidate the previous calculation
@@ -726,13 +744,6 @@ is refused and writes nothing, naming why and the state saved before the
 launched group's first launch (`gather.no_usable_record`; R-P21);
 while none is launched, it composes afresh and writes the record. The launched group's runs are taken by the next only when they ran
 the same engine input (§ 6.1's gates).
-
-**No group left to prepare**: `prep task` with no group named records the
-order of a junction whose sidecar states none — the check above, the
-folder's state saved first, nothing else written, and never a junction
-composed afresh: an older junction that is not the same is refused (R-P21) —
-so a calculation an older molbuilder ran to its end gets its data file and
-its PDOS ([`job-system.md`](?doc=execution/job-system.md) § 5.0, R-P3).
 
 #### Step 1 — the seed: the periodic density *(SIESTA; § 6.1, § 2a.15)*
 
@@ -2904,15 +2915,7 @@ order; a projected-DOS selection is named in the user order, mapped into the
 junction's through its order record and its `atoms` and `outside_device` back
 (`Structure.map_from_user_index`, `Structure.map_to_user_index`). The data file's atom
 axis is in the user order, the composed junction restored, and the record holds
-no atom's row — its DOS is per region. A calculation whose junction's sidecar
-states no order record (written before the field) records no order until a
-prep finds it — `prep task`, with a group to prepare or none (*The first
-prep*): its data file and a selection's PDOS are refused by name, each naming
-that command, and the record says it (`order_unstated`); the report's
-drawing, which lists the atoms as TranSIESTA does, states it in the
-viewer's notice, and its way on below it (the record's `order_way`) — one check, one
-fact, each door saying its own way on (`transport.compose.recorded_junction`;
-I9).
+no atom's row — its DOS is per region.
 
 The deliverable of a transport calculation is the **transmission** stage's
 output. Everything else in the tree exists to make it trustworthy, and the
@@ -4153,11 +4156,13 @@ as for any calculation. The describe copies no run.
   first prep*): the record travels, and a cited pair edited since is refused
   by name.
 
-**A finished calculation whose record of its junction does not read** — its
-`slot-provenance.json` or its composed junction missing or incomplete — is
-described all the same, saying so: its first prep composes the junction again
-from its citation, and nothing the finished calculation computed is then
-reused — every stage runs here. (Citing a frame set needs that record: it is
+**A finished calculation whose record of its junction is not there whole** —
+its `slot-provenance.json` or its composed junction missing or incomplete —
+is described all the same, saying so: its first prep composes the junction
+again from its citation, and nothing the finished calculation computed is
+then reused — every stage runs here. One whose composition record is of
+another format, or whose junction a later molbuilder wrote, is refused in
+its reader's words (§ 1.1). (Citing a frame set needs that record: it is
 compared with it, and refused without it.) **The refusals are asked twice**,
 at describe and again at that first prep, by the one answer
 (`reuse.finished_junction`): a cited pair edited since the finished
@@ -4883,7 +4888,7 @@ molbuilder jobset summarize task        # -> <label>.transport.json + <label>.tr
 |---|---|---|
 | `molbuilder describe --calculation transport` | describe the composite: the junction citation, the bias list, the five fixed stages | `transport/describe.py` — the kind's `describe` part, which the command line asks and the Transport tab's Describe takes too |
 | `molbuilder describe --calculation transport --reuses <finished> [--slot junction=<set>] [--window LO,HI [--finer N]]` | describe a calculation that reuses a finished one, starting as its description and its composed junction, whole — `--bias` and `--low-bias-approximation` set what they set; `--slot junction=` cites a frame set whose frame 0 is the finished junction in its place (§ 2a.16, *A frame set of the same junction*); `--window` fits the transmission window to the finished grid, written as the transmission's own values (§ 2a.16) | `transport/describe.py`, `transport/reuse.py`, `transport/window.py` |
-| `jobset prep task [--group N ...]` | show the groups, offer every group that needs a prep and is preparable — a changed one among them (`job-system.md` § 5.0, checkpoint 2a); compose (sort · gates · extract) on first contact — the frame count taken from that composition, for every rung planned in the same prep — then render each picked group's decks; no gather. With no group to offer and an older junction stating no order record, record that order alone (§ 1.1, *No group left to prepare*) | `jobset/prep.py::prep_task`, `prep_calculation`, the rung `transport_rung_of` |
+| `jobset prep task [--group N ...]` | show the groups, offer every group that needs a prep and is preparable — a changed one among them (`job-system.md` § 5.0, checkpoint 2a); compose (sort · gates · extract) on first contact — the frame count taken from that composition, for every rung planned in the same prep — then render each picked group's decks; no gather | `jobset/prep.py::prep_task`, `prep_calculation`, the rung `transport_rung_of` |
 | `jobset launch task [--group N] [--stage <stage>]` | send the next group whose upstream has finished — gathering each rung's inputs at its first launch (`--gather` takes them anew on a launch again); a group as one job; a bias sweep's device or transmission goes as one job walking its points; several `--group` as one job launching each in turn, each rung gathering from the runs the groups before it just finished (`job-system.md` § 6.0, *A sequence of groups*) | `jobset/_cli.py::_launch_unit`, `jobset/submit.py::_plan_member` (the run of points planned), `jobset/submit.py::_points_walk` (its walk) |
 | `jobset summarize task` | parse TBtrans output → `<label>.transport.json` (the report) and `<label>.transport.nc` (the data file, § 2a.12), print the I–V table | `transport/record.py`, `transport/datafile.py` |
 | `jobset scratch [--empty] [-y]` | list the leads' surface Green's function files (`*.TSGFL`, `*.TSGFR`) the calculation's runs hold — a device that ran once, a walk that stopped before its end — each with its stage, size and path; a run still going keeps its own — held by a job launched from this machine that is going or whose state this machine cannot tell, or read queued or running by the run door — each kept file said with why; `--empty` removes the rest after one question, `remove them? [y/N]` (`job-system.md` § 5.3) | `jobset/_cli.py::scratch_cmd`, `jobset/runstatus.py::scratch_answer`, `jobset/materialize.py::scratch_in` |
@@ -4891,11 +4896,11 @@ molbuilder jobset summarize task        # -> <label>.transport.json + <label>.tr
 **Gotchas:** the citation names a run's folder or a pair's `.xyz`
 explicitly (§ 3.1 below) — nothing is ever picked for you; a citation
 re-pointed after a rung is prepared leaves the junction's record composed for
-the old one, so a gather refuses until a prep composes it afresh (§ 1.1, *The
-first prep*), and a rung prepared from the old record is refused at its launch
-— the way on is to prepare every group again while none is launched, or, once
-one is, its way back ([`job-system.md`](?doc=execution/job-system.md)'s *How
-the checkpoint supports you*; *The first prep*); `--bias` must start at `0.0`
+the old one, so a gather refuses until a prep composes it afresh (§ 1.1),
+and a rung prepared from the old record is refused at its launch — the way
+on is to prepare every group again while none is launched, or, once one is,
+its way back ([`job-system.md`](?doc=execution/job-system.md)'s *How the
+checkpoint supports you*); `--bias` must start at `0.0`
 (a list starts from equilibrium).
 
 ### 3.1 What you can cite, and what it brings
@@ -4937,8 +4942,7 @@ answer, `Structure.map_to_user_index` — no map by hand, and no translation int
 the engine's order but the sort's (I3). The composer sorts by the key the
 transport calculation's decks are written by, the one table
 (the pair's `atom_order`, `kind_table.atom_order`). A cited pair is in the user order, as
-every pair molbuilder writes for a person is (I1); one saved before this rule
-from a reordered run's view cannot be told apart (I9).
+every pair molbuilder writes for a person is (I1).
 
 **One reader takes both kinds' settings** (`citation_defaults.citation_answers`):
 a cited run's deck through `contract_of` when the transport is described, a
@@ -6726,7 +6730,7 @@ flowchart TB
     REC --> EX -->|"the LEAD<br/>electrode_L · electrode_R"| EM
 ```
 
-*(Step 5's record is the junction's own order record, carried in its sidecar and stated by every deck, no file of its own; a cited run's geometry is restored before step 5 — `model/overview.md` § 2.2a. A junction whose sidecar states no order record is given it as § 1.1 says, *The first prep*.)*
+*(Step 5's record is the junction's own order record, carried in its sidecar and stated by every deck, no file of its own; a cited run's geometry is restored before step 5 — `model/overview.md` § 2.2a.)*
 
 **Hops 1–6 happen once**, at the first prep, and the two leads are extracted
 and checked there (hop 7's checks, the unmoved one among them — warnings, kept
