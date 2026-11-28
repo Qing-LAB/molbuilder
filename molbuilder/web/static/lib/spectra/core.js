@@ -2291,7 +2291,6 @@
             ["Whole-body motions removed", _removedMotionsLabel(results)],
             ["CPU / threads",      cpu],
             ["GPU",                gpu],
-            ["Host",               rt.hostname || "—"],
             ["Relaxation",                _relaxSummary(results)],
             ["Frequencies (Hessian)",     results.phase_frequencies],
             ...VIEW_LINES.map(([key, label, words]) =>

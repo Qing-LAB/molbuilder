@@ -71,3 +71,26 @@ def test_the_caps_are_set_and_an_exported_value_wins(monkeypatch):
     assert os.environ["OPENBLAS_NUM_THREADS"] == "1"
     assert os.environ["MKL_NUM_THREADS"] == "2", "an exported value wins"
     assert physical >= 1
+
+
+def test_what_a_run_records_of_itself_names_no_machine(monkeypatch):
+    """`engines/vibration.md` § 6.2 (the user, 2026-11-27: "Keep host names
+    out"): what a PySCF run records about itself as it starts -- the facts
+    its results carry, its progress log's header and its spectrum's
+    `runtime_info` (`runtime_info.runtime_facts`, asked right after
+    `cap_threads`, as the script asks it) -- states its threads, cores and
+    GPU and not the name of the machine it ran on, which stays in the run's
+    own records.  THE SILENT FAILURE: a result shared, exported or carried
+    in the repository naming the machine it was computed on."""
+    import json
+    import socket
+    from molbuilder.runtime_info import runtime_facts
+    for var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
+                "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"):
+        monkeypatch.setenv(var, "")
+        monkeypatch.delenv(var)
+    n, physical = cap_threads(2)
+    facts = runtime_facts(n, physical, max_memory_mb=4000)
+    assert (facts["n_threads_omp"], facts["max_memory_mb"]) == (2, 4000)
+    assert "hostname" not in facts, facts
+    assert socket.gethostname() not in json.dumps(facts), facts

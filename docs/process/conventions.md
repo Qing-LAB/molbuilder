@@ -163,6 +163,7 @@ them (`jobset`'s own verbs as `molbuilder/jobset/_cli.py` registers them):
 | `jobset` | **every calculation, every engine** — prep / launch / status / summarize / migrate / export / scratch / machines / probe | ([`execution/job-system.md`](?doc=execution/job-system.md)) |
 | `jobs` | the jobs launched from this machine: what each is doing, and stop one | ([`execution/job-system.md`](?doc=execution/job-system.md) § 6.0a) |
 | `frameset` | a vibration mode as one multi-frame structure pair a transport calculation cites | |
+| `examples` | molbuilder's example notebooks written into the projects tree's `notebooks/examples/`, as every installation writes them | ([`execution/project-layout.md`](?doc=execution/project-layout.md) § 2.6) |
 | `envs` `pseudo` `checkpoint` `watch` | conda envs · pseudopotential screening · run checkpoints · trajectory parse | |
 | `xv2xyz` `runtime-info` `monitor` | SIESTA `.XV`→the structure **pair** (`--from-run` also takes what the run declared — its labels, held atoms and axes — from its own deck, and what it says about itself, its `info.calculation` and `info.relaxation`) · dump a runtime-info sidecar · watch a job | |
 | `auth-setup` `notify-token` `serve` `jupyter` | the auth config · a run-report key · the web UI · its notebook | ([`ops/deployment.md`](?doc=ops/deployment.md)) |

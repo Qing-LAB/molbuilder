@@ -2727,6 +2727,12 @@ _JUPYTER = Recipe(
         # (`engines/transport-postprocessing.md`) -- another package brought
         # it until 2.32.0; listed for its own reason (the user, 2026-10-23).
         "xarray",
+        # nbclient and nbformat: A NOTEBOOK RUN START TO END WITH NO BROWSER
+        # -- molbuilder's example notebook's test, and the tool that saves it
+        # with its outputs (`engines/vibration-frames.md` § 6.1).  Both arrive
+        # today as jupyterlab's dependencies; named because this env relies
+        # on them directly, as `ipykernel` is.
+        "nbclient", "nbformat",
         # git: uniform across every env -- see the _HOST recipe for why it is
         # everywhere.  A notebook that inspects a calculation folder wants it.
         "git",

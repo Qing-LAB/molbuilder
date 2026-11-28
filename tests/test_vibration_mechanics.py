@@ -889,6 +889,36 @@ def test_snapshots_of_a_thermal_motion_have_the_sciences_covariance():
                   < 5 * products.std(axis=0) / math.sqrt(40000))
 
 
+def test_snapshots_keep_a_held_atom_still(tmp_path):
+    """Science § 2d.7 item 3; `engines/vibration-frames.md` § 3.1, § 5: the
+    modes are over the free atoms, every mode zero on a held one, so in
+    every snapshot -- mirrored pairs, a mode set apart in a state of its own
+    among them -- the held atom sits where frame 0 has it, bit for bit, its
+    move exactly zero, while the free atoms move; the set is written so,
+    saying nothing of a held atom moved, and read back so.  THE SILENT
+    FAILURE: an electrode atom shifted in a snapshot set a transport
+    calculation cites -- its frames no longer the junction its leads were
+    computed for."""
+    from support.model_vibration import model_vibration
+    from molbuilder.postprocess import read_frame_set, write_frame_set
+    v = model_vibration(held=True)
+    held = [i for i in range(len(v.masses_amu)) if i not in v.free_atom_idxs]
+    assert held == [3]
+    snaps = v.motion(_WARM).with_mode(1, states.level(1)).sample(
+        64, seed=17, antithetic=True)
+    p = snaps.positions_ang
+    assert np.array_equal(p[:, held], np.broadcast_to(p[:1, held], p[:, held].shape))
+    assert np.array_equal(p[0], v.positions_ang)
+    assert not np.any(snaps.atom_moves_ang[:, held])
+    assert np.all(np.abs(snaps.atom_moves_ang[1:, list(v.free_atom_idxs)])
+                  .max(axis=(1, 2)) > 0.0)
+    written = write_frame_set(tmp_path / "held.xyz", snaps)
+    assert not any("held atom" in s for s in written.said), written.said
+    back = read_frame_set(written.path, vibration=v)
+    w = back.written_positions_ang
+    assert np.array_equal(w[:, held], np.broadcast_to(w[:1, held], w[:, held].shape))
+
+
 def test_mirrored_pairs_cancel_the_odd_part_exactly():
     """Science § 5.5: each snapshot followed by its mirror, every ``Q``
     negated -- each pair's coordinates sum to zero exactly, a response odd

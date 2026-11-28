@@ -7,7 +7,8 @@ ROLE    ``parse`` -- an engine's file, a run's file → its result (the
         registry's), in the file's own order, the map on the answer
         (`atom_index.parsed`);
         ``read_steps`` -- a run's steps, in the user order; ``list_runs`` -- a
-        calculation's runs;
+        calculation's runs; ``openable`` -- the file a viewer opens in a
+        run's folder, its result (`runs.openable`);
         ``read_structure`` -- a structure pair, in the user
         order; ``atom_index_map`` -- which index a file's
         atoms are listed by, and both indices of each (`atom_index`);
@@ -142,6 +143,16 @@ def list_runs(calculation) -> list:
     from .calculation import open as open_calculation
     from .jobset.runstatus import runs_of
     return [folder for _stage, folder in runs_of(open_calculation(calculation))]
+
+
+def openable(folder):
+    """THE FILE A VIEWER OPENS IN A RUN'S FOLDER -- the run door's choice
+    (`runs.openable`, `model/parse.md` § 5), as the Results tab opens it:
+    ``(path, trail)``, ``path`` the run's result -- a vibration run's
+    ``<label>.spectra.json`` -- or ``None`` where there is none, ``trail``
+    how it was chosen."""
+    from .runs import openable as _openable
+    return _openable(folder)
 
 
 def read_structure(path):
@@ -318,7 +329,8 @@ def frame_rows(data_file):
 def weights_for_set(rows, chain_or_distribution):
     """THE WEIGHTS OF A MODE'S OWN SET'S ROWS FOR A STATE
     (`engines/vibration-frames.md` § 7) -- ``rows`` as :func:`frame_rows`
-    reads them, ``chain_or_distribution`` a chain of steps (``states``) or a
+    reads them, or a set read back carries them (:func:`read_frame_set`'s
+    ``rows``), ``chain_or_distribution`` a chain of steps (``states``) or a
     distribution of ``x = Q / Q_zp`` (``dist``) placed on the set's mode, an
     open start taking the set's own ``temperature_k`` row, said: a
     `distribution.PointWeights`.  Answered, and refused by name, by the
@@ -427,16 +439,17 @@ def write_frame_set(path, frames=None, weights=None, *, vibration=None,
 
 def read_frame_set(path, *, vibration=None):
     """A VIBRATION'S FRAME SET READ BACK AS WRITTEN (`engines/vibration-
-    frames.md` § 5): every frame, frame 0 included -- a mode's ``Frames``,
-    ``Snapshots``, or a person's ``FrameSet`` -- its vibration the one given,
-    or the run the set names reopened.  Answered, and refused by name, by
+    frames.md` § 5): every frame, frame 0 included, and its rows as written
+    (``rows``) -- a mode's ``Frames``, ``Snapshots``, or a person's
+    ``FrameSet`` -- its vibration the one given, or the run the set names
+    reopened.  Answered, and refused by name, by
     the motion toolkit's one reader (`vibration_frames.read_frame_set`)."""
     from .vibration_frames import read_frame_set as _read
     return _read(path, vibration=vibration)
 
 
 __all__ = ["AtomIndexMap", "AtomIndexUnknown", "RunStepsError", "atom_index_map",
-           "infrared_view", "list_runs", "parse", "raman_view", "read_optical_data",
+           "infrared_view", "list_runs", "openable", "parse", "raman_view", "read_optical_data",
            "read_steps_data", "read_raman_data", "read_spectra_data", "read_steps",
            "read_chart_data",
            "read_structure", "read_transport_data", "read_xv", "read_xv_cell", "reaveraged",

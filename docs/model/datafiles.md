@@ -1141,7 +1141,7 @@ A key is written where the result states it.
 | `bibliography_keys` | **record**: the citation keys `methods_text` cites |
 | `config` | **record**: how it was computed — PySCF's description config; on SIESTA the engine, the kind, the stage and the force-constant deck: its name and sha256, every keyword and block it states but the geometry, and each species' pseudopotential by name and sha256 ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.2) |
 | `engine_metadata` | **record**: the engine's own facts — `{}` on PySCF; on SIESTA `fc_file`, `fc_displacement_ang`, `fc_range_engine_1based` (SIESTA's numbering, from 1), `fc_asymmetry_max_ev_ang2`, `reference_force_criterion_ev_ang` ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.2) |
-| `runtime_info` | **record**: PySCF's CPU, threads, GPU and host |
+| `runtime_info` | **record**: PySCF's CPU, threads and GPU — never the machine's name; one written before states a `hostname`, read as before ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.2) |
 | `optical` | **record**: the optical calls' citation — their data file (9.3) and its sha256, the light's direction, δ, the selection asked and applied, frame 0's state and each mode's frequency, δQ and its two sides' states ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.2); null on PySCF and where no optical call was planned |
 | `phase_frequencies` · `phase_relaxation` · `phase_raman` · `phase_ir` · `phase_es` | each phase's state: `empty`, `running`, `complete` or `not requested` ([`engines/vibration.md`](?doc=engines/vibration.md) § 4.9) |
 | `ir_route` | the route the IR strengths came by: `analytic`, `finite-difference`, `charges` (SIESTA: from the stored charges) or `none` |

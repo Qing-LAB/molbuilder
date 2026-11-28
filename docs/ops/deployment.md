@@ -31,7 +31,7 @@ machine. Everything later in this guide runs on them.
 | **the host env** `molbuilder` | the manager's env folder | the Python molbuilder runs on and its packages (`molbuilder/envs/host-env.txt`), and **one path file in its `site-packages`, `molbuilder-source.pth`, naming the checkout** — so this env's own Python finds molbuilder from any folder. Nothing is copied; the file goes when the env does | the shim creates the env; `bootstrap` writes the path file every time it runs |
 | **the engine envs** | beside the host env | `molbuilder-siesta`, `molbuilder-pySCF`, `molbuilder-MDtools` by default; the GPU build of SIESTA and the notebook's env when you install them — each entered only as [`installation.md`](?doc=ops/installation.md) M1–M6 say, its own programs by their paths | `bootstrap`, `install` |
 | **the config directory** | `~/.config/molbuilder/`, or `$MOLBUILDER_CONFIG_DIR` | `molbuilder.json`, this machine's record `environment.json`, the records of machines you prepare for in `environments/`, and every credential in `secrets/` ([`installation.md`](?doc=ops/installation.md) § 2's tree; § 5 here) | `init-config`, at the end of `bootstrap`; `jobset probe` |
-| **the projects tree** | `paths.projects`, asked at `bootstrap` | every calculation's folder — where the server reads and writes your work (§ 6) | you, through the pages and `describe` |
+| **the projects tree** | `paths.projects`, asked at `bootstrap` | every calculation's folder — where the server reads and writes your work (§ 6) — and molbuilder's example notebooks in `notebooks/examples/` ([`installation.md`](?doc=ops/installation.md) § 2.1) | you, through the pages and `describe`; the examples `init-config` and `molbuilder examples` |
 
 ```mermaid
 flowchart LR

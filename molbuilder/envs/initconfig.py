@@ -76,7 +76,9 @@ class Step:
     ``action`` is ``"created"``, ``"kept"`` or ``"rewritten"``.  The third
     is for the two READMEs this module authors, and for a ``molbuilder.json``
     written into as `configuration.md` § 3.2 allows (see the note at the
-    top): the module never deletes.  ``note`` carries what a person needs to
+    top): the module never deletes.  ``"not written"`` is the examples' step
+    where the projects tree could not be written -- said, never fatal
+    (`project-layout.md` § 2.6).  ``note`` carries what a person needs to
     act on: which activation form was written, or why a preamble was not;
     what a key was and what it is now.
     """
@@ -673,7 +675,10 @@ def init_config(activation: str,
                 probe: bool = True,
                 projects: Optional[Path] = None, *,
                 typed: "frozenset" = frozenset()) -> List[Step]:
-    """Seed the whole directory.  Idempotent; returns what it did.
+    """Seed the whole directory, then, last, write molbuilder's example
+    notebooks into the projects tree it answers (:func:`_examples_steps`, the
+    door `molbuilder examples` asks; never fatal).  Idempotent; returns what
+    it did.
 
     ``activation`` and ``preamble`` go into ``molbuilder.json``'s
     ``env_init``, and the record the probe writes carries a copy
@@ -699,4 +704,24 @@ def init_config(activation: str,
                                      typed=typed))
     if probe:
         steps.append(seed_environment_record())
+    steps.extend(_examples_steps())
     return steps
+
+
+def _examples_steps() -> List[Step]:
+    """MOLBUILDER'S EXAMPLE NOTEBOOKS, the seeding's last step, into the
+    projects tree the config now answers -- the one door `molbuilder
+    examples` asks (`projects.write_examples`; `project-layout.md` § 2.6).
+    NEVER FATAL (`configuration.md` § 3.2): a tree that cannot be written is
+    this step's own line, naming the command that writes them once it can,
+    and everything seeded before it stays."""
+    from ..projects import examples_dir, write_examples
+    try:
+        return [Step(done.path, done.action,
+                     f"molbuilder's example notebook, {done.said}")
+                for done in write_examples()]
+    except OSError as exc:
+        return [Step(examples_dir(), "not written",
+                     f"molbuilder's example notebooks could not be written "
+                     f"into the projects tree ({exc.strerror or exc}) -- "
+                     f"`{as_typed('examples')}` writes them once it can")]

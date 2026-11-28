@@ -14,9 +14,10 @@ Categories of work in this module:
     aren't accepted.
   * **Path resolution** — :func:`project_dir` / :func:`topic_dir` /
     :func:`structure_dir`.  Pure functions; no I/O.
-  * **Directory creation** — :func:`ensure_structure_dir` and the project
-    skeleton (:func:`populate_project_skeleton`) are the functions here that
-    write.
+  * **Directory creation** — :func:`ensure_structure_dir`, the project
+    skeleton (:func:`populate_project_skeleton`) and molbuilder's example
+    notebooks in the tree (:func:`write_examples`) are the functions here
+    that write.
   * **Discovery** — :func:`list_projects` / :func:`list_topics` /
     :func:`list_structures`; read-only.  With the path functions, what a
     person's script or notebook asks to find a calculation
@@ -534,28 +535,109 @@ def populate_project_skeleton(proj: Path, *, project_name: str) -> None:
 
 
 # ---------------------------------------------------------------- #
+#  molbuilder's example notebooks, in the tree                      #
+# ---------------------------------------------------------------- #
+
+#: WHERE MOLBUILDER'S EXAMPLE NOTEBOOKS GO, from the tree's root -- a folder
+#: of molbuilder's own (`project-layout.md` § 2.6; the user, 2026-11-27:
+#: "an "example" subdir under notebooks"), written by :func:`write_examples`.
+EXAMPLES_FOLDER: Tuple[str, ...] = ("notebooks", "examples")
+
+#: HOW EACH THING :func:`write_examples` DID IS SAID -- by `molbuilder
+#: examples` and by the installation's seeding alike (`project-layout.md`
+#: § 2.6: "each said as written, replaced or kept").
+_EXAMPLE_SAID = {
+    "created": "written",
+    "rewritten": "replaced -- the shipped version in place of the one there",
+    "kept": "kept -- already the shipped version",
+}
+
+
+def examples_dir(*, base: Optional[Path] = None) -> Path:
+    """``<projects root>/notebooks/examples`` (:data:`EXAMPLES_FOLDER`) under
+    :func:`projects_root`.  Says nothing of whether it exists."""
+    return projects_root(base).joinpath(*EXAMPLES_FOLDER)
+
+
+class ExampleWritten(NamedTuple):
+    """One example notebook :func:`write_examples` handled: ``path`` its
+    place in the tree, ``action`` what was done -- ``"created"`` where none
+    was, ``"rewritten"`` the shipped version in place of another, ``"kept"``
+    already the shipped bytes -- the seeding's own three words
+    (`envs.initconfig.Step`)."""
+
+    path: Path
+    action: str
+
+    @property
+    def said(self) -> str:
+        """What was done, in the one wording (:data:`_EXAMPLE_SAID`)."""
+        return _EXAMPLE_SAID[self.action]
+
+
+def write_examples(*, base: Optional[Path] = None) -> List[ExampleWritten]:
+    """MOLBUILDER'S EXAMPLE NOTEBOOKS WRITTEN INTO THE TREE -- the one door
+    `molbuilder examples` and every installation (`envs init-config`) ask
+    (`project-layout.md` § 2.6; the user, 2026-11-27: "all installation will
+    cleanly put the correct version there", and of one a person edited,
+    "Replace it"): each notebook molbuilder ships, ``data/examples/*.ipynb``
+    in its package (`molbuilder.data_dir`), written into :func:`examples_dir`
+    as shipped, the folder made where it is not -- the current version in
+    place of the one there, one already holding the shipped bytes kept
+    untouched.  A file there that molbuilder does not ship is neither read
+    nor written, and nothing else is written: what an example reads -- the
+    run folder the motion toolkit's notebook opens -- stays in the package,
+    where the tree would show it as a calculation.  Each write is atomic
+    (`persist.write_bytes`).  Returns what was done to each, by name."""
+    from . import data_dir
+    from .persist import write_bytes
+    where = examples_dir(base=base)
+    done: List[ExampleWritten] = []
+    for source in sorted((data_dir() / "examples").glob("*.ipynb")):
+        shipped = source.read_bytes()
+        target = where / source.name
+        if target.is_file() and target.read_bytes() == shipped:
+            done.append(ExampleWritten(target, "kept"))
+            continue
+        action = "rewritten" if target.exists() else "created"
+        where.mkdir(parents=True, exist_ok=True)
+        write_bytes(target, shipped)
+        done.append(ExampleWritten(target, action))
+    return done
+
+
+# ---------------------------------------------------------------- #
 #  Discovery (read-only filesystem traversal)                       #
 # ---------------------------------------------------------------- #
+
+
+def _tree_own_folders() -> Tuple[str, ...]:
+    """THE TREE'S OWN FOLDERS AT ITS ROOT, the one list of them -- no project
+    (`job-contracts.md` § 2.5): its pseudopotential library
+    (`pseudos.CONVENTIONAL_LIBRARY`, § 2.5a) and its notebooks folder,
+    molbuilder's own, holding its example notebooks (:data:`EXAMPLES_FOLDER`,
+    `project-layout.md` § 2.6)."""
+    from .pseudos import CONVENTIONAL_LIBRARY
+    return (CONVENTIONAL_LIBRARY, EXAMPLES_FOLDER[0])
 
 
 def list_projects(*, base: Optional[Path] = None) -> List[str]:
     """Sorted list of project names, or ``[]`` if no ``projects/`` dir.
 
-    The tree's own folders are no project: its pseudopotential library
-    (`job-contracts.md` § 2.5a) and a hidden folder of molbuilder's.  Other
-    directories whose names fail :func:`validate_name` (would clash with the
-    SIESTA basename rule -- spaces, dots, etc.) are skipped with a warning
-    logged at WARNING level so the user can tell why something they created by
-    hand isn't appearing.
+    The tree's own folders are no project (:func:`_tree_own_folders`: its
+    pseudopotential library and its notebooks folder), nor is a hidden
+    folder of molbuilder's.  Other directories whose names fail
+    :func:`validate_name` (would clash with the SIESTA basename rule --
+    spaces, dots, etc.) are skipped with a warning logged at WARNING level so
+    the user can tell why something they created by hand isn't appearing.
     """
-    from .pseudos import CONVENTIONAL_LIBRARY
     root = projects_root(base)
     if not root.is_dir():
         return []
+    own = _tree_own_folders()
     valid: List[str] = []
     for p in root.iterdir():
-        if (not p.is_dir() or p.name.startswith(".")
-                or p.name == CONVENTIONAL_LIBRARY):
+        if not p.is_dir() or p.name.startswith(".") or p.name in own:
             continue
         if NAME_TOKEN.fullmatch(p.name):
             valid.append(p.name)
@@ -612,6 +694,10 @@ __all__ = [
     "structure_dir",
     "ensure_structure_dir",
     "populate_project_skeleton",
+    "EXAMPLES_FOLDER",
+    "examples_dir",
+    "ExampleWritten",
+    "write_examples",
     "list_projects",
     "list_topics",
     "list_structures",

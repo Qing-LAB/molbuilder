@@ -24,9 +24,11 @@ from molbuilder import placement as P
 
 
 @pytest.fixture
-def isolated_tree(tmp_path, monkeypatch):
+def isolated_tree(tmp_path, monkeypatch, isolated_projects_root):
     """All three roots inside tmp_path, so nothing here can see -- or touch --
-    the developer's real installation."""
+    the developer's real installation; and the projects tree too, where
+    seeding writes molbuilder's example notebooks (`ops/installation.md`
+    § 2.1)."""
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "cfg"))
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "run"))

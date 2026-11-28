@@ -284,7 +284,8 @@ conda activate molbuilder
 
 Once the host env exists, **`molbuilder envs` is the same surface** the shim used —
 `list`, `install <name>`, `bootstrap`, `doctor`, `validate`, `clean`, `repair`,
-`init-config`.
+`init-config` — and the shim's one subcommand that is no `envs` verb,
+`examples`, is `molbuilder examples` (§ 2.1).
 
 
 **What `bootstrap` leaves you with** — the whole shape (the checkout, the host
@@ -391,6 +392,15 @@ bash scripts/install-env.sh init-config     # idempotent; asks only what the fil
 `--no-probe` seeds the config and writes no `environment.json`; `jobset probe
 --write` makes it later, copying the activation from `molbuilder.json`.
 
+**And molbuilder's example notebooks**: the last of `init-config`'s steps
+writes them into the projects tree the config answers, a line each, by their
+one rule ([`execution/project-layout.md`](?doc=execution/project-layout.md)
+§ 2.6). To write them again without seeding anything:
+
+```bash
+bash scripts/install-env.sh examples      # molbuilder examples, through the shim
+```
+
 **What it deliberately does not seed**: `scheduler`, refused in
 `molbuilder.json` ([`configuration.md`](?doc=configuration.md) § 4). The queues and node topology are *facts about a machine*, which `jobset
 probe` measures into `environment.json`; a job states its own queue, wall and
@@ -421,7 +431,7 @@ Reference:
 | **AmberTools** (tleap) | `molbuilder-MDtools` | conda `dacase::ambertools-dac=26` |
 | **RDKit, OpenBabel, ASE, sisl, netCDF4, biopython** | host `molbuilder` | conda |
 | **numpy, ASE, sisl, netCDF4** in the job envs | `molbuilder-siesta`, `molbuilder-siesta-gpu` (numpy, ASE, sisl, netCDF4); `molbuilder-pySCF` (numpy, ASE, netCDF4) | conda — a SIESTA vibration's job derives its modes with numpy after the force-constant run (`engines/vibration.md` § 5.5) and writes its result's data file with netCDF4, as a PySCF vibration's deck does (`engines/vibration.md` § 6.10.5), and its wrapper does not start the engine without them; sisl is SIESTA's own reader of its outputs (`.HSX` and `.TSHS` binary, `.TBT.nc` NetCDF, `.PDOS` XML), in every SIESTA env so a job can always read what its engine wrote (`engines/vibration.md` § 5.10 D5). The same packages on both SIESTA recipes, so the GPU switch never changes what a job can import. **An existing env gains what its recipe declares with** `molbuilder envs repair <env>` — the installer's own conda step for each missing package, added packages only (measured 2026-09-28: sisl 0.16.4 with netcdf4, pandas and xarray into both SIESTA envs) |
-| **JupyterLab** (the notebook tab) | `molbuilder-jupyternb` | conda `jupyterlab`, `ipykernel`, the analysis stack (`numpy`, `scipy`, `pandas`, `matplotlib`) and the file-level science libraries `ase` and `sisl`, `netcdf4` to open the data files molbuilder writes and `xarray` to read them as the post-processing document does — **the whole notebook environment, entire**. Jupyter is installed, activated and runs here, and **no other env carries notebook tooling**. It holds no calculation engine (no pyscf / siesta / rdkit): a notebook reads the MD and trajectory formats calculations produce, and is not a second place to run one; a frame set is made here only through molbuilder's motion toolkit, never with `ase` (`web/jupyter.md` § 7, `engines/vibration-frames.md` § 1). A notebook's LaTeX is drawn by the MathJax JupyterLab carries in its own bundle, so the recipe adds no math package. **Opt-in**, like the GPU env: `bootstrap` does not install it |
+| **JupyterLab** (the notebook tab) | `molbuilder-jupyternb` | conda `jupyterlab`, `ipykernel`, the analysis stack (`numpy`, `scipy`, `pandas`, `matplotlib`) and the file-level science libraries `ase` and `sisl`, `netcdf4` to open the data files molbuilder writes and `xarray` to read them as the post-processing document does, and `nbclient` and `nbformat`, which run a notebook start to end with no browser — molbuilder's example notebook's test and `tools/make_example_runs.py`, which saves it with its outputs (`engines/vibration-frames.md` § 6.1) — **the whole notebook environment, entire**. Jupyter is installed, activated and runs here, and **no other env carries notebook tooling**. It holds no calculation engine (no pyscf / siesta / rdkit): a notebook reads the MD and trajectory formats calculations produce, and is not a second place to run one; a frame set is made here only through molbuilder's motion toolkit, never with `ase` (`web/jupyter.md` § 7, `engines/vibration-frames.md` § 1). A notebook's LaTeX is drawn by the MathJax JupyterLab carries in its own bundle, so the recipe adds no math package. **Opt-in**, like the GPU env: `bootstrap` does not install it |
 | **PeptideBuilder, pubchempy** | host | pip |
 | **Plotly.js** (every chart in the web UI) | host `molbuilder` | conda `plotly` — the browser bundle is package data of the Python package, and the app serves it at `/vendor/plotly.min.js` |
 | **The web UI's other browser libraries** (3D viewer, editor, Markdown, diagrams, math) | none — **the source tree** | **committed** under `molbuilder/web/static/vendor/`, each beside its licence, its release and its citation — that folder's `README.md` is the inventory. They come with the clone and the app serves them; nothing installs them, and a new one is added by that README's procedure, not by a recipe |
@@ -553,7 +563,8 @@ the CLI, and `"${CONDA_PREFIX:?}/bin/python" -m molbuilder --help` lists every c
 list, kept by the CLI itself. The ones a person starts with: `serve` (the web
 UI), `describe` and `jobset` (a calculation: describe it, prepare it, launch
 it, read it back), `jobs` (the jobs launched from this machine), `envs` (this
-doc) and `pseudo`. Each has its own home — see
+doc), `examples` (molbuilder's example notebooks written into the projects
+tree, § 2.1) and `pseudo`. Each has its own home — see
 [`execution/`](?doc=execution/overview.md) for the run and job commands.
 
 ## 5. A worked example
@@ -1330,3 +1341,10 @@ its own header documents the three and its error text names all three.
 - `test_envs.py` — which env runs a tool: the routed env, an explicit env over
   it, never the host's PATH (M6), a refusal naming what was tried, and
   `run_in_env`'s refusal when no manager was found.
+- `test_the_shipped_examples.py` — `molbuilder examples` (§ 2.1): every
+  notebook molbuilder ships written into the projects tree's
+  `notebooks/examples/` as shipped and said — one there replaced, one already
+  the shipped one kept — a file molbuilder does not ship left alone, nothing
+  else written into the tree; `test_seeding_a_fresh_machine.py`, `init-config`
+  writing them; `test_envs_install.py`, the shim's `examples` reaching
+  `molbuilder examples`.

@@ -432,6 +432,12 @@ and who creates each level, is
 (`projects.validate_folder_name`), made or renamed: none at the root, where a
 project is made whole with its topic folders; a new one under a project takes
 a topic's name; below, a token.
+**The tree's own folders at its root are no project**: its pseudopotential
+library (§ 2.5a) and `notebooks/`, holding molbuilder's example notebooks
+in `notebooks/examples/`
+([`project-layout.md`](?doc=execution/project-layout.md) § 2.6) — one list
+of them (`projects._tree_own_folders`), which `projects.list_projects`
+lists none of, as it lists no hidden folder.
 
 **The canonical topics** (`projects.CANONICAL_TOPICS`): the two storage
 topics, **one run topic per calculation kind** — the kind's `topic` in the
@@ -487,8 +493,11 @@ The tree's API is `molbuilder/projects.py`: `validate_name`,
 `find_projects_root`, `contain`, `at` (a tree address through the fence),
 `segments` and `address` (a folder's place in the tree, as segments and as an
 address),
-`populate_project_skeleton`, and `list_projects` / `list_topics` /
-`list_structures` (the `structure_*` names mean the calculation level).
+`populate_project_skeleton`, `examples_dir` / `write_examples` (molbuilder's
+example notebooks in the tree's `notebooks/examples/`,
+[`project-layout.md`](?doc=execution/project-layout.md) § 2.6), and
+`list_projects` / `list_topics` / `list_structures` (the `structure_*` names
+mean the calculation level).
 
 #### 2.5a `psml_lib` is a path inside the projects tree
 

@@ -1,0 +1,25 @@
+{
+  "schema": "molbuilder/task@2",
+  "engine": {
+    "name": "pyscf"
+  },
+  "shape": "hierarchical",
+  "run": {
+    "name": "methanol",
+    "id": "methanol_CH4O"
+  },
+  "calculation": "vibration",
+  "structure": {
+    "source": "methanol.source.xyz",
+    "formula": "CH4O",
+    "atoms": 6,
+    "fingerprint": "41dc5d18cd5db8c294004f2c766b15cda2a5736cbd0d6b3fc3ed57727dcafbe0"
+  },
+  "varies": [],
+  "stages": [
+    {
+      "name": "freq",
+      "overrides": {}
+    }
+  ]
+}

@@ -1870,8 +1870,8 @@ $$
    result's atom order, held atoms still — the rule `v.displaced`
    (`test_a_vibrations_geometry_and_its_frequencies_scaled`) and held atoms
    in a mode's own frames
-   (`test_a_held_atom_stays_still_and_adds_nothing_to_its_elements_share`);
-   no test yet draws snapshots with a held atom.
+   (`test_a_held_atom_stays_still_and_adds_nothing_to_its_elements_share`)
+   and in snapshots (`test_snapshots_keep_a_held_atom_still`).
 4. **Frame 0 the relaxed geometry at weight 0, each snapshot at $1/N$.** The
    probabilities are in where the snapshots were drawn, so the average is the
    plain mean, an unbiased estimate of § 2d.1's integral, its error the spread
@@ -2019,8 +2019,8 @@ short chain of the same steps. The tools that carry the steps are
 oscillator, its state built in steps, one coordinate's distribution, random
 streams — and a chain bound to a mode gives its frames and snapshots (that
 chapter's § 2); the cases are written as chains there (§ 2's table), and
-are to be in the example notebook, *to build (R3d2b2c)* (§ 6.1 there),
-which a person copies and changes. The numbers the
+are in the example notebook (§ 6.1 there), which a person copies and
+changes. The numbers the
 tools fix — where a list is cut, when two numbers are one — are § 2e.6's.
 
 > **In short.** As far as a set of frames can see, one mode's state is a
@@ -3410,8 +3410,8 @@ effect — and one quantum exactly $1.140\,T_0$, which would read −22 %.
 **From two sets, or one set re-weighted.** The two states' averages come
 best from two sets, each placed by its own state's rule and exact to degree
 $2m - 1$. One set's results re-weighted to the other state (§ 5.4) are exact
-only to degree $m - 1$ ($m$ for an odd number of symmetric frames and a
-symmetric state): on the stiff example, against the true +98 %, three frames
+to degree $m - 1$ at least ($m$ for an odd number of symmetric frames and a
+symmetric state, § 5.4): on the stiff example, against the true +98 %, three frames
 give +77 % (the thermal set re-weighted to one quantum) or +84 % (the
 one-quantum set re-weighted to the thermal state), five +98 % or +100 %,
 seven +98 % or +98 % — against two sets' +96 %, +98 % and +98 %. So the

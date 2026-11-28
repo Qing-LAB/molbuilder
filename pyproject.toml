@@ -235,6 +235,11 @@ molbuilder = [
     # package (no `__init__.py`), which is exactly what keeps it unimportable
     # -- so it needs a pattern here, the same way the .toml tables did.
     "data/*.py",
+    # molbuilder's example notebooks and the run folder one of them reads
+    # (`data/examples/`, `execution/project-layout.md` § 2.6), which
+    # `molbuilder examples` and every installation write into the projects
+    # tree -- recursive, the run folder holding its stage and run below it.
+    "data/examples/**/*",
 ]
 
 [tool.pytest.ini_options]

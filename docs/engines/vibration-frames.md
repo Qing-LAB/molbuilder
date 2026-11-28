@@ -23,9 +23,9 @@ is. we need to cleanly separate the logic and design"; "vibration
 calculation is the foundation that exposes the fundamental data of all
 modes".)*
 
-**To build.** What this chapter marks *(to build)* is the plan's R3d2b2c
-([`plans/plan.md`](?doc=plans/plan.md) § 2) — the probe's use of the nodes
-(§ 6) is R3d2c's; what each release built is its row in
+**To build.** What this chapter marks *(R3d2c)* — the probe's use of the
+nodes (§ 6) — is the plan's R3d2c ([`plans/plan.md`](?doc=plans/plan.md)
+§ 2); what each release built is its row in
 [`process/changelog.md`](?doc=process/changelog.md).
 
 ---
@@ -82,10 +82,12 @@ the frames are.
 | `oscillator_state` | L2, travels with `vibration` — numpy, `math` and `oscillator`, imported two ways | **chains of steps, and states** (§ 9.1 module 2; [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 2e): the starts `ground`, `level`, `thermal`, `classical_thermal`; the events `add_quantum`, `remove_quantum`; `Chain.reduced()`, `Chain.on(oscillator)` → an `OscillatorState` — its list, its mean quanta and words; a chain's record, `to_record()` and `Chain.from_record` |
 | `distribution` | L2, travels with `vibration` — numpy, `math` and `oscillator`, imported two ways | **one coordinate's distribution** in the unit it is given (§ 9.1 module 3): `of_state(state)` by the routes of § 9.1, or a person's own (`Gaussian`, `QuantumAdded`, `Level`, `LevelList`), one in another unit (`d.scaled(s)` → `Scaled`); its density, distribution function, averages, quantile, Gauss rule, draws, words, record (`to_record`, `from_record`) and weights for points placed elsewhere (`points_weights` → `PointWeights`, the one weights result) |
 | `sampling` | L2, travels with `vibration` — numpy, `math` and `oscillator`'s whole-number rule, imported two ways | **the seed's keyed streams and the statistics of arrays** (§ 9.1 module 4): `normal_stream`, the snapshots' streams' one home (§ 3.3), which `vibration` draws through; a mean and its error (`mean_with_error`), independent or in pairs (`pair_means`), a paired set's even and odd parts (`even_odd_parts`) |
-| `vibration_frames` | L2, the **host's** — it imports `vibration`, the generic tools, the structure, `frameset`, the result's reader and the run door, never transport; it imports with `molbuilder-jupyternb`'s packages, numpy beside molbuilder's own modules, so the example notebook runs it there ([`web/jupyter.md`](?doc=web/jupyter.md) § 7) | the rows' vocabulary (`ROWS`, § 5.1), a mode's own set's `assumptions` row (`assumptions_of_a_mode`) and a snapshot set's, the weights of a set's rows for a state (`weights_for_set`, § 7), **a run's folder read as a `Vibration`** (`vibration_of_run`, below), the one frame-set writer and its reader (`write_frame_set` → `Written`, `read_frame_set` → `Frames`, `Snapshots` or `FrameSet`, § 5), a mode's outermost move for any state by its number (`outermost_move_of`) — asked by the web layer, `postprocess` and the command line; the doors' set — the command line's and the page's: their named choices as a chain (`doors_chain`, the page's ask `read_state_ask` — `STATE_ASK_KEYS`, refusals `StateRefused`), a mode's own set written of it (`frameset_from_mode` → `ModeFrames`, the frame counts offered `OFFERED_NODES`) and what it means for a mode before its set is written (`readout`, the load door's `frameset` block), its quanta said beyond `HARMONIC_LIMIT_EV`, § 6 |
+| `vibration_frames` | L2, the **host's** — it imports `vibration`, the generic tools, the structure, `frameset`, the result's reader and the run door, never transport; it imports with `molbuilder-jupyternb`'s packages, numpy beside molbuilder's own modules, so the example notebook runs it there ([`web/jupyter.md`](?doc=web/jupyter.md) § 7) | the rows' vocabulary (`ROWS`, § 5.1), a mode's own set's `assumptions` row (`assumptions_of_a_mode`) and a snapshot set's, the weights of a set's rows for a state (`weights_for_set`, § 7), **a run's folder read as a `Vibration`** (`vibration_of_run`, below), the one frame-set writer and its reader (`write_frame_set` → `Written`, `read_frame_set` → `Frames`, `Snapshots` or `FrameSet`, each with the set's rows as written, `rows`, § 5), a mode's outermost move for any state by its number (`outermost_move_of`) — asked by the web layer, `postprocess` and the command line; the doors' set — the command line's and the page's: their named choices as a chain (`doors_chain`, the page's ask `read_state_ask` — `STATE_ASK_KEYS`, refusals `StateRefused`), a mode's own set written of it (`frameset_from_mode` → `ModeFrames`, the frame counts offered `OFFERED_NODES`) and what it means for a mode before its set is written (`readout`, the load door's `frameset` block), its quanta said beyond `HARMONIC_LIMIT_EV`, § 6 |
 
 **No call of `vibration` reaches `vibration_frames`**: the foundation's
-module never depends on the module built on it. The writer and the reader are
+module never depends on the module built on it — a set read back carries its
+rows as written on `Frames` and `Snapshots` (`rows`, § 5), which the reader
+fills and `vibration` only stores. The writer and the reader are
 functions of `vibration_frames`, which `molbuilder.postprocess` hands on — the
 one import of a person's script ([`model/parse.md`](?doc=model/parse.md) § 3):
 `from molbuilder.postprocess import vibration, write_frame_set,
@@ -521,9 +523,10 @@ temperature ([`science/vibrational-averaging.md`](?doc=science/vibrational-avera
 § 6, with the numbers): best from two sets, each by its own rule — the
 thermal state's and the photon's, `thermal(temperature_k=T)` and
 `thermal(temperature_k=T).add_quantum()`; one set's
-results re-weighted to the other state (`weights_at`, § 7) are exact only to
-degree $m - 1$ — $m$ for an odd number of symmetric frames and a symmetric
-state — so that route needs five frames at least.
+results re-weighted to the other state (`weights_at`, § 7) are exact to degree
+$m - 1$ at least — $m$ for an odd number of symmetric frames and a
+symmetric state (§ 7) — against $2m - 1$ for each state's own rule, so that
+route needs five frames at least.
 
 ---
 
@@ -636,8 +639,15 @@ weights and rows as written). Read back as in
 memory, item $i$ is frame $i$ (§ 3.3). **One shape for all three**: `q_amu12_ang` an
 array (frames × modes — one column for a mode's own set),
 `mode_index_1based` (modes,), `positions_ang` (frames, atoms, 3), `weights`,
-`max_atom_displacement_ang`, `max_atom_mode_index_1based` (frames,), `said`;
-`exact_to_degree` on `Frames`, `seed`, `antithetic` on `Snapshots`. A set
+`max_atom_displacement_ang`, `max_atom_mode_index_1based` (frames,), `said`,
+and `rows` — the set's rows as written, the structure's own reader's
+(`frameset.read`, a `frameset.FrameRows`: the structure's rows, each frame's,
+the weights), which `weights_for_set` takes (§ 7); `exact_to_degree` on
+`Frames`, `seed`, `antithetic` on `Snapshots`, whose geometries as the file
+holds them are `written_positions_ang` — its `positions_ang` its motion's,
+made again from each frame's coordinates where the motion binds, the same
+within the pair's $10^{-6}$ Å. `rows` is `None` on a set made in memory,
+written or not; a set read back carries them. A set
 is a `Snapshots` only where it holds `info.sampling`, a `Frames` only where
 it states the toolkit's own rule (§ 4) — `sampling_rule` `gauss-hermite` or
 `gauss` and `sampling_nodes`, its degree $2m - 1$ — its mode's number,
@@ -669,9 +679,10 @@ frame set's rows, or a pair that does not read, is refused by name
 The vocabulary is the toolkit's — one table in `vibration_frames` (the names,
 kinds, units and meanings) — and a person's script may write the same
 names. Every row the toolkit writes carries its meaning as its `note` — the
-table's meaning below, in plain text (one meaning a row, whatever the kind of
-set; a meaning for each kind is *to build*, [`plans/plan.md`](?doc=plans/plan.md)) —
-**the set's own information, its own** —
+table's meaning below, in plain text, one meaning a row: where a row reads
+differently by the kind of set, its meaning says each kind's reading
+(`quantum`, `temperature_k`: a mode's own set's state, a snapshot set's
+background) — **the set's own information, its own** —
 no other module interprets it, and transport's pages show each row by its
 stored name, value and unit alone
 ([`engines/transport.md`](?doc=engines/transport.md) § 3.8.1, the user,
@@ -734,71 +745,169 @@ the formula shown.
 | `molbuilder frameset from-mode RUN --mode M (--temperature T \| --mean-quanta N \| --quanta N) [--nodes 3\|5\|7] --out PAIR.xyz` — `RUN` the vibration run's folder, read by `vibration_of_run` (§ 1), and `PAIR.xyz` the pair, each read from the projects tree as `--bundle` is; it prints the mode's state in the set's words, its mean quanta and $\sigma/Q_{\mathrm{zp}}$, each frame — named from 1 — its $q/\sigma$, largest atom move and weight, and where the pair is | a mode's own set, its state asked every time — the user's decision ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.11 § 9 item 2) — as a chain: `vibration_frames.doors_chain(temperature_k=, quanta=, mean_quanta=)` makes the one option given its chain — `--temperature T` `states.thermal(temperature_k=T)`, `--mean-quanta N` `states.thermal(mean_quanta=N)`, `--quanta N` `states.level(N)` — none, two, or a value that is none refused by name (`StateRefused`), never the record's temperature assumed; then `vibration_frames.frameset_from_mode(run, *, mode, out, chain, nodes)` binds it to the mode (§ 2), takes its frames and writes them by the one writer — the frame count one of `OFFERED_NODES` (three, five or seven) and the pair's name refused by name before the run is read, a state refused a usage error (exit 2); many quanta — beyond 1 eV in the mode (`HARMONIC_LIMIT_EV`, the user's choice of 2026-11-24) — said in a note, the set written as asked |
 | the spectrum viewer's *Write frame set…* on the selected mode: its state, the number of frames, and the readout under them ([`web/spectra.md`](?doc=web/spectra.md) § 4.3, the page's own design) | a mode's own set (§ 4) through the doors' set: the page's choice as a chain (`doors_chain`, the write door; `read_state_ask`, the load door's `frameset_state`), `frameset_from_mode`, its run read by `vibration_of_run`; its readout, the load door's, `readout(m, chain)` — the mode's state's mean quanta, its spread against its zero-point one, the outermost move for each offered frame count, its words; many quanta — beyond 1 eV in the mode, ⟨n⟩ h c ν̃ (`HARMONIC_LIMIT_EV`, the user's choice of 2026-11-24) — said in its note and asked to confirm before writing, never refused |
 | the probe at the frame rule's nodes ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.11 § 4) *(R3d2c)* | a mode's own nodes (§ 4) |
-| the example notebook (§ 6.1) | every piece |
+| the example notebook (§ 6.1) | the pieces § 6.1 lists |
 
 ### 6.1 The example notebook
 
-`docs/engines/vibration-frames.ipynb` *(to build)*, saved with its outputs,
-with a copy at `notebooks/vibration-frames.ipynb` in the projects tree for the
-Jupyter tab, as transport's notebook is
-([`engines/transport.md`](?doc=engines/transport.md), *The script, and the
-notebook*). Its kernel is `molbuilder-jupyternb`, molbuilder's source on its
-path as [`web/jupyter.md`](?doc=web/jupyter.md) § 7 states — frame sets are
-made there through the toolkit — and the *(to build)*
-`tests/test_vibration_frames_notebook_e2e.py` runs it on that env's Python,
-named by its path (`nbclient`, declared in that env's recipe when the test is
-built — today it arrives only as jupyterlab's dependency), so it is a check as well as a
+`vibration-frames.ipynb` — **molbuilder's own, shipped with it** in
+`molbuilder/data/examples/`, saved with its outputs — runs the pieces of this
+chapter listed below on a real vibration, so it is a check as well as a
 demonstration *(the user, 2026-11-23: "an example jupyternotebook that can
 open a calculation result folder and generate some mixing/plots as the
 demonstration/example/tests to validate these calls")*:
 
-- **its input — a vibration run's folder**: a PySCF methanol — twelve modes,
-  among them a soft methyl torsion that is warm at 300 K — made down molbuilder's
-  road by a test helper (`support.real_runs`), its run folder (description,
-  `01_freq/run-0` with the result pair) carried beside the notebook and
-  copied into the notebook's temporary projects tree; the first cell opens it
-  with `vibration(run_folder)` and shows its provenance (`v.run`,
-  `v.result_sha256`, `v.relaxation_calculation`), where the person names a run
-  of their own;
+- **where a person meets it**: in the projects tree's `notebooks/examples/`,
+  where `molbuilder examples` and every installation write molbuilder's
+  example notebooks
+  ([`execution/project-layout.md`](?doc=execution/project-layout.md) § 2.6)
+  and the Jupyter tab opens them. Its kernel is `molbuilder-jupyternb`,
+  molbuilder's source on its path as [`web/jupyter.md`](?doc=web/jupyter.md)
+  § 7 states — frame sets are made there through the toolkit;
+- **its input — a vibration run's folder**: a staggered PySCF methanol —
+  twelve modes, among them a stiff, infrared-active C–O stretch and the soft
+  methyl torsion — its record's temperature 300 K, made down molbuilder's
+  road (`molbuilder describe` → `jobset prep` → `jobset launch`) by
+  `tools/make_example_runs.py` in a projects tree and a configuration of its
+  own, which copies the three files the toolkit reads — the description
+  `task.json`, the run's own record `01_freq/run-0/calcdir.json` and the
+  result `01_freq/run-0/methanol.spectra.json`; no data file, which nothing
+  here reads — into `molbuilder/data/examples/vibration-frames-run/methanol/`,
+  then runs the notebook and saves it with its outputs. The notebook reads
+  that folder from molbuilder's package (`molbuilder.data_dir()`) — never
+  from the person's tree, where it would show as a calculation — and copies
+  it into a temporary projects tree, a new one at each *Run All*. To read a
+  vibration of one's own — in a copy saved under another name, since an
+  example changed is replaced at the next `molbuilder examples` or
+  installation ([`execution/project-layout.md`](?doc=execution/project-layout.md)
+  § 2.6) — `carried` names that calculation's folder (the one holding its
+  `task.json`) and `run_folder` its vibration run; what is this
+  methanol's alone says so where it stands — its mode count, a non-linear
+  molecule with nothing held; the torsion warm against the stiff modes; and
+  its C–O bond, which the stiff mode is found by and the torsion's turn and
+  the map's mirror plane are measured against;
+- **its provenance first**: `vibration(run_folder)` and what it read — `v.run`,
+  `v.result_sha256`, the JSON's, checked against the bytes of the run's
+  result (`postprocess.openable`, the run door's choice), `v.relaxation_calculation`
+  — `None` for a PySCF run, whose deck records no settings — and
+  `v.relaxation_said`, why: every set written of it says it is no transport
+  citation (§ 1);
 - **its output**: every frame set into that temporary tree, so *Run All* runs
   twice;
 - **its numbers computed, never typed**: each mode's $\sigma_T/Q_{\mathrm{zp}}$
-  and thermal quanta at 300 K printed from the run — the torsion's warm width
-  shows a temperature where the stiff modes sit at their zero-point motion;
-- **a model response, said as a model**: $X(Q) = e^{\sum_k a_kQ_k}$ with
-  chosen $a_k$, standing for a property computed at each frame — a curved,
-  lopsided response like the contact bond of
+  and thermal quanta at 300 K from the run, against science § 2d.3's
+  $\sigma^2 = Q_{\mathrm{zp}}^2(2\bar n + 1)$ from CODATA's constants — the
+  torsion, the softest mode, warm where the stiff modes sit at their
+  zero-point motion. The torsion appears **only there**, and its harmonic
+  width is said to be a model, its numbers computed: at its three frames'
+  outer nodes the hydroxyl H turns about the C–O bond by tens of degrees,
+  which the mode's straight-line pattern makes an O–H stretch — a hindered
+  rotation, outside the harmonic picture (science § 7, item 1);
+- **the modes the snapshots move, chosen from the run** *(the user,
+  2026-11-27: "Leave it out")*: every snapshot set moves the stiff modes
+  alone — the modes a frame set is for, a soft one left out of a motion
+  (science § 2e.2, § 2c.5) — by the selection a person makes,
+  `v.mode_selection()` in steps and `v.motion(chain, modes=selection)` (§ 3.1),
+  here every real mode but the torsion found above,
+  `v.mode_selection().drop([k_t])`, never typed; every closed form, the
+  covariance and the model response over the modes it moves, and every move
+  the notebook prints theirs;
+- **the stiff mode, found from the run** *(the user, 2026-11-27: "A stiff
+  mode"; science § 2e.2: the modes a frame set is for are stiff against
+  $k_BT$)*: the C–O stretch, the mode whose motion changes the C–O bond length
+  most per unit $Q$ — $\lvert(\mathbf L_{\mathrm C} - \mathbf L_{\mathrm O})
+  \cdot\hat{\mathbf u}_{\mathrm{CO}}\rvert$ from its eigenvector over the atoms
+  — never typed; its infrared intensity read from the result
+  (`postprocess.infrared_view`); and the harmonic picture read for it — one
+  photon puts well under 1 eV into it, science § 7, item 1's mark, which the
+  torsion passes too: a mark, not a bound — its photon set's largest move and
+  the C–O change it makes printed beside the bond, to be read against it;
+- **a model response, said as a model**: $X(Q) = e^{\sum_k a_kQ_k}$ over the
+  modes the snapshots move, each $a_k = c_k/\sigma_k$ of a chosen $c_k$ — 0.6
+  on the C–O stretch, $\pm 0.15$ on every other. The 0.6 is a model's:
   [`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)
-  § 4.3, whose average over every state has a closed form;
-- **asserts as well as plots**, each against the science (§ 2b.5's rows),
-  each tolerance from the science — for the model response
-  $X(Q)\,X(-Q) = 1$, so a paired set's pair-mean variance is
+  § 4.3's example of a strongly lopsided response, $a\sigma = 0.6$ for a
+  contact bond, put on the stretch the photon excites so the response is
+  curved and lopsided along it — not methanol's tunnelling; read as a decay
+  with the C–O length, $2\kappa = a/\lvert dR_{\mathrm{CO}}/dQ\rvert$, which
+  the notebook prints, a model's number. It stands for a property
+  computed at each frame, its average over every state a closed form (science
+  § 2b.5: a thermal mode's $e^{a^2\sigma^2/2}$; its $n$-quanta row summed over
+  a list's chances, § 2e.1, $\sum_n p_n\,e^{\lambda^2/2}L_n(-\lambda^2)$,
+  $\lambda = aQ_{\mathrm{zp}}$; the molecule's the product of each mode's own);
+- **asserts as well as plots**, each against the science, each tolerance from
+  the science — science § 2e.6's one epsilon where two numbers are one to
+  rounding; CODATA's constants against molbuilder's within $10^{-8}$, which
+  states its zero-point constant to eight figures (science § 2b.1); five
+  standard errors of a statistic whose error the science gives (for the model
+  response $X(Q)\,X(-Q) = 1$, so a paired set's pair-mean variance is
   $\tfrac12(\langle X^2\rangle + 1) - \langle X\rangle^2$, its error known
-  before the draw — and each plot named:
-  - *each mode's draws against its state's density* — thermal, $n$ quanta;
+  before the draw); a draw's distribution function within $10^{-9}$ of its
+  normal number's (science § 2d.5); a rule's remainder past the degree it is
+  exact to — and each plot named:
+  - *each mode's draws against its state's density* — the C–O stretch thermal
+    and with two quanta: each draw the point where its distribution function
+    reaches its normal number's (science § 2d.5), the mean square and the
+    fourth moment science § 2b.3's;
   - *two kinds of quanta side by side* at the same mean — `states.level(1)`,
-    `states.thermal(mean_quanta=1)`: two distributions, two Gauss rules —
-    and *one photon on a warm mode*, `states.thermal(temperature_k=300)
-    .add_quantum()`, against both; *a detected anti-Stokes event*,
+    `states.thermal(mean_quanta=1)`: two distributions, two Gauss rules
+    (science § 2b.4's $0, \pm\sqrt5\,Q_{\mathrm{zp}}$ at 0.4, 0.3, 0.3; the
+    bell curve's $0, \pm3\,Q_{\mathrm{zp}}$ at $\tfrac23, \tfrac16, \tfrac16$)
+    — and *one photon on the C–O stretch*, `states.thermal(temperature_k=300)
+    .add_quantum()`, against both (its mean $2\bar n + 1$, its share in
+    level 1 $1/(\bar n + 1)^2$); *a detected anti-Stokes event*,
     `.remove_quantum()`, and *two events in a row*, a photon then an
-    anti-Stokes event, each against its list (science § 2e.2);
-  - *one snapshot's displacement map*, and the snapshots' displacement of
-    each atom against § 2b.5's covariance;
-  - *the average against its closed form as $N$ grows* — a motion with the
-    torsion set apart at one quantum, each mode's own factor, the merge the
-    user asked for checked end to end, with its error from the pair means;
+    anti-Stokes event, each against its list built from science § 2e.2's
+    rules;
+  - *one snapshot's displacement map*, seen across the C–O bond and along it,
+    this methanol's mirror plane edge-on in both, every atom drawn and
+    labelled, its title saying how much of the largest move each view shows;
+    and the snapshots' displacement of each atom against science § 2b.5's
+    covariance;
+  - *the average against its closed form as $N$ grows* — a motion with *one
+    photon on the C–O stretch* set apart, `with_mode(stretch,
+    states.thermal(temperature_k=300).add_quantum())`, every other mode it
+    moves thermal: the stretch's column the photon's own draws, never a
+    stand-in's,
+    the molecule's average the product of each mode's own factor, its error
+    from the pair means;
   - *an antithetic pair's cancellation*, and `parts` on an odd and an even
-    response;
-  - *a set against its variation in one mode*, one seed: every other mode's
-    column identical, and the difference's error;
-  - *more frames later*: the same seed drawn further (`start=`), written as a
-    set of its own, the two calculations' results put end to end and their
-    error taken together;
-  - *a set written and read back*: `read_frame_set`, its frames and weights as
-    written, the results paired with its frames by the file, item $i$ frame
-    $i$;
-  - *a mode's own set*: two sets against one re-weighted, and `weights_at`
-    against frames placed for the state.
+    response, and on $X$ against science § 5.5's even and odd shares;
+  - *a set against its variation in one mode*, one seed: the photon on the
+    C–O stretch against the thermal set, every other mode's column identical,
+    the difference against the closed forms' with its error, smaller than two
+    seeds give;
+  - *more frames later*: the same seed drawn further (`start=`), each part
+    written as a set of its own, the two calculations' results put end to end
+    with each set's stored weights — frame 0 left out, each set's weights its
+    share of the whole (§ 7's worked lines) — their average and error the one
+    set's of both;
+  - *a set written and read back*: `read_frame_set` reopening its run in the
+    temporary tree, its frames, weights and rows as written
+    (`written_positions_ang`, `rows`), the file's own geometries drawn, the
+    results paired with its frames by the file, item $i$ frame $i$;
+  - *a mode's own set*: the C–O stretch's thermal set and its photon set, each
+    by its own rule, against the thermal set re-weighted to the photon
+    (`weights_at(q, written=…)`, and `weights_for_set` on the set's rows read
+    back): the re-weighting said — the share beyond, exact to degree $m$ at
+    least — and averaging the photon worse than the photon's own set; frames
+    placed for the state weighted for it, its own rule.
+
+**Its test**, `tests/test_vibration_frames_notebook_e2e.py`, runs **every
+notebook molbuilder ships** — this one, and transport's by hand with no run
+of the person's named, its last cells skipped
+([`engines/transport.md`](?doc=engines/transport.md), *The script, and the
+notebook*) — as a person opens it: written into a projects tree of the
+test's own by the door installation asks (`projects.write_examples`), each
+run from its folder there by `nbclient` on `molbuilder-jupyternb`'s own
+Python named by its path (`nbclient` and `nbformat` declared in that env's
+recipe, [`ops/installation.md`](?doc=ops/installation.md) § 3), its kernel's
+environment `jupyter.notebook_environment`'s on a base cleared of
+molbuilder's settings — its saved outputs cleared first, *Run All* twice in
+one kernel, every code cell run with no error, every cell that draws (tagged
+`plot`) drawing its figure, the notebook's own asserts the checks, and the
+tree holding afterwards exactly the examples written, as written. Its saved
+outputs are not compared: they hold the last digits of the numpy the tool ran
+it on, which an upgrade of that env changes with nothing wrong.
 
 ---
 
@@ -863,7 +972,12 @@ refused by name — no weights separate them.
 by `postprocess` as `postprocess.weights_for_set`: the frame set's rows (a
 `frameset.FrameRows`), as `postprocess.frame_rows` reads them from a
 calculation's data file ([`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md)
-§ 3.2); the chain or distribution placed on the oscillator of the set's
+§ 3.2) or a set read back carries them (`read_frame_set(path).rows`, § 5) —
+`frame_rows` the function and the writer's `frame_rows=` keyword one name
+for one thing, the rows each frame states: the function's answer holds them
+in `.frames`, one list of `{name, value, unit, note}` per frame, beside the
+structure's own, the shape the keyword takes, as `Structure.with_frames(…,
+frame_rows=)` does; the chain or distribution placed on the oscillator of the set's
 mode, at its `frequency_cm1` and in its `zero_point_amplitude_amu12_ang` (§ 2's
 binding, without the molecule: the rows state the mode), each frame's
 coordinate read from the rows, frame 0's included; the weights by the
@@ -971,7 +1085,8 @@ bound distribution the generic one in $Q$, its moments against the closed
 forms, its frames and its draws on the mode's own stream; `weights_at`,
 the motion — its background bound to every
 mode, a mode set apart and the temperature it takes — and its snapshots, the
-modes chosen in steps, beside the modes' own rows), `tests/test_vibration_frames.py` (the vocabulary's unit rule, a set that
+modes chosen in steps, a held atom still in every snapshot, beside the modes'
+own rows), `tests/test_vibration_frames.py` (the vocabulary's unit rule, a set that
 records no state, `weights_for_set` — a set's
 own state its own rule, an even rule's set at its own state saying nothing
 of another (`test_an_even_rules_set_at_its_own_state_says_nothing_of_another`),
@@ -980,7 +1095,8 @@ place,
 `tests/test_row_units.py`; the writer and the reader — each recipe's kind of
 set — a mode's own set in each state, a scaled one, snapshots with modes set
 apart, classical, scaled, of some modes, of modes chosen in steps — written with
-its rows and read back as written, a snapshot set's motion whole (its words,
+its rows and read back as written, its rows on it and a mode's own set's
+weights from them its state's own (`weights_for_set`), a snapshot set's motion whole (its words,
 the modes set apart, the steps that chose its modes, drawn again the same), a mode set's derived rows against § 2b.3's closed
 forms, a person's frames and a person's set in the vocabulary's names, the
 refusals and what is said, the outermost move the written row's and its
@@ -1002,7 +1118,7 @@ notebook's run (§ 6.1):
 | what | the test |
 |---|---|
 | each state's drawing | its sample moments and distribution against the state's closed form — a two-sided Kolmogorov test against `cdf`; one normal number per draw for every state, from the mode's own stream; one photon on a warm mode among them |
-| the motion's draws | § 2b.5's covariance of the snapshots' coordinates and atom moves |
+| the motion's draws | § 2b.5's covariance of the snapshots' coordinates and atom moves; a held atom still in every snapshot, bit for bit, and written so (`test_snapshots_keep_a_held_atom_still`) |
 | antithetic pairs | each pair's coordinates sum to zero; a response odd in $Q$ averages to zero exactly; the pair-mean error against the true error of an even and an odd response; `parts` splitting them |
 | the seed | the same seed, the same frames; `sample(2N)` beginning with `sample(N)`; `start=`; a mode set apart leaves every other mode's column unchanged |
 | the modes chosen | a selection's steps in order — a window, only, add, drop — each acting on what the step before left, `only` keeping of those only the modes listed; the same steps in another order the same list where they commute; an empty selection, a mode the result has none of, a window backwards, and another vibration's selection refused by name (`test_the_modes_that_move_are_chosen_in_steps`, `test_a_mode_selection_that_moves_nothing_is_refused_by_name`) |
@@ -1012,7 +1128,8 @@ notebook's run (§ 6.1):
 | the records | a set written and read back bound again — its state, words, mean, spread and own frames; the § 5 example's `info.state` exactly; a distribution's and a chain's record made again; a set that records none read without its state, said once |
 | the indexing | every analysis on one value per frame, frame 0 first, the same in memory and read back; `standard_error` and `parts` leaving frame 0 out |
 | the weights | every analysis at the weights the set stores — a snapshot set read back weighing each frame as its file does, its average and error the statistics' own at them; the statistics' mean and error at weights of their own, a value at weight 0 adding nothing, the weights refused by name where they are not one finite number per value, 0 or more, summing to 1; the writer refusing a person's weights off 1, the reader a set whose weights break the rule, re-weighting refusing rows whose own weights break it |
-| the frame set | written and read back through the structure's door: frames, weights, every row with its meaning, a prepended frame 0's rows at 0; a person's frames whose first is the relaxed geometry written without a second copy |
+| the frame set | written and read back through the structure's door: frames, weights, every row with its meaning, a prepended frame 0's rows at 0, a set read back carrying its rows as written (`rows`); a person's frames whose first is the relaxed geometry written without a second copy |
+| the example notebook | `tests/test_vibration_frames_notebook_e2e.py`: every notebook molbuilder ships, written into a tree of the test's own as installation writes it and run there twice in one kernel on `molbuilder-jupyternb`'s own Python — its asserts against the science on a real PySCF run (§ 6.1) holding, every code cell run with no error, every figure drawn, the tree holding exactly the examples written |
 
 ---
 
@@ -1777,8 +1894,8 @@ said        = ()  — the words whoever reads the points by says of them: a fram
               vibration.weights_of_frames (§ 7) — the one weights result
 ```
 
-Frames re-weighted are exact only to degree $m-1$ ($m$ for an odd number of
-symmetric frames), against $2m-1$ for a state's own frames — so a change of
+Frames re-weighted are exact to degree $m-1$ at least ($m$ for an odd number of
+symmetric frames, `exact_to_degree` the degree reached), against $2m-1$ for a state's own frames — so a change of
 state read from one set needs five frames at least (science § 6).
 
 ```python

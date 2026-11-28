@@ -978,6 +978,14 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   of the user's junction, its frequency and the move of the atom that moves
   most (`tests/spectra/test_what_a_temperature_means.py`, `_mode_48`) —
   arithmetic on the contract's numbers, no other atom of it read.
+  **A carried run**, the example notebook's
+  ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 6.1):
+  `tests/test_vibration_frames_notebook_e2e.py` runs the notebook as
+  molbuilder ships it, on the PySCF methanol run molbuilder carries in its
+  package — made down the road by `tools/make_example_runs.py`, not in the
+  test's session — because the notebook a person opens reads that folder,
+  and the test is the notebook's. A release whose reader stops reading that
+  result fails it until the tool makes the run again.
 - **API tests check what molbuilder prepares; end-to-end tests make the run**
   *(user, 2026-10-04: "you have to rely on more api and framework test rather
   than fucking e2e test. e2e test is only necessary when i say so";

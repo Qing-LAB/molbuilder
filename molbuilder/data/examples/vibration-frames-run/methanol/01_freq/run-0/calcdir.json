@@ -1,0 +1,5 @@
+{
+  "schema": "molbuilder/calcdir@1",
+  "role": "run",
+  "of": "../.."
+}

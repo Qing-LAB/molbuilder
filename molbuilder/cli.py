@@ -1860,6 +1860,35 @@ def _indices(text: str):
                                  f"comma-separated (0,5)")
 
 
+@cli.command("examples",
+             short_help="molbuilder's example notebooks, written into the "
+                        "projects tree's notebooks/examples")
+def cmd_examples():
+    """Write molbuilder's example notebooks into the projects tree's
+    notebooks/examples/ -- each as molbuilder ships it, the current version
+    in place of the one there -- and say what was done to each: written,
+    replaced, or kept where it is the shipped one already.  A file there that
+    molbuilder does not ship is left alone; keep an example you change under
+    another name.  Every installation does the same (``envs init-config``,
+    which ``envs bootstrap`` runs); the Jupyter tab opens them there.
+
+    Example::
+
+        molbuilder examples
+    """
+    from .projects import examples_dir, write_examples
+    where = examples_dir()
+    try:
+        written = write_examples()
+    except OSError as exc:
+        raise click.ClickException(
+            f"molbuilder's example notebooks could not be written into "
+            f"{where}: {exc.strerror or exc}") from None
+    click.echo(f"molbuilder's example notebooks, in {where}:")
+    for done in written:
+        click.echo(f"  {done.path.name}: {done.said}")
+
+
 @cli.command("atom-index",
              short_help="which index a file's atoms are listed by, and both "
                         "indices of each")

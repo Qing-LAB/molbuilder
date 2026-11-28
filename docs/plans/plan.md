@@ -12,7 +12,7 @@ at 2.77.23 is [`archive/2026-11-22-plan-consolidation.md`](?doc=archive/2026-11-
 
 ## ▶ Where we are *(2026-11-27)*
 
-**2.87.0.** F0–F11 and F7a are closed (2.56.2–2.77.2). F12, *Proven*,
+**2.88.0.** F0–F11 and F7a are closed (2.56.2–2.77.2). F12, *Proven*,
 walked its three roads in the browser on real runs and ran the full batch
 (6106 fast and 805 e2e tests, none failed, at 2.77.2); its two review rounds
 ([`archive/audits/2026-11-18-f12-review/`](?doc=archive/audits/2026-11-18-f12-review/TRIAGE-round1.md))
@@ -20,7 +20,7 @@ sorted every finding into the releases below. **The finish plan** *(the
 user, 2026-11-19: "a consolidated plan to get things finished, not to drag
 things along")*: five releases, R1–R5, each with its review rounds. R1 and R2
 are done; R3, one home per fact on the server side, grew from one release
-into parts as reviews and the user's decisions added work, twenty-two of them
+into parts as reviews and the user's decisions added work, twenty-three of them
 shipped:
 
 | version | part | what it did | record |
@@ -50,6 +50,7 @@ shipped:
 | 2.85.1 | R3d2b2b4b, the clean-up | the baseline review of 2.85.0: transport's assumptions split by owner, the science chapter naming each step's call, the oscillator's mechanics in one home, a chain built by hand checked, a set read back said where its state does not bind; what `level(n)` and `.add_quantum()` are, said plainly | `fix28-review.md` |
 | 2.86.0 | R3d2b2b4b, the weights | every frame's weight required and their sum 1, refused by name otherwise wherever frames are averaged or cited; the weights assigned (`with_weights`, `equal_weights`); every analysis on the weights a set stores; a finished calculation's frames averaged at a person's own weights (`postprocess.averaged_at`) | `fix29-review.md` |
 | 2.87.0 | R3d2b2b4b, the older files | every reader at its current version, an older file refused by name with its way on (vibration results before 2026-11-23, structure pairs and the calculations holding them before 2026-11-04); a file that does not read one refusal, said at the command line's and the web server's edge, each family of files with its own way on | `fix30-review.md` |
+| 2.88.0 | R3d2b2c | the example notebook on a carried PySCF methanol vibration — every number computed, every check against the science, one photon on the C–O stretch, the soft torsion left out of every motion; molbuilder's examples in the projects tree's `notebooks/examples/` by every installation and `molbuilder examples`; a frame set read back carrying its rows; a result recording no machine's name | `fix31-review.md` |
 
 Records: `archive/audits/2026-11-18-f12-review/fix<N>-review.md`. Since
 2.77.23 the host env holds `molbuilder-source.pth` on the development machine
@@ -278,25 +279,12 @@ and an API reviewer** *(the user, 2026-11-23)*.
   *(the user, 2026-11-26: "Drop all as asked"; "Everything before
   2026-11-04")*, and a file that does not read one refusal said at the edges,
   each family's way on *(2026-11-27)* — built in 2.87.0;
-  then **R3d2b2c, the example notebook**
-  and its test, on the toolkit as decided:
-  - **`vibration`, carried from § 2d's review**: no test draws snapshots
-    with a held atom (`science/vibrational-averaging.md` § 2d.7 item 3).
-  - **`vibration_frames`, carried, still open**: each row's meaning
-    for its kind of set (the vocabulary states one meaning a row); `FrameRows`' rows beside
-    a recipe's set read back (a `FrameSet` carries them); `frame_rows` the
-    function beside the writer's `frame_rows=` keyword. **No call of `vibration`
-    reaches it.**
-  - **Tests** (the toolkit's rows of `tests/test_vibration_frames.py`, the
-    doors' of `tests/test_vibration_mechanics_e2e.py` and
-    `tests/test_spectrum_results_e2e.py` are built, 2.82.0 and 2.83.0): the
-    notebook's run (`tests/test_vibration_frames_notebook_e2e.py`, on
-    `molbuilder-jupyternb`'s Python).
-  - **The example notebook** `docs/engines/vibration-frames.ipynb` on a PySCF
-    methanol run folder the repository carries beside it — made down the
-    road by a test helper (`support.real_runs`) — its kernel
-    `molbuilder-jupyternb` ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
-    § 6.1; `web/jupyter.md`, `ops/installation.md`).
+  then **R3d2b2c, the example notebook** *(the user, 2026-11-23)* — built in
+  2.88.0 with its test, the examples folder and `molbuilder examples`
+  *(2026-11-27)*; the carried items closed there (a held atom in
+  snapshots tested; a set read back carrying its rows; each row's meaning
+  and the name `frame_rows` kept, said in `engines/vibration-frames.md`
+  § 5.1 and § 7).
 - **R3d2c** — the probe at the frame rule's nodes (§ 6.11 § 4; § 9 items 1,
   5, 6) with the PySCF deck changes below.
 - **R3d2d** — the force constants stored and `with_masses` (§ 9 item 3),
@@ -435,7 +423,7 @@ and an API reviewer** *(the user, 2026-11-23)*.
 
 ## Waiting on the user
 
-- **Next**: the answers to the questions each release of R3d2 brings (the notebook).
+- **Next**: R3d2c, the probe — and the amplitude check beside the energy mark (a mode's frames read against its bonds), the user's to decide at that release.
 - At their releases: R3f's Prep-as-a-process
   design, the side rail's change after measuring, and deletions #6, #26; R4's
   selection-route design and MolView's atom filter; every deletion, listed

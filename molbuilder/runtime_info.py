@@ -26,14 +26,15 @@ The rule it keeps -- no oversubscription, and the run says what it did.  A
 
 What a run records about itself is :func:`runtime_facts` -- the
 :data:`RUNTIME_INFO_KEYS` -- which the result writers copy into the files
-the Results tab reads, so a run shows the same CPU / GPU / host rows
-whichever engine ran it.
+the Results tab reads, so a run shows the same CPU / GPU rows whichever
+engine ran it.  Never the machine's name (the user, 2026-11-27: "Keep host
+names out"): a result is shared and kept, and which machine a run ran on is
+the run's own records' -- its session log (`engines/vibration.md` § 6.2).
 """
 from __future__ import annotations
 
 import importlib
 import os
-import socket
 import re
 from typing import List, Mapping, Optional, Tuple
 
@@ -55,7 +56,6 @@ RUNTIME_INFO_KEYS = (
     "gpu_name",               # str: GPU device name OR fallback-reason string
     "gpu_compute_capability", # str: e.g. "8.9" (None if no GPU)
     "cuda_version",           # str: e.g. "12.4" (None if no GPU)
-    "hostname",               # str: socket.gethostname()
 )
 
 
@@ -209,7 +209,8 @@ def runtime_facts(threads: int, physical_cores: int, *,
     :data:`RUNTIME_INFO_KEYS` -- read after :func:`cap_threads`, whose
     variables it reports.  The script keeps it as ``_RUNTIME_INFO`` and adds
     to it; the result writers (the progress log's header, the spectrum's
-    file) copy it out.  The GPU's four are :func:`probe_gpu`'s to fill."""
+    file) copy it out -- no machine's name among it, the run's own records
+    keeping that.  The GPU's four are :func:`probe_gpu`'s to fill."""
     return {
         "n_threads_pyscf": int(threads),     # read again after PySCF loads
         "n_threads_omp": int(os.environ["OMP_NUM_THREADS"]),
@@ -223,7 +224,6 @@ def runtime_facts(threads: int, physical_cores: int, *,
         "gpu_name": None,
         "gpu_compute_capability": None,
         "cuda_version": None,
-        "hostname": socket.gethostname(),
     }
 
 

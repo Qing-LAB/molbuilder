@@ -202,9 +202,10 @@ temperature**, the same seed — so the two differ by mode 7's draw alone
 § 5.5). After a transport calculation over a snapshot set, its average and that
 average's error are read from its data file, the pairs' means giving the
 error ([`engines/transport-postprocessing.md`](?doc=engines/transport-postprocessing.md)
-§ 3.2). The example notebook, `docs/engines/vibration-frames.ipynb` *(to
-build, R3d2b2c)*, runs each of these on a vibration result and checks each
-against the science ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 6.1).
+§ 3.2). The example notebook, `vibration-frames.ipynb` — molbuilder's own, in
+the projects tree's `notebooks/examples/` — runs the pieces of the toolkit
+its contract lists on a vibration result and checks each against the science
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 6.1).
 
 ## 3. The infrared and the Raman
 

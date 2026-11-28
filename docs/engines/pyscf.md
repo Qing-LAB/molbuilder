@@ -509,7 +509,7 @@ prefix, so there's no column-width fragility:
 # created: <ISO8601 local timestamp>
 # frozen_atoms: <i> <j> ...              # optional -- the atoms the run holds, by engine index, from 0
 # atom_index_map: {"atoms_listed_by": "engine_index", ...}   # optional -- which index the log's atoms are listed by (model/overview.md § 2.2b)
-# runtime.<key>: <value>                 # optional, repeated (threads, gpu, host, ...)
+# runtime.<key>: <value>                 # optional, repeated (threads, cores, gpu, ...) -- never the machine's name (engines/vibration.md § 6.2)
 # convergence.<token>.<key>: <value>     # optional, repeated -- the stage's targets, under its token
 
 ==== molwatch step 0 begin ====          # step 0 = the initial-state PREVIEW

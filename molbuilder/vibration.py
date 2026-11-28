@@ -316,9 +316,11 @@ class Frames:
     set read back without its vibration or its state); ``positions_ang``
     each frame's geometry, every atom at ``R + Q L`` (frames x atoms x 3);
     ``read_said`` what reading a written set back said of it
-    (`vibration_frames.read_frame_set`), first in :attr:`said`, and
+    (`vibration_frames.read_frame_set`), first in :attr:`said`;
     ``read_mode`` the mode a set read back without its vibration states it
-    is of."""
+    is of; and ``rows`` a set read back's rows as written -- the structure's
+    own reader's (`frameset.FrameRows`), which the reader fills and this
+    module only stores -- ``None`` on a set made in memory, written or not."""
     q_amu12_ang: np.ndarray
     weights: np.ndarray
     exact_to_degree: int
@@ -327,6 +329,7 @@ class Frames:
     positions_ang: Optional[np.ndarray] = field(default=None, repr=False)
     read_said: Tuple[str, ...] = field(default=(), repr=False)
     read_mode: Optional[int] = field(default=None, repr=False)
+    rows: Optional[Any] = field(default=None, repr=False)
 
     @property
     def mode_index_1based(self) -> np.ndarray:
@@ -1412,7 +1415,11 @@ class Snapshots:
     ``None`` for a set read back without its vibration, or one whose
     recorded motion does not bind again (`vibration_frames.read_frame_set`): ``written_positions_ang`` its
     geometries as written, its analyses whole, its moves from those
-    geometries."""
+    geometries.  A set read back carries ``written_weights``, the weights
+    its file states, and ``rows``, its rows as written -- the structure's
+    own reader's (`frameset.FrameRows`), which the reader fills and this
+    module only stores; both ``None`` on a set made in memory, written or
+    not."""
     motion: Optional[Motion] = field(repr=False)
     mode_index_1based: np.ndarray = field(repr=False)
     q_amu12_ang: np.ndarray = field(repr=False)
@@ -1423,6 +1430,7 @@ class Snapshots:
                                                         repr=False)
     read_said: Tuple[str, ...] = field(default=(), repr=False)
     written_weights: Optional[np.ndarray] = field(default=None, repr=False)
+    rows: Optional[Any] = field(default=None, repr=False)
 
     @property
     def samples(self) -> int:

@@ -517,7 +517,7 @@ write. A frame set for transport is never made **with `ase`**
 made through molbuilder's own Structure API — the motion toolkit
 ([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)), which
 imports with this env's packages and so makes frame sets here, as its example
-notebook does *(the notebook to build, R3d2b2c)*, or a person's script, `with_frames` and `set_customized` —
+notebook does, or a person's script, `with_frames` and `set_customized` —
 written by the codec with its sidecar (`model/structure.md` § 2.2e). A file `ase` writes carries no
 sidecar, and its comment line is never metadata
 ([`model/structure.md`](?doc=model/structure.md) § 2.3), so it reads as atoms
@@ -538,6 +538,17 @@ checkout, `import molbuilder` fails in this env; with the source on the path,
 files' readers import.)* **The layer imports with this env's packages** —
 numpy, netCDF4, sisl and xarray, the recipe's (xarray listed for its own reason — the user's yes, 2026-10-23) — and a reader that needs more is not part of
 it.
+
+**And molbuilder's example notebooks**, in the projects tree's
+`notebooks/examples/` (their one rule,
+[`execution/project-layout.md`](?doc=execution/project-layout.md) § 2.6): the
+tab opens them there — Lab's file browser starts at the projects root, its
+`root_dir` (§ 4.3) — each on this env's kernel: the motion toolkit's on a
+vibration run molbuilder carries
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 6.1),
+transport's by hand on a model chain and on a transport calculation of the
+person's ([`engines/transport.md`](?doc=engines/transport.md), *The script,
+and the notebook*).
 
 **It still holds no calculation engine** — no `pyscf`, `siesta` or `rdkit`.
 Running one from a notebook would be a second place to run a calculation,

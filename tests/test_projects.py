@@ -144,12 +144,15 @@ def test_list_projects_skips_invalid_names_with_warning(tmp_path, caplog):
 
 
 def test_the_trees_own_folders_are_no_project(tmp_path, caplog):
-    """The tree's pseudopotential library and molbuilder's hidden workspace
-    folder sit beside the projects: neither is listed as one, and neither is
-    warned about, since nobody named them wrongly."""
+    """The tree's pseudopotential library, its `notebooks/` -- molbuilder's
+    example notebooks' folder (`job-contracts.md` § 2.5, `project-layout.md`
+    § 2.6) -- and molbuilder's hidden workspace folder sit beside the
+    projects: none is listed as one, and none is warned about, since nobody
+    named them wrongly."""
     import logging
     root = tmp_path / "projects"
-    for name in ("pseudopotential", ".molbuilder_workspace", "mine"):
+    for name in ("pseudopotential", "notebooks", ".molbuilder_workspace",
+                 "mine"):
         (root / name).mkdir(parents=True)
     with caplog.at_level(logging.WARNING, logger="molbuilder.projects"):
         assert list_projects(base=tmp_path) == ["mine"]

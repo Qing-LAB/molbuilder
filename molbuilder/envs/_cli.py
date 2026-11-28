@@ -2093,7 +2093,8 @@ def _render_init_config(steps: "Iterable") -> None:
         # authored, corrected; molbuilder.json, a key given -- neither
         # "appeared" nor "was already right", and rendering it as `=` would
         # report a file that just CHANGED as one that did not.
-        mark = "+" if step.created else ("~" if step.rewritten else "=")
+        mark = ("+" if step.created else "~" if step.rewritten
+                else "!" if step.action == "not written" else "=")
         click.echo(f"  {mark} {step.path}")
         if step.note:
             click.echo(f"      {step.note}")
@@ -2294,6 +2295,9 @@ def cmd_init_config(activation: "Optional[str]", probe: bool,
       <config dir>/environments/     0700 -- records for machines you prep FOR
       <config dir>/environment.json  this machine, probed -- carrying a
                                      copy of `env_init`
+      <projects>/notebooks/examples/ molbuilder's example notebooks, the
+                                     current version in place of the one
+                                     there (``examples`` writes them alone)
 
     Two things are ASKED, never detected, because install time is the one
     moment the answer is known: how this machine enters a conda env, and where

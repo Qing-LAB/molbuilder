@@ -22,7 +22,6 @@ just as happily against a module that wrote its file to the wrong directory.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import stat
 
 import pytest
@@ -43,13 +42,15 @@ def _the_gate():
 
 
 @pytest.fixture
-def fresh(tmp_path, monkeypatch):
+def fresh(tmp_path, monkeypatch, isolated_projects_root):
     """A machine that has never run molbuilder -- returns its config dir.
 
     Isolated by ``XDG_CONFIG_HOME``, which the suite-wide
     ``config_root_is_never_the_developers`` fixture deliberately leaves working
     (it clears the ``MOLBUILDER_CONFIG_DIR`` override rather than pinning it,
-    so a test's own arrangement still decides).
+    so a test's own arrangement still decides) -- and its projects tree a
+    tree of the test's own (``isolated_projects_root``), where the seeding
+    writes molbuilder's example notebooks (`ops/installation.md` § 2.1).
     """
     root = tmp_path / "xdg"
     root.mkdir()
@@ -94,6 +95,64 @@ def test_the_seeded_file_is_read_by_the_real_reader(fresh):
     read_config(fresh / CONFIG_FILENAME)            # refuses -> raises
     assert _the_gate().env_init == {
         "activation": "conda activate", "preamble": "module load mamba"}
+
+
+def test_seeding_writes_molbuilders_examples_into_the_projects_tree(
+        fresh, isolated_projects_root):
+    """`ops/installation.md` § 2.1, `execution/project-layout.md` § 2.6 (the
+    user, 2026-11-27: "all installation will cleanly put the correct version
+    there"): `envs init-config` -- the seeding `bootstrap` runs -- writes
+    every example notebook molbuilder ships into the projects tree's
+    `notebooks/examples/`, as shipped, and says each, by the one door
+    `molbuilder examples` asks.  THE SILENT FAILURE: an installed machine
+    whose Jupyter tab opens on no example, or on one an older molbuilder
+    wrote."""
+    from click.testing import CliRunner
+    from molbuilder import data_dir
+    from molbuilder.envs._cli import envs_group
+    shipped = sorted((data_dir() / "examples").glob("*.ipynb"))
+    assert shipped, "molbuilder ships no example notebook"
+    r = CliRunner().invoke(envs_group, ["init-config", "--no-probe", "--yes"])
+    assert r.exit_code == 0, r.output
+    examples = isolated_projects_root / "notebooks" / "examples"
+    for source in shipped:
+        assert (examples / source.name).read_bytes() == source.read_bytes()
+        assert str(examples / source.name) in r.output, r.output
+
+
+def test_a_tree_that_cannot_be_written_is_said_and_the_seeding_finishes(
+        fresh, tmp_path, monkeypatch):
+    """`execution/project-layout.md` § 2.6, `configuration.md` § 3.2: the
+    examples are the seeding's last step and never fatal -- a declared tree
+    under a folder that cannot be written (0555) leaves `molbuilder.json` and
+    this machine's record written, the examples' line saying the tree could
+    not be written and naming `molbuilder examples`, and the command
+    finishing.  THE SILENT FAILURE: an installation stopped -- its record
+    never probed -- by a projects tree it could not write into."""
+    from click.testing import CliRunner
+    from molbuilder.envs._cli import envs_group
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from molbuilder.runtime_config import machine_config_path
+    from molbuilder.scheduler import machine_scope_path
+    monkeypatch.delenv(PROJECTS_ROOT_ENV)
+    shut = tmp_path / "shut"
+    shut.mkdir()
+    shut.chmod(0o555)
+    try:
+        r = CliRunner().invoke(envs_group, [
+            "init-config", "--projects", str(shut / "projects"), "--yes"])
+    finally:
+        shut.chmod(0o755)
+    assert r.exit_code == 0, (r.output, r.exception)
+    assert machine_config_path().is_file() and machine_scope_path().is_file()
+    lines = r.output.splitlines()
+    said = [i for i, line in enumerate(lines) if "could not be written" in line]
+    assert said and "examples" in lines[said[0]], r.output
+    # THE LAST STEP: said after this machine's record, which it never stops.
+    record = [i for i, line in enumerate(lines)
+              if str(machine_scope_path()) in line]
+    assert record and record[-1] < said[0], r.output
+    assert not (shut / "projects").exists()
 
 
 # ══ IT NEVER OVERWRITES ════════════════════════════════════════════════════
@@ -286,23 +345,28 @@ def test_bootstrap_says_up_front_what_the_seeding_will_need(
         assert says in said, said
 
 
-def test_what_the_file_says_is_not_asked_again(fresh):
+def test_what_the_file_says_is_not_asked_again(fresh, tmp_path, monkeypatch):
     """`configuration.md` § 3.2: "Nothing a file already declares is asked
     again" -- run with no terminal answer and no --yes, as a re-run is; the
-    tree is still said.
+    tree is still said.  The tree the file declares answers where the tree
+    is (no `$MOLBUILDER_PROJECTS`), so molbuilder's examples land in it
+    (`installation.md` § 2.1).
 
     THE SILENT FAILURE: a re-run asking what the file states, its answer
     then dropped -- and under a batch step, the question aborting it."""
     from click.testing import CliRunner
     from molbuilder.envs._cli import envs_group
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    monkeypatch.delenv(PROJECTS_ROOT_ENV)
+    declared = tmp_path / "scratch" / "projects"
     fresh.mkdir(parents=True)
     (fresh / CONFIG_FILENAME).write_text(json.dumps(
         {"env_init": {"activation": "source activate"},
-         "paths": {"projects": "/scratch/someone/projects"}}))
+         "paths": {"projects": str(declared)}}))
     result = CliRunner().invoke(envs_group, ["init-config", "--no-probe"],
                                 input="")
     assert result.exit_code == 0, result.output
-    assert "/scratch/someone/projects" in result.output, result.output
+    assert f"projects  {declared}" in result.output, result.output
 
 
 # ══ WHAT IT WRITES, AND WHAT IT REFUSES TO WRITE ═══════════════════════════
@@ -523,29 +587,37 @@ def test_the_seeded_template_loads_and_names_every_section(fresh):
         assert retired not in doc and retired not in cfg, retired
 
 
-def test_a_declared_projects_root_is_written_and_reported(fresh):
+def test_a_declared_projects_root_is_written_and_reported(fresh, tmp_path,
+                                                         monkeypatch):
     """`paths.projects` is written when declared, and the resolver then names
-    the config as its source -- which is what every surface prints."""
-    from molbuilder.projects import projects_root_with_source
-    initconfig.init_config("conda activate", probe=False,
-                           projects=Path("/scratch/someone/projects"))
+    the config as its source -- which is what every surface prints; no
+    `$MOLBUILDER_PROJECTS` answering before it."""
+    from molbuilder.projects import PROJECTS_ROOT_ENV, projects_root_with_source
+    monkeypatch.delenv(PROJECTS_ROOT_ENV)
+    declared = tmp_path / "scratch" / "projects"
+    initconfig.init_config("conda activate", probe=False, projects=declared)
 
     doc = json.loads((fresh / CONFIG_FILENAME).read_text())
-    assert doc["paths"]["projects"] == "/scratch/someone/projects"
+    assert doc["paths"]["projects"] == str(declared)
     resolved = projects_root_with_source()
-    assert resolved.path == Path("/scratch/someone/projects")
+    assert resolved.path == declared
     assert "paths.projects" in resolved.source, (
         f"the source must name the config, not just the path: {resolved}")
 
 
-def test_no_declared_projects_root_leaves_the_default_and_says_so(fresh):
+def test_no_declared_projects_root_leaves_the_default_and_says_so(
+        fresh, monkeypatch):
     """The default is the right answer on a workstation -- but the source must
-    say it IS the default, so nobody has to believe it."""
-    from molbuilder.projects import projects_root_with_source
+    say it IS the default, so nobody has to believe it.  The whole seeding,
+    its examples written into the test's own tree (`$MOLBUILDER_PROJECTS`,
+    `fresh`'s): `paths` left empty; then, that override gone, the resolver
+    names the default -- the developer's own tree, which no test writes."""
+    from molbuilder.projects import PROJECTS_ROOT_ENV, projects_root_with_source
     initconfig.init_config("conda activate", probe=False)
 
     doc = json.loads((fresh / CONFIG_FILENAME).read_text())
     assert doc["paths"] == {}, "left empty, not guessed at"
+    monkeypatch.delenv(PROJECTS_ROOT_ENV)
     assert "default" in projects_root_with_source().source
 
 

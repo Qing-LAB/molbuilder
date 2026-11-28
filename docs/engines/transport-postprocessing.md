@@ -155,7 +155,7 @@ toolkit's, stated once ([`engines/vibration-frames.md`](?doc=engines/vibration-f
 ...)`): the set re-weighted to its own state is not said to reach short
 or to be blind (science § 5.4's items 1 and 2), frames placed for another
 motion are; a weight below zero is said of any frames. **Frames re-weighted are
-exact only to degree $m-1$** ($m$ for an odd number of symmetric frames and
+exact to degree $m-1$ at least** ($m$ for an odd number of symmetric frames and
 a symmetric state): one mode's change of state read from one set
 re-weighted needs five frames at least, or two sets, one per state
 ([`science/vibrational-averaging.md`](?doc=science/vibrational-averaging.md)

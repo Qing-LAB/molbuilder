@@ -185,8 +185,8 @@ runs at the end of a first install (§ 3.2;
 [`ops/installation.md`](?doc=ops/installation.md) § 2.1). Every reader treats an
 absent file as unset, so the directory need not exist; but the activation has
 no default, and a machine with none is refused before any run script is written
-(§ 4). The seeding never overwrites a file a person wrote; what it may write
-into one is § 3.2's.
+(§ 4). The seeding never overwrites a file a person wrote in the config
+directory; what it may write into one is § 3.2's.
 
 ### 2.1d Operational state — `$XDG_STATE_HOME` and `$XDG_RUNTIME_DIR`
 
@@ -560,7 +560,11 @@ outside `secrets/`. Text a person reads derives from the same table:
 end. It seeds the config directory at `0700`; `molbuilder.json` at `0600`, as a
 template — every section that can be empty present and empty, each with a
 `_`-prefixed comment saying who fills it; `secrets/` and `environments/` at
-`0700`; and this machine's `environment.json` from the probe.
+`0700`; and this machine's `environment.json` from the probe — then, last,
+molbuilder's example notebooks into the projects tree, by their own rule
+([`execution/project-layout.md`](?doc=execution/project-layout.md) § 2.6):
+the version molbuilder ships put in place of the one there, and a tree that
+cannot be written said as `not written` and the seeding finished.
 
 **Two values are asked, never detected**, because install time is the one
 moment the answer is known: the **activation** (no default), written as
@@ -568,9 +572,9 @@ moment the answer is known: the **activation** (no default), written as
 `paths.projects` (its default is inside the checkout). `--yes` takes both
 defaults and prints them.
 
-**It never overwrites a file a person wrote.** Every step reports `created`,
-`kept` or `rewritten`: a file that is there is reported and left, with three
-exceptions — molbuilder's own two READMEs, rewritten when their text is out of
+**In the config directory, it never overwrites a file a person wrote.** Every
+step there reports `created`, `kept` or `rewritten`: a file that is there is
+reported and left, with three exceptions — molbuilder's own two READMEs, rewritten when their text is out of
 date; a question your `molbuilder.json` does not answer — its activation, its
 projects tree — which gains the answer given; and a value you type on the
 command line, `--activation` or `--projects`, which replaces its one key in your

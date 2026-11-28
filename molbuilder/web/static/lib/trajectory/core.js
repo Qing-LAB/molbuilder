@@ -1610,7 +1610,6 @@ import { outcome } from "../validation-findings.js";
                 ? (mb / 1024).toFixed(mb % 1024 === 0 ? 0 : 1) + " GB"
                 : mb + " MB");
         }
-        if (rt.hostname) parts.push(rt.hostname);
         // SIESTA's build and solver, as its output states them -- the
         // build header and the `diag:` lines, read through the SIESTA
         // family's table (`siesta_grammar`).  Absent on PySCF runs and on

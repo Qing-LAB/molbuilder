@@ -1666,7 +1666,7 @@ def test_bootstrap_that_could_not_seed_the_config_exits_nonzero(monkeypatch):
         f"cause is its own defect:\n{result.output}")
 
 
-def test_bootstrap_runs_install_for_each_conda_only_recipe(monkeypatch):
+def test_bootstrap_runs_install_for_each_conda_only_recipe(monkeypatch, isolated_projects_root):
     """Default invocation: install the DEFAULT STACK and nothing a recipe
     says is opt-in.
 
@@ -1713,7 +1713,7 @@ def test_bootstrap_runs_install_for_each_conda_only_recipe(monkeypatch):
             f"default; needs --include-source-builds.")
 
 
-def test_bootstrap_include_source_builds_adds_them(monkeypatch):
+def test_bootstrap_include_source_builds_adds_them(monkeypatch, isolated_projects_root):
     """``--include-source-builds`` opts the user into the source-build
     recipes too -- the default stack plus every source build."""
     _bind()  # caps with empty conda_envs set
@@ -1752,7 +1752,7 @@ def test_bootstrap_include_source_builds_adds_them(monkeypatch):
     )
 
 
-def test_bootstrap_skips_existing_envs_by_default(monkeypatch):
+def test_bootstrap_skips_existing_envs_by_default(monkeypatch, isolated_projects_root):
     """When ``--skip-existing`` is the default and the env already
     exists in caps, ``run_install`` is not called for that recipe.
     This keeps bootstrap idempotent (safe to re-run)."""
@@ -1789,7 +1789,7 @@ def test_bootstrap_skips_existing_envs_by_default(monkeypatch):
     assert set(install_calls) == set(remaining)
 
 
-def test_bootstrap_runs_doctor_at_end(monkeypatch):
+def test_bootstrap_runs_doctor_at_end(monkeypatch, isolated_projects_root):
     """At the end of every bootstrap run (whether installs ran or
     everything was skipped), doctor must run to verify env health.
     This is the user-facing smoke-check promise of the bootstrap CLI.
@@ -1902,7 +1902,8 @@ def test_doctor_s_host_check_does_not_count_the_checkout_it_stands_in(
 @pytest.mark.parametrize("dry_run", [False, True], ids=["bootstrap",
                                                        "dry-run"])
 def test_bootstrap_points_the_host_env_at_this_checkout(
-        monkeypatch, tmp_path, scratch_host_env, dry_run):
+        monkeypatch, tmp_path, scratch_host_env, dry_run,
+        isolated_projects_root):
     """`ops/deployment.md` § 0 (the user, 2026-11-22: "Host env points at
     the repo"): every bootstrap writes the host env's path file naming this
     checkout -- the host env already there, its install skipped, and its
@@ -2183,35 +2184,38 @@ def test_shim_help_needs_no_tty(tmp_path):
 
 
 def test_shim_forwards_args_verbatim(tmp_path):
-    """The shim forwards ``$@`` 1:1 to ``molbuilder envs ...``.
+    """The shim forwards ``$@`` 1:1 to ``molbuilder envs ...`` -- and its
+    one subcommand that is no `envs` verb, ``examples``, 1:1 to ``molbuilder
+    examples`` (`ops/installation.md` § 2.1; the user, 2026-11-27).
 
     Tests every subcommand shape: install with --rebuild=, with
-    --clean, with --check, with --dry-run, plus list/doctor.  All
-    flags must reach the Python layer; nothing dropped, nothing
-    rewritten."""
-    # Every case includes --yes so the env-manager confirmation
-    # prompt (added 2026-06-24) skips and the subprocess can run
-    # non-interactively under pytest.
+    --clean, with --check, with --dry-run, plus list/doctor, and examples,
+    which confirms no manager.  All flags must reach the Python layer;
+    nothing dropped, nothing rewritten."""
+    # Every case that changes an env includes --yes so the env-manager
+    # confirmation prompt (added 2026-06-24) skips and the subprocess can
+    # run non-interactively under pytest.
     cases = [
         (["install", "molbuilder-siesta", "--yes"],
-         "install molbuilder-siesta --yes"),
+         "envs install molbuilder-siesta --yes"),
         (["install", "molbuilder-siesta-gpu",
           "--rebuild=siesta", "--yes", "--skip-network-check"],
-         "install molbuilder-siesta-gpu "
+         "envs install molbuilder-siesta-gpu "
          "--rebuild=siesta --yes --skip-network-check"),
         (["install", "molbuilder-siesta-gpu", "--clean", "--yes"],
-         "install molbuilder-siesta-gpu --clean --yes"),
+         "envs install molbuilder-siesta-gpu --clean --yes"),
         (["install", "molbuilder-siesta", "--check", "--yes"],
-         "install molbuilder-siesta --check --yes"),
+         "envs install molbuilder-siesta --check --yes"),
         (["install", "molbuilder-siesta", "--dry-run", "--yes"],
-         "install molbuilder-siesta --dry-run --yes"),
-        (["list", "--yes"], "list --yes"),
-        (["doctor", "--yes"], "doctor --yes"),
+         "envs install molbuilder-siesta --dry-run --yes"),
+        (["list", "--yes"], "envs list --yes"),
+        (["doctor", "--yes"], "envs doctor --yes"),
+        (["examples"], "examples"),
     ]
-    for args, expected_tail in cases:
+    for args, expected in cases:
         r = _run_install_env_sh(args, tmp_path=tmp_path)
         assert r.returncode == 0, f"args={args}: {r.stderr}"
-        assert f"python -m molbuilder envs {expected_tail}" in r.stdout, (
+        assert f"python -m molbuilder {expected}\n" in r.stdout, (
             f"args={args}: shim must forward verbatim; got stdout:\n"
             f"{r.stdout}")
 

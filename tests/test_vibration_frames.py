@@ -532,16 +532,33 @@ def test_a_set_read_back_is_the_set_written(tmp_path, kind):
     quanta and own frames the same; a snapshot set's motion whole, each
     mode's record bound again, drawn again bit for bit); without it, its
     geometries, weights and largest moves still, and why it has no
-    vibration said; written again, the same rows and records.  The silent
-    failures: results paired with frames that are not the ones written, or
-    a set re-read at another state than its own -- one photon on a warm
-    mode read back as the thermal state of its mean."""
+    vibration said; written again, the same rows and records.  Read back with
+    or without its vibration, it carries its rows as written (§ 5's one
+    shape: the structure's own reader's), and a mode's own set's rows give
+    its state's own weights (§ 7: `weights_for_set` against the state bound
+    in memory, `weights_at(q, written=)`).  The silent failures: results
+    paired with frames that are not the ones written, or a set re-read at
+    another state than its own -- one photon on a warm mode read back as the
+    thermal state of its mean."""
+    from molbuilder.frameset import read
     from molbuilder.postprocess import read_frame_set, write_frame_set
+    from molbuilder.vibration_frames import weights_for_set
+    from molbuilder.workingcopy_structure import StructureCodec
     v = _model()
     frames = _RECIPES[kind][0](v)
     path = write_frame_set(tmp_path / "set.xyz", frames).path
     back = read_frame_set(path, vibration=v)
     assert type(back) is type(frames)
+    assert back.rows == read(StructureCodec().load(path, frames=True))
+    if not hasattr(frames, "motion"):
+        d = frames.mode_distribution
+        got = weights_for_set(back.rows,
+                              d.chain if d.chain is not None else d.given)
+        want = d.weights_at(frames.q_amu12_ang[:, 0], written=frames.weights)
+        assert np.array_equal(got.weights, want.weights), (got, want)
+        assert (got.exact_to_degree, got.own, got.beyond, got.below_zero,
+                got.said) == (want.exact_to_degree, want.own, want.beyond,
+                              want.below_zero, want.said)
     assert np.allclose(back.positions_ang, frames.positions_ang, atol=1e-6)
     assert np.array_equal(back.q_amu12_ang, frames.q_amu12_ang)
     assert np.array_equal(back.weights, frames.weights)
@@ -585,11 +602,10 @@ def test_a_set_read_back_is_the_set_written(tmp_path, kind):
                        frames.max_atom_displacement_ang, atol=1e-5)
     assert np.array_equal(bare.mode_index_1based, frames.mode_index_1based)
     assert bare.said[0].startswith("the set names no vibration run")
+    assert bare.rows == back.rows
     # WRITTEN AGAIN, given its vibration (§ 5): the same set -- its rows,
     # their units and notes, its info.sampling (numbers to the 1e-6 Å a
     # geometry is written to).
-    from molbuilder.frameset import read
-    from molbuilder.workingcopy_structure import StructureCodec
     again = write_frame_set(tmp_path / "again.xyz", back).path
     first_s, again_s = (StructureCodec().load(x, frames=True)
                         for x in (path, again))

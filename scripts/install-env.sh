@@ -16,7 +16,12 @@
 #     2. On ``bootstrap``: ensure the host env exists (auto-create
 #        from the inlined HOST_*_PACKAGES list if missing).
 #     3. Forward "$@" verbatim to `-m molbuilder envs ...` on the host
-#        env's own Python, by its path (docs/ops/installation.md M6).
+#        env's own Python, by its path (docs/ops/installation.md M6) --
+#        ``examples`` alone to `-m molbuilder examples`: molbuilder's
+#        example notebooks written into the projects tree, a top-level
+#        command, which installation runs too (installation.md § 2.1; the
+#        user, 2026-11-27: "shall we have a verb/script option just to
+#        reinstall/refresh the example in the project folder?").
 #
 #   TWO flags break rule 3, and only two: ``--gcc <X.Y>`` and
 #   ``--python <X.Y>``.  Both are consumed here and re-exported
@@ -59,7 +64,8 @@
 #   If all four fail, the script tells the user where it looked
 #   and exits 2 -- it does NOT silently install anything.
 #
-# COMMAND SHAPE (1:1 with `molbuilder envs <subcommand>`):
+# COMMAND SHAPE (1:1 with `molbuilder envs <subcommand>`; `examples` with
+# `molbuilder examples`):
 #
 #     # First-time install on a fresh machine:
 #     bash scripts/install-env.sh bootstrap --yes
@@ -377,6 +383,10 @@ bash scripts/install-env.sh doctor
 #    replaces its one key -- so re-running is safe):
 bash scripts/install-env.sh init-config
 
+#    ... or only write molbuilder's example notebooks into the projects
+#    tree's notebooks/examples/ again (init-config writes them too):
+bash scripts/install-env.sh examples
+
 # 9. TEST TOOLING (optional -- only if you run the test suite):
 bash scripts/install-env.sh install molbuilder --with-dev-tools --yes
 #
@@ -437,8 +447,16 @@ Post-bootstrap subcommands (forwarded verbatim to the Python CLI):
                   --activation states the first, --projects PATH the
                   second, replacing what the file says; --yes takes both
                   defaults and prints them.  Run automatically at the end
-                  of bootstrap; keeps a file you wrote.  See
-                  docs/ops/installation.md section 2.1
+                  of bootstrap; keeps a file you wrote.  Then writes
+                  molbuilder's example notebooks into the projects tree's
+                  notebooks/examples/.  See docs/ops/installation.md
+                  section 2.1
+  examples        molbuilder's example notebooks written into the projects
+                  tree's notebooks/examples/, the current version in place
+                  of the one there, a file molbuilder does not ship left
+                  alone -- `molbuilder examples`, the one subcommand here
+                  that is no `envs` one.  See docs/ops/installation.md
+                  section 2.1
   install <recipe>   create the env and run its whole plan.  On an env
                      that ALREADY EXISTS the create is skipped and the
                      declared conda set is installed instead, so a recipe
@@ -1111,9 +1129,11 @@ recreate_host_env() {
 }
 
 
-# ---- dispatch (1:1 with `molbuilder envs ...`) ---------------------------
+# ---- dispatch (1:1 with `molbuilder ...`) --------------------------------
 #
-# Bypasses ``mamba run`` and calls the host env's python directly.
+# "$@" is the molbuilder command as forwarded: ``envs <subcommand> ...`` for
+# every `envs` verb, ``examples`` for the one top-level command the shim
+# offers.  Bypasses ``mamba run`` and calls the host env's python directly.
 # Why: some mambas' ``run`` (1.x; Sol's 2.9.0 module too) generate a shell stub that uses
 # ``exec -- "$@"`` -- bash's exec builtin rejects ``--`` with
 # ``line 5: exec: --: invalid option`` and the whole dispatch dies.
@@ -1160,7 +1180,7 @@ dispatch() {
 
     PYTHONPATH="${REPO_ROOT}${PYTHONPATH:+:${PYTHONPATH}}" \
     MOLBUILDER_REPO_ROOT="${REPO_ROOT}" \
-        "${_py}" -m molbuilder envs "$@"
+        "${_py}" -m molbuilder "$@"
 }
 
 # ---- main ----------------------------------------------------------------
@@ -1308,7 +1328,7 @@ EOF
             fi
             create_host_env
         fi
-        dispatch "$@"
+        dispatch envs "$@"
         ;;
     *)
         # Every other subcommand needs the host env up.  No
@@ -1326,6 +1346,12 @@ Run this first:
 EOF
             exit 2
         fi
-        dispatch "$@"
+        # `examples` IS MOLBUILDER'S OWN TOP-LEVEL COMMAND, forwarded as typed
+        # (the header's rule 3); every other subcommand is an `envs` verb.
+        if [[ "$1" == examples ]]; then
+            dispatch "$@"
+        else
+            dispatch envs "$@"
+        fi
         ;;
 esac

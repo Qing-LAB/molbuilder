@@ -982,6 +982,32 @@ the restart files of its own newest launched run (§ 1.6.5).
 The benchmark and the trial carry no circled number: they are containers nested
 in a stage (④), not levels of the tree.
 
+**Beside the projects, the tree's root holds molbuilder's example notebooks**,
+`notebooks/examples/` — molbuilder's own folder *(the user, 2026-11-27)*,
+written by `molbuilder examples` and by every installation (`envs
+init-config`, which `envs bootstrap` runs;
+[`ops/installation.md`](?doc=ops/installation.md) § 2.1) through one door,
+`projects.write_examples`: each notebook molbuilder ships
+(`molbuilder/data/examples/*.ipynb`) written there, the current version in
+place of the one there — one already holding the shipped bytes kept — each
+said as written, replaced or kept — an example changed there is replaced at
+the next `molbuilder examples` or installation, so a person saves theirs under
+another name first. A file
+there that molbuilder does not ship is left as it is, and a person's own
+notebooks elsewhere in `notebooks/` are theirs. `notebooks/` is a folder of
+the tree's own, as its pseudopotential library is — no project, listed as
+none ([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.5). **The
+examples are installation's last step, and never fatal**
+([`configuration.md`](?doc=configuration.md) § 3.2: the seeding keeps what
+it made): a tree that cannot be written is said in that step's line, with
+`molbuilder examples` to write them once it can, and the seeding finishes;
+`molbuilder examples` itself refuses it in words. What an
+example reads stays in molbuilder's package — the vibration run the motion
+toolkit's notebook opens, which in the tree would be a calculation
+([`engines/vibration-frames.md`](?doc=engines/vibration-frames.md) § 6.1).
+Held by `tests/test_the_shipped_examples.py`, and the installation's call by
+`tests/test_seeding_a_fresh_machine.py`.
+
 > **The description is written at ③ and names no machine. `prep` writes ③'s
 > plan records, every stage folder ④, a never-launched stage's first run ⑤, and
 > the runs a transport calculation copies in from a finished one it reuses.

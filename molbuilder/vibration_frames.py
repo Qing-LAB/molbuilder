@@ -1351,7 +1351,9 @@ _MODE_RULES = (_RULE_GAUSS_HERMITE, _RULE_GAUSS)
 
 def read_frame_set(path, *, vibration=None):
     """A FRAME SET READ BACK AS WRITTEN (§ 5) -- every frame, frame 0
-    included, item ``i`` frame ``i``: a `vibration.Snapshots` for the
+    included, item ``i`` frame ``i``, and its rows as written (``rows``, the
+    structure's own reader's `frameset.FrameRows`, on whichever kind it
+    is, what :func:`weights_for_set` takes): a `vibration.Snapshots` for the
     toolkit's snapshot set (its ``info.sampling``, each mode's recorded
     state bound again), a `vibration.Frames` for the toolkit's own mode set
     (its ``sampling_rule`` a mode's rule with its ``sampling_nodes``, every
@@ -1487,7 +1489,7 @@ def read_frame_set(path, *, vibration=None):
                             f"it is read without its state")
         return Frames(q, weights, _degree_of(nodes), mode_distribution=bound,
                       positions_ang=positions, read_said=tuple(said),
-                      read_mode=int(number))
+                      read_mode=int(number), rows=rows)
 
     modes = np.array(sampling.get("modes") or [], dtype=int)
     q = np.asarray(sampling.get("q_amu12_ang") or [], dtype=float).reshape(
@@ -1502,7 +1504,7 @@ def read_frame_set(path, *, vibration=None):
     return Snapshots(motion, modes, q, bool(sampling.get("antithetic")),
                      int(rows.value("seed")), int(rows.value("start")),
                      written_positions_ang=positions, read_said=tuple(said),
-                     written_weights=weights)
+                     written_weights=weights, rows=rows)
 
 
 def _motion_of(v, sampling):
@@ -1551,7 +1553,8 @@ def _provenance(rows) -> Optional[Dict[str, Any]]:
 def weights_for_set(rows, chain_or_distribution):
     """THE WEIGHTS OF A SET'S ROWS FOR A STATE (§ 7): ``rows`` the frame
     set's rows (`frameset.FrameRows`, as `postprocess.frame_rows` reads them
-    from a calculation's data file); ``chain_or_distribution`` placed on the
+    from a calculation's data file, or a set read back carries them,
+    :func:`read_frame_set`'s ``rows``); ``chain_or_distribution`` placed on the
     oscillator of the set's mode, at its ``frequency_cm1`` and in its
     ``zero_point_amplitude_amu12_ang`` (`vibration._placed`, § 2's binding
     without the molecule: the rows state the mode), an open start taking

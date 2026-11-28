@@ -1409,13 +1409,20 @@ channel — twice the 7.747 × 10⁻⁶ A TBtrans printed, its one spin channel'
 #### The script, and the notebook
 
 The same steps, one cell each with the words above between them, are the
-notebook **`docs/engines/transport-junction-by-hand.ipynb`**, saved with its
-outputs — the plot of the three T(E) curves among them. The Jupyter tab
-opens files of the projects tree (its root, `web/jupyter.md` § 4.3), so a
-copy sits at `notebooks/transport-junction-by-hand.ipynb` there; change any
-number of the model's cell and run it again. Its last four cells read the
-hydrogen chain's files above with `sisl` (in `molbuilder-jupyternb`), step
-by step — point their `B` at any transport calculation of your own. The script below is the same
+notebook **`transport-junction-by-hand.ipynb`**, one of molbuilder's
+examples, saved with its outputs — the plot of the three T(E) curves among
+them — in the projects tree's `notebooks/examples/` for the Jupyter tab
+([`execution/project-layout.md`](?doc=execution/project-layout.md) § 2.6);
+change any number of the model's cell and run it again. **Its last cells read
+a transport calculation you name** *(the user, 2026-11-27: "Read your own
+run")*: `B` set to its folder, a path from the notebook
+(`../../<project>/transport/<calculation>`), they read its files with `sisl`
+(in `molbuilder-jupyternb`), step by step, as the SIESTA column above was
+read from the hydrogen chain — its label from its description, its stages
+the transport ladder's (`02_electrode_L`, `04_device`, `05_transmission`),
+the Hamiltonian's rows they print named beside `B` (`ROWS`, `COLUMNS`: the
+hydrogen chain's bridge until changed). Until one is named they say how and
+are skipped, so *Run All* finishes anywhere. The script below is the same
 code in one piece — it runs as it is in `molbuilder-jupyternb` (numpy only),
 in about a minute, and prints the SCF steps, the density matrices, G and the
 currents above (the self-energy, broadening, Lopez Sancho and T(E) tables are
