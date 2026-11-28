@@ -27,7 +27,7 @@ from ..identity import JOBSET_PROG, as_typed
 from ..envs import hints as _hints
 
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import click
 
@@ -1520,6 +1520,28 @@ def _refuse_flags_without_effect(*, kind: str, mode: str, trial, typed,
                 f"it.\n" + each_mode())
 
 
+def _changed_since_prepared(calc, plan) -> List[str]:
+    """Each stage a launch sends whose records changed since its prep, a
+    line each in `status`'s words (`ready.readiness`,
+    `prepared_with.changed_words`) -- said, never refused: the launch runs
+    it as it was prepared (`job-system.md`, *Changed since prepared*)."""
+    from .prepared_with import changed_words
+    from .ready import readiness
+    out: List[str] = []
+    seen = set()
+    for s in plan.submissions:
+        for m in s.members:
+            stage = m.job.name
+            if stage in seen:
+                continue
+            seen.add(stage)
+            changed = readiness(calc, stage).changed
+            if changed:
+                out.append(f"  {stage}: {changed_words(changed)} -- this "
+                           f"launch runs it as it was prepared")
+    return out
+
+
 def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
                   footer=(), here: bool = False, background: bool = False):
     """**Nothing is submitted unseen** (`submission.md` S4): the exact
@@ -2068,6 +2090,12 @@ def _launch(told: dict, kind: str, stage, trial, bundle: str, mode: str,
                   "none -- each trial runs until it ends"
                   + ("" if mode == "direct" else ", or the job's time limit"))]
               if grouped else [])
+    # A MEMBER CHANGED SINCE ITS PREP, SAID BEFORE IT RUNS (`job-system.md`,
+    # *Changed since prepared*): the launch sends what prep wrote, and the
+    # person reads first, in the words `status` says it, that this is not
+    # the description as it stands now.
+    if kind == "task":
+        footer = _changed_since_prepared(calc, plan) + footer
     if dry_run:
         _show_and_ask(shown, dry_run=True, auto_yes=auto_yes, footer=footer)
         results = shown

@@ -1419,7 +1419,18 @@ def test_a_followed_runs_news_keeps_the_box_and_the_zoom(probed_going, page,
         page.locator('[aria-controls="mode-tab-es"]').click()
         diagram = page.locator("#es-bar-diagram")
         diagram.scroll_into_view_if_needed()
-        area = diagram.locator(".nsewdrag").first.bounding_box()
+        # THE PANEL SETTLED: the probe's numbers, drawn under the diagram as
+        # the tab opens, move the diagram's box as they arrive -- a wheel
+        # turned where the plot was a moment ago scrolls the page instead.
+        # The mouse goes where the plot is once its box stops moving, as a
+        # person's hand does.
+        area = None
+        for _ in range(100):
+            now = diagram.locator(".nsewdrag").first.bounding_box()
+            if now is not None and now == area:
+                break
+            area = now
+            page.wait_for_timeout(100)
         whole = diagram.evaluate("(el) => el.layout.yaxis.range.slice()")
         page.mouse.move(area["x"] + area["width"] / 2,
                         area["y"] + area["height"] / 2)

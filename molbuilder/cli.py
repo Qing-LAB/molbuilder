@@ -43,7 +43,7 @@ from .serve_daemon import SHEPHERD_VERB
 from .atom_permutation import MAP_KEY
 from .engine_table import engines as _engines
 from .kind_table import kinds as _kinds
-from .vibration_frames import OFFERED_NODES
+from .vibration import OFFERED_NODES
 from .runfiles import (CALCDIR_FILE, GITIGNORE_FILE, ROLE_RUNTIME_INFO,
                        SIESTA_XV, TASK_FILE, WARM_FILES_FILE)
 from .structure import Structure, atom_words

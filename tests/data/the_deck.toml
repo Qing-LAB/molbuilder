@@ -511,28 +511,18 @@ deck_order = ["mol = gto.M(", "\n_save_structure(mol, _mb_outfile(JOB + '_initia
 # THE KIND'S SCIENCE REACHES PREP.  Until 2026-08-21 the deck's own `validate`
 # call skipped the spectra science: its dispatch keyed on the config's type,
 # and the deck's config view matched no validator, so a green end-to-end run
-# hid a gate that never ran (`engines/vibration.md` I11).  A warning is advice:
-# the deck is written as asked.  With the orbital probe asked, the displacement
-# enters a run, so it is advised on...
+# hid a gate that never ran (`engines/vibration.md` I11).  With the orbital
+# probe asked, prep says what it costs -- one SCF fewer than its nodes per
+# mode, node 0 the equilibrium's -- and the deck states the probe's
+# temperature and its node count as the template does (§ 4.8, § 6.11 § 4).
 [[case]]
-name = "a PySCF vibration's displacement outside the accepted window is written as asked, with the kind's advice, when the orbital probe enters it"
+name = "a PySCF vibration's probe states its temperature and its nodes, and prep says what it costs"
 engine = "pyscf"
 calculation = "vibration"
 stage = "freq"
-template = { displacement_amplitude_ang = 0.5, es_mode_selection = "all" }
-said = ["0.02-0.20"]
-deck_says = { DISPLACEMENT_AMPLITUDE_ANG = 0.5 }
-
-# ...and under `skip` it enters nothing: a person is told so, never told to
-# change a greyed-out field (`engines/template.md` § 5).
-[[case]]
-name = "...and under `skip`, where it enters nothing, is said to have no effect, with no advice on its size"
-engine = "pyscf"
-calculation = "vibration"
-stage = "freq"
-template = { displacement_amplitude_ang = 0.5 }
-said = ["has no effect here"]
-said_lacks = ["0.02-0.20"]
+template = { es_mode_selection = "explicit", es_explicit_indices = "1", probe_temperature_K = 77.0, probe_nodes = 5 }
+said = ["4 extra SCFs"]
+deck_says = { PROBE_TEMPERATURE_K = 77.0, PROBE_NODES = 5 }
 
 # A VALUE THE RUN CANNOT USE IS SAID AT PREP, AND ONLY THEN (`engines/vibration.md`
 # § 3.1; user, 2026-09-28).  The pressure: with atoms held the thermochemistry is

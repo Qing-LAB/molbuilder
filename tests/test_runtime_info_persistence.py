@@ -30,6 +30,7 @@ from __future__ import annotations
 import numpy as np
 
 from molbuilder.runtime_info import RUNTIME_INFO_KEYS
+from molbuilder.pyscf.input import CREATED_BY
 from molbuilder.trajectory_log.emitter import MolwatchEmitter
 
 
@@ -58,7 +59,8 @@ def test_every_canonical_key_survives_to_disk(tmp_path):
     ``max_memory_mb``."""
     log = tmp_path / "j.molwatch.log"
     ri = {k: "X" for k in RUNTIME_INFO_KEYS}
-    MolwatchEmitter(str(log), "j", _Mol(), runtime_info=ri)
+    MolwatchEmitter(str(log), "j", _Mol(), engine="pyscf",
+                    generator=CREATED_BY, runtime_info=ri)
     assert set(_header_keys(log)) >= set(RUNTIME_INFO_KEYS)
 
 
@@ -66,7 +68,8 @@ def test_max_memory_mb_specifically(tmp_path):
     """The key the old whitelist actually lost.  Named on its own so a
     regression reads as itself rather than as a set-difference."""
     log = tmp_path / "j.molwatch.log"
-    MolwatchEmitter(str(log), "j", _Mol(), runtime_info={"max_memory_mb": 4000})
+    MolwatchEmitter(str(log), "j", _Mol(), engine="pyscf",
+                    generator=CREATED_BY, runtime_info={"max_memory_mb": 4000})
     assert "# runtime.max_memory_mb: 4000" in log.read_text()
 
 
@@ -79,7 +82,8 @@ def test_a_key_the_writer_has_never_heard_of_is_still_written(tmp_path):
     happens to contain every key that exists today.
     """
     log = tmp_path / "j.molwatch.log"
-    MolwatchEmitter(str(log), "j", _Mol(),
+    MolwatchEmitter(str(log), "j", _Mol(), engine="pyscf",
+                    generator=CREATED_BY,
                     runtime_info={"a_fact_invented_by_this_test": 42})
     assert "# runtime.a_fact_invented_by_this_test: 42" in log.read_text()
 
@@ -88,7 +92,8 @@ def test_values_with_newlines_cannot_break_the_line_parse(tmp_path):
     """Dropping the whitelist widened what can reach this loop, so the
     newline-stripping it always did now matters more."""
     log = tmp_path / "j.molwatch.log"
-    MolwatchEmitter(str(log), "j", _Mol(),
+    MolwatchEmitter(str(log), "j", _Mol(), engine="pyscf",
+                    generator=CREATED_BY,
                     runtime_info={"gpu_name": "line1\nline2\rline3"})
     text = log.read_text()
     assert "# runtime.gpu_name: line1 line2 line3" in text

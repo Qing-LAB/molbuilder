@@ -62,7 +62,7 @@ try:                                        # inside molbuilder
                           write_group, write_structure_group)
     from ..persist import FileRefused, unknown_keys, write_bytes
     from .derived import THERMAL_KEY
-    from .result_keys import WRITTEN_KEYS
+    from .result_keys import OLD_PROBE_WORDS, WRITTEN_KEYS
 except ImportError:                         # beside a job, in a bundle
     from atom_permutation import MAP_KEY, AtomIndexMap  # type: ignore[no-redef]
     from ncdata import (NC_LOCK, Var, as_bytes, axis_values, checked,
@@ -74,18 +74,24 @@ except ImportError:                         # beside a job, in a bundle
     from persist import (FileRefused, unknown_keys,  # type: ignore[no-redef]
                          write_bytes)
     from derived import THERMAL_KEY  # type: ignore[no-redef]
-    from result_keys import WRITTEN_KEYS  # type: ignore[no-redef]
+    from result_keys import (  # type: ignore[no-redef]
+        OLD_PROBE_WORDS, WRITTEN_KEYS)
 
 #: Why a key a data file does not state is refused at its write -- this
 #: one's and the optical calls' (`spectra.optical_data`).
 UNSTATED = (".  A key this data file does not know how to state is refused "
             "rather than dropped")
 
-DATA_SCHEMA = "molbuilder/spectra-data@11"
-#: The schemas the reader reads: the one this molbuilder writes -- a file of
-#: an older one is refused by its version, the vibration run again (the
-#: user's decision, 2026-11-26; `engines/vibration.md` § 6.10.5).
-READABLE_DATA_SCHEMAS = (DATA_SCHEMA,)
+DATA_SCHEMA = "molbuilder/spectra-data@12"
+#: THE OLDER SCHEMA READ, TRANSLATED: ``@11`` (2.79.0-2.88.0) whose probe's
+#: group holds no mode is ``@12`` with another number -- its result schema
+#: 15, read as 16 (`engines/vibration.md` § 6.10.5); one holding a probed
+#: mode refused by name.
+TRANSLATED_DATA_SCHEMA = "molbuilder/spectra-data@11"
+#: The schemas the reader reads: the one this molbuilder writes and the one
+#: it translates -- a file of any other is refused by its version, the
+#: vibration run again (the user's decisions, 2026-11-26 and 2026-11-27).
+READABLE_DATA_SCHEMAS = (DATA_SCHEMA, TRANSLATED_DATA_SCHEMA)
 #: The way on a refused file's words name (`persist.check_schema`) -- this
 #: one's and the optical calls' (`spectra.optical_data`).
 REFUSED_WAY = "run the vibration again"
@@ -213,13 +219,6 @@ _CHARGES = {
         "the force-constant step's displacement",
         "each step but 0 moves its atom by it, either way, along its axis"),
 }
-#: The geometries the probe computes at: equilibrium and either way along
-#: the mode.
-_PROBED_AT = (
-    ("eq", "equilibrium", "at the equilibrium geometry"),
-    ("minus", "-amplitude", "displaced by -amplitude along the mode"),
-    ("plus", "+amplitude", "displaced by +amplitude along the mode"),
-)
 #: The thermo grid's curves (`normal_modes.vibrational_thermo_grid`),
 #: each from its key in the grid block.
 _GRID_CURVES = (
@@ -238,27 +237,6 @@ _GRID_CURVES = (
     Var("g_eh", ("temperature_k",), "derived", "Eh", "the free energy",
         "G = H - T*S at this temperature"),
 )
-#: A mode's electronic-structure probe (`engines/vibration.md` § 4.8):
-#: its numbers and its orbital windows, each from its key in the probe's
-#: block.
-_ES_SCALARS = (
-    Var("amplitude_ang", ("probed_mode",), "given", "angstrom",
-        "the displacement amplitude",
-        "the push each way along the mode's display form: its largest "
-        "Cartesian component moves by it (engines/vibration.md 4.8)"),
-    *(Var(f"total_energy_{at}_eh", ("probed_mode",), "raw", "Eh",
-          f"the total energy at {where}", f"E_SCF {geometry}",
-          source="the probe's SCFs", key=f"scf_energy_{at}_eh")
-      for at, where, geometry in _PROBED_AT),
-)
-_ES_WINDOWS = tuple(
-    Var(f"mo_energy_{at}_eh", ("probed_mode", "window"), "raw", "Eh",
-        f"the orbital energies at {where}",
-        "the orbital window's energies, ascending",
-        source="the probe's SCFs", key=f"mo_energies_{at}_eh")
-    for at, where, _ in _PROBED_AT)
-
-
 def _encode(kind: str, value):
     if kind in ("text", "text?"):
         return "" if value is None else str(value)
@@ -496,10 +474,17 @@ def _thermal_vars() -> Tuple[Var, ...]:
 
 
 def _es_vars() -> Tuple[Var, ...]:
+    """``/modes/electronic_structure`` -- the probe's node record
+    (`engines/vibration.md` § 6.11 § 4): per probed mode, its state, its
+    nodes and weights, the SCF energy and the orbital window at each node,
+    each orbital's partner, average, shift and mark, the SCF's tolerances."""
     return (
         Var("probed_mode", ("probed_mode",), "coordinate", "1",
             "the probed mode", "the 1-based index of the mode this row is of",
             dtype="i4"),
+        Var("node", ("node",), "coordinate", "1", "a node of the mode's state",
+            "from 0 in the set's order: 0 the equilibrium, then +q1, -q1, "
+            "+q2, ... (engines/vibration.md 6.11 4)", dtype="i4"),
         Var("window", ("window",), "coordinate", "1",
             "the orbital's place in the window", "from 0, ascending energy",
             dtype="i4"),
@@ -507,7 +492,51 @@ def _es_vars() -> Tuple[Var, ...]:
             "the HOMO's index in the window",
             "0-based index of the HOMO among the window's orbitals",
             dtype="i4"),
-        *_ES_SCALARS, *_ES_WINDOWS,
+        Var("state", ("probed_mode",), "given", "",
+            "the state the nodes are of",
+            "its record: the chain, its temperature and where it came from "
+            "(engines/vibration.md 6.11 4)", dtype=str, json=True),
+        Var("q_amu12_ang", ("probed_mode", "node"), "derived",
+            "amu^1/2 angstrom", "the node's coordinate along the mode",
+            "the state's Gauss rule in the set's order (vibration.probe_rule)"),
+        Var("weights", ("probed_mode", "node"), "derived", "1",
+            "the node's weight", "its share of the state's average, the "
+            "nodes' summing to 1"),
+        Var("total_energy_eh", ("probed_mode", "node"), "raw", "Eh",
+            "the total energy at the node",
+            "E_SCF at the node; NaN where its SCF failed (did not "
+            "converge, or stopped)",
+            source="the probe's SCFs", key="scf_energies_eh"),
+        Var("mo_energy_eh", ("probed_mode", "node", "window"), "raw", "Eh",
+            "the orbital energies at the node",
+            "the orbital window's energies, ascending, around that "
+            "geometry's own HOMO; NaN at a node whose SCF failed (did not "
+            "converge, or stopped)",
+            source="the probe's SCFs", key="mo_energies_eh"),
+        Var("orbital_match", ("probed_mode", "node", "window"), "derived",
+            "1", "the orbital's equilibrium partner",
+            "the equilibrium orbital it overlaps most, its place in the "
+            "window; -1 outside the window or at a node whose SCF failed "
+            "(did not converge, or stopped)", dtype="i4", fill=-1),
+        Var("average_eh", ("probed_mode", "window"), "derived", "Eh",
+            "the orbital's average over the state",
+            "sum over the nodes of weight times energy; NaN where a node "
+            "failed"),
+        Var("shift_eh", ("probed_mode", "window"), "derived", "Eh",
+            "the orbital's shift over the state",
+            "its average less its equilibrium energy; NaN where a node "
+            "failed"),
+        Var("marks", ("probed_mode", "window"), "derived", "",
+            "the orbital's mark",
+            "degenerate, reordered or noise (engines/vibration.md 6.11 4); "
+            "empty for none", dtype=str),
+        Var("scf_conv_tol_eh", ("probed_mode",), "given", "Eh",
+            "the SCF's energy tolerance", "conv_tol, read off the solver",
+            key="scf_conv_tol"),
+        Var("scf_conv_tol_grad_eh", ("probed_mode",), "given", "Eh",
+            "the SCF's orbital-gradient tolerance",
+            "conv_tol_grad, read off the solver; sqrt(conv_tol) where none "
+            "was set", key="scf_conv_tol_grad"),
     )
 
 
@@ -684,20 +713,28 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
                     title="each mode's spread and mean quanta at the "
                           "modes' own temperatures")
 
-        # /modes/electronic_structure -- one row per probed mode.
+        # /modes/electronic_structure -- one row per probed mode, at its
+        # nodes (§ 6.11 § 4).
         probed = [m for m in modes
                   if m.get("electronic_structure") is not None]
-        # ONE WINDOW, its size the equilibrium's.
-        windows = {len(m["electronic_structure"][key_of(_ES_WINDOWS[0])])
+        # ONE WINDOW, its size the equilibrium's, and ONE NODE COUNT.
+        windows = {len(m["electronic_structure"]["mo_energies_eh"][0])
                    for m in probed}
-        if len(windows) > 1:
-            raise SpectraDataError(
-                f"the probed modes' orbital windows differ in size "
-                f"({sorted(windows)}): one window per result")
+        counts = {len(m["electronic_structure"]["scf_energies_eh"])
+                  for m in probed}
+        for what, sizes in (("orbital windows", windows),
+                            ("node counts", counts)):
+            if len(sizes) > 1:
+                raise SpectraDataError(
+                    f"the probed modes' {what} differ ({sorted(sizes)}): "
+                    f"one per result")
         window = windows.pop() if windows else 0
+        nodes = counts.pop() if counts else 0
         ge = g.createGroup("electronic_structure")
         vars_ = _es_vars()
-        values = _fill(vars_, {"probed_mode": len(probed), "window": window})
+        edims = {"probed_mode": len(probed), "node": nodes, "window": window}
+        values = _fill(vars_, edims)
+        values["node"][:] = np.arange(nodes)
         values["window"][:] = np.arange(window)
         for k, m in enumerate(probed):
             es = m["electronic_structure"]
@@ -706,15 +743,29 @@ def write_spectra_data(payload: Mapping[str, Any], path, *,
                              f"structure")
             values["probed_mode"][k] = int(m["index_1based"])
             values["homo_index_in_window"][k] = int(es["homo_index_in_window"])
-            for v in _ES_SCALARS:
-                values[v.name][k] = float(es[key_of(v)])
-            for v in _ES_WINDOWS:
-                values[v.name][k] = np.asarray(es[key_of(v)], dtype=float)
-        write_group(ge, {"probed_mode": len(probed), "window": window}, vars_,
-                    values,
+            values["state"][k] = dict(es["state"])
+            for name in ("q_amu12_ang", "weights"):
+                values[name][k] = np.asarray(es[name], dtype=float)
+            for name in ("scf_conv_tol_eh", "scf_conv_tol_grad_eh"):
+                values[name][k] = float(es[name[:-len("_eh")]])
+            for j in range(nodes):
+                values["total_energy_eh"][k, j] = number_attr(
+                    es["scf_energies_eh"][j])
+                row, match = es["mo_energies_eh"][j], es["orbital_match"][j]
+                if row is not None:
+                    values["mo_energy_eh"][k, j] = [number_attr(x)
+                                                    for x in row]
+                if match is not None:
+                    values["orbital_match"][k, j] = [-1 if x is None else x
+                                                     for x in match]
+            for name in ("average_eh", "shift_eh"):
+                values[name][k] = [number_attr(x) for x in es[name]]
+            values["marks"][k] = [x or "" for x in es["marks"]]
+        write_group(ge, edims, vars_, values,
                     title="the electronic-structure probe: per probed mode, "
-                          "the SCF energy and an orbital window at the "
-                          "equilibrium and displaced either way along it")
+                          "the SCF energy and an orbital window at each node "
+                          "of its state, each orbital's average over the "
+                          "state, its shift and its mark")
 
         # /thermo, and its grid -- an axis of no temperature where the
         # result draws no curves.
@@ -822,17 +873,8 @@ def read_spectra_data(path, *, data=None) -> Dict[str, Any]:
         mv = read_variables(g)
         out["free_atom_idxs"] = [int(i) for i in mv["free_atom"]["data"]]
         n_modes = int(mv["mode"]["data"].shape[0])
-        es_rows: Dict[int, Dict[str, Any]] = {}
-        ev = read_variables(g["electronic_structure"])
-        for k, idx in enumerate(ev["probed_mode"]["data"]):
-            es_rows[int(idx)] = {
-                **{key_of(v): [float(x) for x in ev[v.name]["data"][k]]
-                   for v in _ES_WINDOWS},
-                "homo_index_in_window": int(
-                    ev["homo_index_in_window"]["data"][k]),
-                **{key_of(v): float(ev[v.name]["data"][k])
-                   for v in _ES_SCALARS},
-            }
+        es_rows = _probe_rows(g["electronic_structure"], path,
+                              str(attrs.get("schema") or ""))
         modes = []
         for k in range(n_modes):
             idx = int(mv["mode"]["data"][k])
@@ -937,6 +979,48 @@ def read_spectra_data(path, *, data=None) -> Dict[str, Any]:
     return out
 
 
+def _probe_rows(group, path, schema: str) -> Dict[int, Dict[str, Any]]:
+    """``/modes/electronic_structure`` back as each probed mode's block, by
+    its mode's index -- a node whose SCF energy is the fill a failed node,
+    its rows null; at ``@11`` none, a probed mode there refused by name, the
+    fixed push of the probe before 2.89.0 (`engines/vibration.md`
+    § 6.10.5)."""
+    ev = read_variables(group)
+    probed = [int(i) for i in ev["probed_mode"]["data"]]
+    if schema == TRANSLATED_DATA_SCHEMA:
+        if probed:
+            raise SpectraDataUnreadable(
+                f"{Path(path).name}: it says {schema!r}, its modes {probed} "
+                f"probed: {OLD_PROBE_WORDS} -- {REFUSED_WAY}")
+        return {}
+    rows: Dict[int, Dict[str, Any]] = {}
+    for k, idx in enumerate(probed):
+        energies = [unnumber_attr(x) for x in ev["total_energy_eh"]["data"][k]]
+        rows[idx] = {
+            "state": ev["state"]["data"][k],
+            "q_amu12_ang": [float(x) for x in ev["q_amu12_ang"]["data"][k]],
+            "weights": [float(x) for x in ev["weights"]["data"][k]],
+            "scf_energies_eh": energies,
+            "mo_energies_eh": [
+                None if e is None else
+                [unnumber_attr(x) for x in ev["mo_energy_eh"]["data"][k, j]]
+                for j, e in enumerate(energies)],
+            "orbital_match": [
+                None if e is None else
+                [None if int(x) < 0 else int(x)
+                 for x in ev["orbital_match"]["data"][k, j]]
+                for j, e in enumerate(energies)],
+            "homo_index_in_window": int(
+                ev["homo_index_in_window"]["data"][k]),
+            **{name: [unnumber_attr(x) for x in ev[name]["data"][k]]
+               for name in ("average_eh", "shift_eh")},
+            "marks": [str(x) or None for x in ev["marks"]["data"][k]],
+            **{name: float(ev[f"{name}_eh"]["data"][k])
+               for name in ("scf_conv_tol", "scf_conv_tol_grad")},
+        }
+    return rows
+
+
 def json_sha256_of(path) -> str:
     """THE SHA256 OF THE RESULT JSON the data file at ``path`` was written
     with -- its root's ``json_sha256``, which ties the two
@@ -978,9 +1062,9 @@ STATED_KEYS = {
         "index_1based", "electronic_structure",
         *(key_of(v) for v in MODE_VARS
           if v.dims[:1] == ("mode",) and v.kind != "coordinate")}),
-    "electronic_structure": frozenset({
-        "homo_index_in_window",
-        *(key_of(v) for v in (*_ES_SCALARS, *_ES_WINDOWS))}),
+    "electronic_structure": frozenset(
+        key_of(v) for v in _es_vars()
+        if v.kind != "coordinate"),
 }
 
 

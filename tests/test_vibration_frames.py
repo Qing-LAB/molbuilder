@@ -1438,7 +1438,8 @@ def test_what_a_state_means_for_a_mode_before_its_set_is_written(
     outermost move for each frame count the doors offer, the mode's state's
     own; an imaginary mode none.  The silent failure: a dialog whose
     numbers or words are another state's than the frames written."""
-    from molbuilder.vibration_frames import OFFERED_NODES, readout
+    from molbuilder.vibration import OFFERED_NODES
+    from molbuilder.vibration_frames import readout
     m = _model().mode(1)
     said = readout(m, chain)
     assert said["state"] == words(), said["state"]

@@ -2,8 +2,9 @@
 
 Pinned by `engines/vibration.md` § 6 (the result file).  Three dataclasses:
 
-  * :class:`ModeElectronicStructure` -- the per-mode displaced-SCF
-    block: equilibrium / ±A·Q_i MO energies + SCF energies.  Populated
+  * :class:`ModeElectronicStructure` -- the per-mode probe's block: the
+    orbital window's energies and the SCF energy at each node of the
+    mode's thermal state (`engines/vibration.md` § 6.11 § 4).  Populated
     only when the user selected a mode for electronic-structure analysis.
   * :class:`ModeData` -- one vibrational mode: frequency, eigenvector
     (free atoms only), Raman activity, optional IR intensity, and the optional :class:`ModeElectronicStructure`.
@@ -56,8 +57,9 @@ try:                                        # inside molbuilder
                           stated_temperatures, thermal_block, with_derived)
     from .normal_modes import mode_temperatures
     from .result_keys import (CHARGE_STEP_KEYS, EQUILIBRIUM_KEYS, ES_KEYS,
-                              MODE_KEYS, OPTICAL_KEYS, OPTICAL_MODE_KEYS,
-                              PARTIAL_CHARGES_KEYS, RESULT_KEYS)
+                              MODE_KEYS, OLD_PROBE_WORDS, OPTICAL_KEYS,
+                              OPTICAL_MODE_KEYS, PARTIAL_CHARGES_KEYS,
+                              RESULT_KEYS)
     from ..atom_permutation import MAP_KEY
     from ..persist import LATER_WAY, check_keys
     from ..structure import Structure as _Structure
@@ -72,7 +74,8 @@ except ImportError:                         # beside a job, in a bundle
     from normal_modes import mode_temperatures  # type: ignore[no-redef]
     from result_keys import (  # type: ignore[no-redef]
         CHARGE_STEP_KEYS, EQUILIBRIUM_KEYS, ES_KEYS, MODE_KEYS,
-        OPTICAL_KEYS, OPTICAL_MODE_KEYS, PARTIAL_CHARGES_KEYS, RESULT_KEYS)
+        OLD_PROBE_WORDS, OPTICAL_KEYS, OPTICAL_MODE_KEYS,
+        PARTIAL_CHARGES_KEYS, RESULT_KEYS)
     from atom_permutation import MAP_KEY  # type: ignore[no-redef]
     from persist import LATER_WAY, check_keys  # type: ignore[no-redef]
     from structure import Structure as _Structure  # type: ignore[no-redef]
@@ -83,21 +86,27 @@ except ImportError:                         # beside a job, in a bundle
 
 
 #: THE ON-DISK JSON SHAPE'S VERSION, moved when the shape changes -- each
-#: version's change is `engines/vibration.md` § 6.1's table.  15: each mode's
-#: MECHANICS, stated -- `motion_share` (each free atom's share of the motion),
-#: `largest_zero_point_move_ang`, `reduced_mass_amu` and
-#: `force_constant_mdyn_per_ang` on every mode, and the block `modes_thermal`,
-#: each mode's spread and mean quanta at the modes' own temperatures --
-#: written by every engine through `spectra.derived` and checked on read
-#: (§ 6.11 § 3).
-SCHEMA_VERSION = 15
-#: THE RELEASE THAT FIRST WROTE IT, and its date -- said to a person whose
-#: result is older (:func:`readable_version`).
+#: version's change is `engines/vibration.md` § 6.1's table.  16: the PySCF
+#: probe at the frame rule's nodes -- each probed mode's
+#: `electronic_structure` the node record of § 6.11 § 4, its nodes, weights,
+#: average, shift and marks derived through `spectra.derived` and checked on
+#: read.
+SCHEMA_VERSION = 16
+#: THE OLDER VERSION READ, TRANSLATED (:func:`translated`): 15, which 2.79.0
+#: first wrote (2026-11-23), is 16 with another number wherever no mode holds
+#: a probe -- the one translation (the user, 2026-11-27: "Read those without
+#: an old probe").
+TRANSLATED_VERSION = 15
+#: THE RELEASE THAT FIRST WROTE THE OLDEST VERSION READ, and its date -- said
+#: to a person whose result is older (:func:`readable_version`).
 SCHEMA_WRITTEN_SINCE = "2.79.0 (2026-11-23)"
-#: The versions the reader reads: the one this molbuilder writes -- a result
-#: of an older one is refused and the vibration run again (the user's
-#: decision, 2026-11-26).
-READABLE_SCHEMA_VERSIONS = frozenset({SCHEMA_VERSION})
+#: The versions the reader reads: the one this molbuilder writes, and the one
+#: it translates -- a result of any other is refused and the vibration run
+#: again (the user's decisions, 2026-11-26 and 2026-11-27).
+READABLE_SCHEMA_VERSIONS = frozenset({SCHEMA_VERSION, TRANSLATED_VERSION})
+#: WHAT THIS MOLBUILDER READS, in a refusal's words.
+_READS = (f"this molbuilder reads schema {SCHEMA_VERSION}, and "
+          f"{TRANSLATED_VERSION} without a probe")
 
 
 def readable_version(actual: Any) -> int:
@@ -106,15 +115,16 @@ def readable_version(actual: Any) -> int:
     a whole number (never a bool, which ``True == 1`` would let past, nor a
     string or a float) of :data:`READABLE_SCHEMA_VERSIONS`; else
     :class:`ValueError` in a person's words, naming the version the file
-    states, the one this molbuilder reads and the way on
-    (`engines/vibration.md` § 6.1, § 6.7)."""
-    reads = f"this molbuilder reads schema {SCHEMA_VERSION} alone"
+    states, the ones this molbuilder reads and the way on
+    (`engines/vibration.md` § 6.1, § 6.7).  Whether a schema-15 file reads
+    is its content's too: :func:`translated`."""
+    reads = _READS
     if actual is None:
         raise ValueError(f"the result states no schema version: {reads}")
     if not isinstance(actual, int) or isinstance(actual, bool):
         raise ValueError(f"the result's schema version {actual!r} is not a "
                          f"whole number: {reads}")
-    if actual < SCHEMA_VERSION:
+    if actual < min(READABLE_SCHEMA_VERSIONS):
         raise ValueError(f"the result is schema {actual}, written by a "
                          f"molbuilder before {SCHEMA_WRITTEN_SINCE}: {reads} "
                          f"-- run the vibration again")
@@ -122,6 +132,26 @@ def readable_version(actual: Any) -> int:
         raise ValueError(f"the result is schema {actual}, written by a later "
                          f"molbuilder than this one: {reads} -- {LATER_WAY}")
     return actual
+
+
+def translated(d: Mapping[str, Any]) -> Dict[str, Any]:
+    """THE RESULT AT THE VERSION THIS MOLBUILDER WRITES -- the one rule of
+    what an older file reads as (`engines/vibration.md` § 6.1): a version
+    :func:`readable_version` refuses, refused; a schema-15 file whose every
+    mode states no probe, read as schema 16, its other keys as written; one
+    whose modes hold the fixed push of the probe before 2.89.0 refused by
+    name -- :class:`ValueError` in a person's words."""
+    version = readable_version(d.get("schema_version"))
+    if version == SCHEMA_VERSION:
+        return dict(d)
+    probed = [m.get("index_1based") for m in d.get("modes") or []
+              if isinstance(m, Mapping) and m.get("electronic_structure")
+              is not None]
+    if probed:
+        raise ValueError(f"the result is schema {version}, its modes "
+                         f"{probed} probed: {OLD_PROBE_WORDS} -- run the "
+                         f"vibration again")
+    return {**d, "schema_version": SCHEMA_VERSION}
 
 
 # Phase status vocabulary -- per-layer flag carried on
@@ -362,109 +392,143 @@ def _partial_charges_read(d: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
     return dict(block)
 
 
+def _node_row(row, what: str, n: Optional[int]):
+    """A node's row as a block states it: ``None`` -- a node whose SCF did
+    not converge -- or a list of ``n`` entries (any length where ``n`` is
+    ``None``), refused by name otherwise."""
+    if row is None:
+        return None
+    if not isinstance(row, (list, tuple)) or (n is not None and len(row) != n):
+        raise ValueError(f"ModeElectronicStructure.{what}: a node's row is "
+                         f"null (its SCF failed) or one entry per orbital "
+                         f"of the window ({n}); got {row!r}")
+    return list(row)
+
+
 @dataclass(eq=False)
 class ModeElectronicStructure:
-    """Displaced-geometry SCF results for a single mode.
+    """THE PROBE'S BLOCK FOR ONE MODE (`engines/vibration.md` § 6.11 § 4):
+    what the deck records at each node of the mode's thermal state, node 0
+    the equilibrium -- ``state`` the state the nodes are of (its record,
+    `vibration.probe_state`); ``mo_energies_eh`` the orbital window's
+    energies at each node (node x orbital, the window around that
+    geometry's own HOMO; an energy not finite ``None``); ``scf_energies_eh``
+    each node's SCF energy; ``orbital_match`` each window orbital's
+    equilibrium partner (`spectra.pyscf_vibration.orbital_match`, ``None``
+    outside the window); a node whose SCF failed (did not converge, or
+    stopped) ``None`` in all
+    three; ``homo_index_in_window`` the HOMO's place in the window;
+    ``scf_conv_tol`` and ``scf_conv_tol_grad`` the solver's tolerances, read
+    back.  The nodes, the weights, the average, the shift and the marks are
+    derived from these by the one derivation (`spectra.derived`,
+    `vibration.probe_derivations`): written beside them, checked on read,
+    and not held here.  Populated only for a mode the probe ran on."""
 
-    Three geometries are sampled: equilibrium and ±A along the mode's
-    mass-weighted eigenvector.  Each MO-energy array spans the window
-    [HOMO − ``cfg.es_n_homo_below``, LUMO + ``cfg.es_n_lumo_above``]
-    AT THAT DISPLACEMENT -- the same orbital count, but the indexing
-    is per-geometry (orbitals can swap order under displacement, so
-    the i-th entry of ``minus`` is not necessarily the same orbital
-    as the i-th entry of ``eq``).  The Spectra-tab UI handles the
-    matching when computing electron-phonon coupling constants.
-
-    :func:`from_dict` accepts the wire form (lists of floats) and
-    rebuilds numpy arrays on the way in.
-    """
-
-    amplitude_ang:        float
-
-    # Each array shape (n_window,) in Hartree -- the orbital energy
-    # window around HOMO/LUMO.
-    mo_energies_eq_eh:    np.ndarray
-    mo_energies_minus_eh: np.ndarray
-    mo_energies_plus_eh:  np.ndarray
-
-    # Index (into the window arrays above) of the HOMO at the
-    # equilibrium geometry.  The HOMO+1 / LUMO is implicit
-    # (homo_index_in_window + 1).
+    state:                Dict[str, Any]
+    mo_energies_eh:       List[Optional[List[Optional[float]]]]
+    scf_energies_eh:      List[Optional[float]]
+    orbital_match:        List[Optional[List[Optional[int]]]]
     homo_index_in_window: int
-
-    # Total SCF energies in Hartree at each of the three geometries.
-    scf_energy_eq_eh:     float
-    scf_energy_minus_eh:  float
-    scf_energy_plus_eh:   float
+    scf_conv_tol:         float
+    scf_conv_tol_grad:    float
 
     __eq__ = _no_equality
 
     def __post_init__(self):
-        """Normalise + shape-validate the MO arrays.
+        """One SCF energy, one window and one row of matches a node, the
+        equilibrium's first and never failed; every window the
+        equilibrium's length; a failed node null in all three; the HOMO in
+        the window."""
+        if not isinstance(self.state, Mapping) or "chain" not in self.state:
+            raise ValueError(f"ModeElectronicStructure.state is the probe's "
+                             f"state's record; got {self.state!r}")
+        self.state = dict(self.state)
+        energies = list(self.scf_energies_eh)
+        n_nodes = len(energies)
+        if n_nodes < 1 or energies[0] is None:
+            raise ValueError("ModeElectronicStructure: node 0 is the "
+                             "equilibrium's SCF, stated")
+        first = _node_row(self.mo_energies_eh[0] if self.mo_energies_eh
+                          else None, "mo_energies_eh", None)
+        if first is None:
+            raise ValueError("ModeElectronicStructure: node 0's window is "
+                             "the equilibrium's, stated")
+        window = len(first)
+        if (len(self.mo_energies_eh) != n_nodes
+                or len(self.orbital_match) != n_nodes):
+            raise ValueError(
+                f"ModeElectronicStructure: one window and one row of matches "
+                f"a node -- {n_nodes} SCF energies, "
+                f"{len(self.mo_energies_eh)} windows, "
+                f"{len(self.orbital_match)} rows of matches")
+        self.scf_energies_eh = [None if e is None else float(e)
+                                for e in energies]
+        self.mo_energies_eh = [
+            None if row is None else [None if x is None else float(x)
+                                      for x in row]
+            for row in (_node_row(r, "mo_energies_eh", window)
+                        for r in self.mo_energies_eh)]
+        self.orbital_match = [
+            None if row is None else [None if x is None else int(x)
+                                      for x in row]
+            for row in (_node_row(r, "orbital_match", window)
+                        for r in self.orbital_match)]
+        for j in range(n_nodes):
+            failed = (self.scf_energies_eh[j] is None,
+                      self.mo_energies_eh[j] is None,
+                      self.orbital_match[j] is None)
+            if len(set(failed)) != 1:
+                raise ValueError(
+                    f"ModeElectronicStructure: node {j + 1} of {n_nodes} is "
+                    f"failed in one of its rows and not the others -- a "
+                    f"failed node's SCF energy, window and matches are all "
+                    f"null")
+        if not 0 <= int(self.homo_index_in_window) < window:
+            raise ValueError(
+                f"ModeElectronicStructure.homo_index_in_window="
+                f"{self.homo_index_in_window} out of range [0, {window})")
+        self.homo_index_in_window = int(self.homo_index_in_window)
+        self.scf_conv_tol = float(self.scf_conv_tol)
+        self.scf_conv_tol_grad = float(self.scf_conv_tol_grad)
 
-        All three arrays must be 1-D, dtype=float, and have the
-        same length (the orbital window size).  We coerce dtype +
-        contiguity on the way in so a caller passing a list, an
-        int array, or a non-contiguous view is normalised once and
-        the typed surface stays predictable downstream.
-        """
-        self.mo_energies_eq_eh    = _reject_complex_then_asarray(
-            self.mo_energies_eq_eh,    field="ModeElectronicStructure.mo_energies_eq_eh")
-        self.mo_energies_minus_eh = _reject_complex_then_asarray(
-            self.mo_energies_minus_eh, field="ModeElectronicStructure.mo_energies_minus_eh")
-        self.mo_energies_plus_eh  = _reject_complex_then_asarray(
-            self.mo_energies_plus_eh,  field="ModeElectronicStructure.mo_energies_plus_eh")
-        if self.mo_energies_eq_eh.ndim != 1:
-            raise ValueError(
-                f"ModeElectronicStructure.mo_energies_eq_eh must be 1-D; "
-                f"got shape {self.mo_energies_eq_eh.shape}"
-            )
-        n = self.mo_energies_eq_eh.size
-        if self.mo_energies_minus_eh.shape != (n,) or self.mo_energies_plus_eh.shape != (n,):
-            raise ValueError(
-                f"ModeElectronicStructure: mo_energies_{{eq,minus,plus}}_eh "
-                f"must share the same shape; got eq={self.mo_energies_eq_eh.shape}, "
-                f"minus={self.mo_energies_minus_eh.shape}, "
-                f"plus={self.mo_energies_plus_eh.shape}"
-            )
-        if not 0 <= self.homo_index_in_window < n:
-            raise ValueError(
-                f"ModeElectronicStructure.homo_index_in_window={self.homo_index_in_window} "
-                f"out of range [0, {n})"
-            )
+    @property
+    def window_size(self) -> int:
+        """How many orbitals the window holds."""
+        return len(self.mo_energies_eh[0])
 
     def to_dict(self) -> Dict[str, Any]:
-        """JSON-friendly dict.  numpy arrays -> nested lists; floats
-        stay floats; ints stay ints.  Round-trip via
-        :func:`from_dict` is byte-equal modulo float formatting."""
+        """The block as the file states it but its derived values, which the
+        one derivation states beside them (`spectra.derived`).  An orbital
+        energy not finite -- a displaced window shorter than the
+        equilibrium's, padded by the script -- written null
+        (`engines/vibration.md` § 6.4)."""
         return {
-            "amplitude_ang":        float(self.amplitude_ang),
-            # A DISPLACED WINDOW SHORTER THAN THE EQUILIBRIUM'S is padded with
-            # NaN by the script: written null (`engines/vibration.md` § 6.4).
-            "mo_energies_eq_eh":    finite_or_none(self.mo_energies_eq_eh),
-            "mo_energies_minus_eh": finite_or_none(self.mo_energies_minus_eh),
-            "mo_energies_plus_eh":  finite_or_none(self.mo_energies_plus_eh),
+            "state":                dict(self.state),
+            "mo_energies_eh":       [None if row is None
+                                     else finite_or_none(row)
+                                     for row in self.mo_energies_eh],
+            "scf_energies_eh":      list(self.scf_energies_eh),
+            "orbital_match":        [None if row is None else list(row)
+                                     for row in self.orbital_match],
             "homo_index_in_window": int(self.homo_index_in_window),
-            "scf_energy_eq_eh":     float(self.scf_energy_eq_eh),
-            "scf_energy_minus_eh":  float(self.scf_energy_minus_eh),
-            "scf_energy_plus_eh":   float(self.scf_energy_plus_eh),
+            "scf_conv_tol":         float(self.scf_conv_tol),
+            "scf_conv_tol_grad":    float(self.scf_conv_tol_grad),
         }
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "ModeElectronicStructure":
-        """Inverse of :meth:`to_dict`.  Coerces list-of-float arrays
-        back to ``np.ndarray`` so the typed surface always carries
-        numpy.  An unknown key is refused by name, never ignored."""
+        """Inverse of :meth:`to_dict`; the derived keys a file states beside
+        them (checked by the reader, `derived.disagreements`) are not held.
+        An unknown key is refused by name, never ignored."""
         check_keys("ModeElectronicStructure", d, ES_KEYS, needed=())
         return cls(
-            amplitude_ang        = float(d["amplitude_ang"]),
-            mo_energies_eq_eh    = np.asarray(d["mo_energies_eq_eh"],    dtype=float),
-            mo_energies_minus_eh = np.asarray(d["mo_energies_minus_eh"], dtype=float),
-            mo_energies_plus_eh  = np.asarray(d["mo_energies_plus_eh"],  dtype=float),
+            state                = d["state"],
+            mo_energies_eh       = d["mo_energies_eh"],
+            scf_energies_eh      = d["scf_energies_eh"],
+            orbital_match        = d["orbital_match"],
             homo_index_in_window = int(d["homo_index_in_window"]),
-            scf_energy_eq_eh     = float(d["scf_energy_eq_eh"]),
-            scf_energy_minus_eh  = float(d["scf_energy_minus_eh"]),
-            scf_energy_plus_eh   = float(d["scf_energy_plus_eh"]),
+            scf_conv_tol         = float(d["scf_conv_tol"]),
+            scf_conv_tol_grad    = float(d["scf_conv_tol_grad"]),
         )
 
 
@@ -526,11 +590,10 @@ class ModeData:
     eigenvector_canonical: np.ndarray
 
     # Same mode, rescaled per mode so that max(|L_k|) = 1.  Dimensionless.
-    # Use for 3D animation (each mode reaches the same peak amplitude
-    # on screen regardless of mass distribution) and for the fixed-
-    # amplitude electron-phonon "probe displacement" in Phase 4.
-    # DO NOT feed this into physical-amplitude formulas -- the units
-    # are wrong by a per-mode factor.
+    # For 3D animation alone: each mode reaches the same peak amplitude on
+    # screen regardless of mass distribution.  DO NOT feed this into
+    # physical-amplitude formulas -- the units are wrong by a per-mode
+    # factor.
     eigenvector_display:   np.ndarray
 
     # Sign-of-eigenvalue marker: negative-ω modes are flagged here
@@ -1102,7 +1165,7 @@ class SpectraResults:
             for m in self.modes:
                 if m.electronic_structure is None:
                     continue
-                w = m.electronic_structure.mo_energies_eq_eh.size
+                w = m.electronic_structure.window_size
                 if es_window is None:
                     es_window = w
                 elif w != es_window:
@@ -1221,13 +1284,17 @@ class SpectraResults:
         regions = {str(k): tuple(int(i) for i in v)
                    for k, v in (structure.regions or {}).items()}
         temperatures = tuple(self._mode_temperatures())
+        # EACH PROBED MODE'S BLOCK WITH ITS DERIVED VALUES, by the one
+        # derivation (`spectra.derived`), for its probe (`Mode.probe`).
+        rows = self._modes_with_derived()
         modes = tuple(
             Mode(index_1based=int(m.index_1based),
                  frequency_cm1=float(m.frequency_cm1),
                  has_imag=bool(m.has_imag),
                  eigenvector_canonical_per_amu12=np.asarray(
-                     m.eigenvector_canonical, dtype=float))
-            for m in self.modes)
+                     m.eigenvector_canonical, dtype=float),
+                 probe_record=row["electronic_structure"])
+            for m, row in zip(self.modes, rows))
         return Vibration(modes=modes, free_atom_idxs=free, masses_amu=masses,
                          element_symbols=elements, positions_ang=positions,
                          record_temperature_k=temperature,
@@ -1329,10 +1396,11 @@ class SpectraResults:
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "SpectraResults":
-        # THE ONE VERSION RULE, the reader's too (:func:`readable_version`):
-        # a version missing or unreadable raises, never reconstituted at
-        # whatever version the payload claims.
-        readable_version(d.get("schema_version"))
+        # THE ONE VERSION RULE, the reader's too (:func:`translated`): a
+        # version missing or unreadable raises, never reconstituted at
+        # whatever version the payload claims; an older one read only as
+        # its translation.
+        d = translated(d)
         check_keys("SpectraResults", d, RESULT_KEYS, needed=())
         eq = d["equilibrium"]
         check_keys("SpectraResults.equilibrium", eq, EQUILIBRIUM_KEYS,
@@ -1430,7 +1498,8 @@ class SpectraResults:
 
 
 __all__ = [
-    "SCHEMA_VERSION", "OPTICAL_STATES", "checked_optical",
+    "SCHEMA_VERSION", "TRANSLATED_VERSION", "translated", "OPTICAL_STATES",
+    "checked_optical",
     "ModeElectronicStructure",
     "ModeData",
     "SpectraResults",

@@ -79,7 +79,7 @@ def _page_constants():
     run summary's Engine row says a result's engine by."""
     from molbuilder import constants as C
     from molbuilder.engine_table import engine, engines
-    from molbuilder.vibration_frames import OFFERED_NODES
+    from molbuilder.vibration import OFFERED_NODES
     from molbuilder.spectra import activity as A
     return {
         # EACH ENGINE'S NAME, from its one home (the engine table), as the
@@ -92,7 +92,7 @@ def _page_constants():
         "ir_present_floor_km_mol":    A.CHANNEL_PRESENT_FLOOR_IR_KM_MOL,
         "raman_present_floor_a4_amu": A.CHANNEL_PRESENT_FLOOR_RAMAN_A4_AMU,
         # the frame counts the doors offer, the default first
-        # (`vibration_frames.OFFERED_NODES`, `web/spectra.md` § 4.3)
+        # (`vibration.OFFERED_NODES`, `web/spectra.md` § 4.3)
         "frameset_nodes": list(OFFERED_NODES),
     }
 
@@ -193,6 +193,10 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
     them, so this wraps it: the file's own fields, unchanged, plus a computed
     one.
 
+    Each probed mode is served its ``probe`` (`vibration.Probe.to_wire`):
+    the record's values and every view across its nodes, which the page
+    draws without arithmetic of its own (`web/spectra.md` § 3.1).
+
     WHAT IS ADDED, and why it cannot be computed in the browser.
     ``motion_share_by_element`` says which atoms a mode belongs to -- 91%
     carbon for a ring stretch -- and that needs atomic masses, because
@@ -236,6 +240,18 @@ def _loaded(results, run: Optional[Dict[str, Any]] = None,
         for mode in sharing:
             mode["motion_share_by_element"] = shares_by(free_elements,
                                                         mode["motion_share"])
+    # EACH PROBED MODE'S PROBE (`engines/vibration.md` § 6.11 § 4, § 9 item
+    # 5; `web/spectra.md` § 3.1): the record's values and the views across
+    # its nodes -- the slope, g, S, the even share, the harmonicity, the
+    # noise ratio, the gap and its shift -- as `postprocess.vibration`'s mode
+    # answers them; the page draws them and computes nothing.
+    probed = {m.index_1based for m in results.modes
+              if m.electronic_structure is not None}
+    if probed:
+        v = results.vibration(str(path))
+        for mode in payload.get("modes") or []:
+            if mode.get("index_1based") in probed:
+                mode["probe"] = v.mode(mode["index_1based"]).probe.to_wire()
     if temperature_k is not None:
         # the temperature the animation's spreads are at, said with them
         payload["temperature_k"] = temperature_k

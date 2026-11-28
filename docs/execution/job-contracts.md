@@ -1484,7 +1484,7 @@ few (`template.why_not_items`, [`engines/template.md`](?doc=engines/template.md)
 |---|---|---|---|---|
 | benchmark result | `<NN>_<stage>/bench/bench-result.json` | `molbuilder/bench-result@1` | `bench/result.py` | [`generator.md`](?doc=execution/generator.md) § 4.4b |
 | vibration result | `<label>.spectra.json` in the run that computed it | a bare integer `schema_version`, `spectra/results.SCHEMA_VERSION` | `spectra/results.py`, `sidecars/spectra.py` | [`engines/vibration.md`](?doc=engines/vibration.md) § 6.2 |
-| vibration data | `<label>.spectra.nc` beside it | `molbuilder/spectra-data@11` | `spectra/datafile.py` | [`engines/vibration.md`](?doc=engines/vibration.md) § 6.10 (part 5, *The data file*) |
+| vibration data | `<label>.spectra.nc` beside it | `molbuilder/spectra-data@12` | `spectra/datafile.py` | [`engines/vibration.md`](?doc=engines/vibration.md) § 6.10 (part 5, *The data file*) |
 | optical data | `<label>.optical.nc` at a SIESTA vibration run's root | `molbuilder/optical-data@5` | `spectra/optical_data.py` | [`engines/vibration.md`](?doc=engines/vibration.md) § 5.11 |
 | displacement sweep | `<label>.fc-sweep.json` at the root | `molbuilder/fc-displacement-sweep@2` | `spectra/displacement_sweep.py` | [`engines/vibration.md`](?doc=engines/vibration.md) § 5.9 |
 | Raman view | a NetCDF file an export writes | `molbuilder/raman-view@4` | `spectra/raman.py` | [`model/datafiles.md`](?doc=model/datafiles.md) § 1 |
@@ -1599,7 +1599,7 @@ handled differently for structural, calculation setup etc.")*:
 | prep and launch records | `prepared-with.json`, `calcdir.json`, `run.json`, a sequence's launch record, a job's address, `<stem>.points.json`, `notified.json` | none was written: each has had one version | — |
 | results and data files | `<label>.transport.json`, `<label>.transport.nc`, `<label>.fc-sweep.json`, `bench-result.json`, an export's files | refused | written again by its command (`jobset summarize task`, `jobset summarize bench`, the export) ([`model/datafiles.md`](?doc=model/datafiles.md) § 3a) |
 | | `<label>.TBT.digest.nc` | no kept reading | the point's data file read again ([`model/parse.md`](?doc=model/parse.md) § 5e) |
-| | `<label>.spectra.json` (`spectra/results.READABLE_SCHEMA_VERSIONS`), `<label>.spectra.nc`, `<label>.optical.nc` | refused (written before 2026-11-23) | the vibration run again ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.1) |
+| | `<label>.spectra.json` (`spectra/results.READABLE_SCHEMA_VERSIONS`), `<label>.spectra.nc`, `<label>.optical.nc` | refused (written before 2026-11-23); a result of schema 15 and its data file `@11` (2.79.0–2.88.0) translated where no mode holds a probe — schema 16 with another number — and refused where one does (`spectra/results.translated`) | the vibration run again ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.1) |
 | structure files | `.molstruct.json` (`sidecars/molstruct.READABLE_VERSIONS`) | refused (saved before 2026-11-04) | the pair made again, or its `.xyz` opened alone ([`model/structure-molstruct.md`](?doc=model/structure-molstruct.md) § 2) |
 
 What each version changed is the [changelog](?doc=process/changelog.md).

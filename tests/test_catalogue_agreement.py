@@ -151,3 +151,16 @@ def test_the_DEFAULT_agrees(engine, cls):
         if not _same(mine, item.default):
             bad.append(f"{f.name}: class={mine!r} catalogue={item.default!r}")
     assert not bad, "the default disagrees:\n  " + "\n  ".join(bad)
+
+
+def test_the_probes_node_counts_are_the_rules():
+    """`engines/vibration.md` § 6.11 § 4: the probe's node counts have one
+    home, `vibration.OFFERED_NODES`, which travels beside the job -- the
+    catalogue's `probe_nodes` offers exactly those, its default the rule's
+    (`vibration.DEFAULT_NODES`), as the config class's is.  THE SILENT
+    FAILURE: a form offering a count the frame-set doors do not, or a
+    description written at another default than a set's."""
+    from molbuilder.vibration import DEFAULT_NODES, OFFERED_NODES
+    item = _catalogue()["probe_nodes"]
+    assert _same(item.choices, OFFERED_NODES), item.choices
+    assert item.default == DEFAULT_NODES == PySCFConfig().probe_nodes

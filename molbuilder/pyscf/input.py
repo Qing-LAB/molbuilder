@@ -165,6 +165,11 @@ def _atoms_block(struct: Structure, positions, indent: str = "    ") -> str:
     return "\n".join(lines)
 
 
+#: THE OPTIMIZATION DECK'S NAME, as its spec records it (`DeckSpec.created_by`)
+#: and its progress log's header names its writer (`engines/pyscf.md` § 4).
+CREATED_BY = "molbuilder jobset prep"
+
+
 def spec_for(struct: Structure,
                   config: Optional[PySCFConfig] = None,
                   *,
@@ -301,7 +306,7 @@ def spec_for(struct: Structure,
         out += emit_run_settings_block(cfg)
         out += emit_script_head()
         out += emit_runtime_facts()
-        out += emit_words()
+        out += emit_words(CREATED_BY)
         out.append("import time")
         # ``_os`` is used by the warm-restart blocks (geometry override
         # at gto.M() time + chkfile SCF init-guess after mf is built).
@@ -779,7 +784,7 @@ def spec_for(struct: Structure,
         # section_title: the framework's default.  It stays a slot because
         # the comment character is genuinely an engine's syntax; it is
         # simply not one these two differ on.
-        created_by="molbuilder jobset prep",
+        created_by=CREATED_BY,
         check_rules=_layout.check_rules,
     )
     return spec
@@ -1186,7 +1191,11 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig", names,
 
     ``names`` are the rung's (`runfiles.RunNames`), and they reach two
     things: the log's own filename (:func:`run_file_expr`) and, by their
-    stage token, the one entry of its convergence-target map.
+    stage token, the one entry of its convergence-target map.  The engine
+    and the writer the log's header names are the deck's words
+    (:func:`emit_words`), handed by keywords the same-calculation reading
+    sets aside, so the constructor compares as it did before the deck told
+    them (`engines/pyscf.md` § 4, § 8).
 
     The emitter is instantiated **early** -- before the relaxation -- so the
     log file (header + initial-preview block) exists from the moment the
@@ -1279,7 +1288,8 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig", names,
     # § 5.3): the run states them, as a SIESTA run's `.out` does.
     out.append(f'_molwatch = _mb_MolwatchEmitter('
                f'_mb_outfile({run_file_expr(names, ROLE_MOLWATCH)}), '
-               f'JOB, mol, '
+               f'JOB, mol, engine={WORDS_NAME}[{LOG_ENGINE_WORD!r}], '
+               f'generator={WORDS_NAME}[{LOG_WRITER_WORD!r}], '
                f'runtime_info={RUNTIME_NAME}, '
                f'convergence_targets={TARGETS_NAME}, '
                f'frozen_atoms={sorted(int(i) for i in frozen_atoms)!r}, '
@@ -1617,15 +1627,26 @@ _STOPPED_AS = ("stopped_geometry",
                "Geometry reached (PySCF, the relaxation did not converge)")
 
 
-def emit_words() -> List[str]:
+#: THE PROGRESS LOG'S ENGINE AND WRITER as the deck hands them its writer
+#: (`engines/pyscf.md` § 4): keys of the words, which a call takes by a
+#: keyword the same-calculation reading sets aside
+#: (`script_input.script_lines`).
+LOG_ENGINE_WORD, LOG_WRITER_WORD = "progress_log_engine", "progress_log_writer"
+
+
+def emit_words(writer: str) -> List[str]:
     """``_MB_WORDS`` (`pyscf.script_input.WORDS_NAME`) -- the words the run
     says, in its result, to a call and on the geometries it saves: each
     message put there where it is composed and read from there where it is
     used, so a release that words it otherwise changes no statement that
     computes (`execution/job-request.md` § 6).  It opens with the comment
     line of each geometry a PySCF deck may save (:data:`_SAVED_AS`,
-    :data:`_REACHED_AS`, :data:`_STOPPED_AS`), whichever this one saves."""
-    said = [*_SAVED_AS.values(), _REACHED_AS, _STOPPED_AS]
+    :data:`_REACHED_AS`, :data:`_STOPPED_AS`), whichever this one saves, and
+    the engine and the ``writer`` -- the deck's name, its spec's
+    ``created_by`` -- its progress log's header names (:data:`LOG_ENGINE_WORD`,
+    :data:`LOG_WRITER_WORD`)."""
+    said = [*_SAVED_AS.values(), _REACHED_AS, _STOPPED_AS,
+            (LOG_ENGINE_WORD, "pyscf"), (LOG_WRITER_WORD, writer)]
     return [f"{WORDS_NAME} = {{",
             *(f"    {key!r}: {words!r}," for key, words in said),
             "}", ""]

@@ -54,7 +54,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .frameset import WEIGHT_ROW, finite_number
 from .runfiles import ROLE_SPECTRA, ROLE_SPECTRA_DATA
-from .vibration import DEFAULT_NODES
+from .vibration import DEFAULT_NODES, OFFERED_NODES
 
 #: Each atom's mass, the value channel a vibration's set weights its
 #: coordinates by (`model/structure-annotations.md`).
@@ -961,12 +961,6 @@ def outermost_move_of(v, mode, chain_or_distribution, *,
 #  The doors' set -- the command line's and the page's (§ 6)              #
 # ----------------------------------------------------------------------- #
 
-#: THE FRAME COUNTS THE DOORS OFFER -- `frameset from-mode --nodes`, the
-#: page's *Frames* -- a state's own default first (`vibration.DEFAULT_NODES`,
-#: three), five and seven the check on it
-#: (`science/vibrational-averaging.md` § 5.3).  A script names any.
-OFFERED_NODES = (DEFAULT_NODES, 5, 7)
-
 #: The doors' words for the state they ask (§ 2: asked every time).
 _ASK_THE_STATE = (
     "the state the frames sample is asked every time, never assumed: a "
@@ -1627,6 +1621,6 @@ __all__ = ["FrameSetError", "TWO_FORMS", "vibration_of", "MASS_CHANNEL", "ROWS",
            "vibration_of_run",
            "weights_for_set", "write_frame_set", "Written", "read_frame_set",
            "FrameSet", "outermost_move_of",
-           "OFFERED_NODES", "STATE_ASK_KEYS", "StateRefused", "doors_chain",
+           "STATE_ASK_KEYS", "StateRefused", "doors_chain",
            "read_state_ask", "readout", "HARMONIC_LIMIT_EV", "ModeFrames",
            "frameset_from_mode"]

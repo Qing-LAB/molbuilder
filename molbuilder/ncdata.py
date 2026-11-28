@@ -223,6 +223,8 @@ AXES: Dict[str, Axis] = {a.name: a for a in (
     Axis("probed_mode", "the modes the electronic-structure probe ran on",
          "1"),
     Axis("window", "an orbital's place in the probe's window", "1"),
+    Axis("node", "the nodes of a probed mode's state the probe computed at",
+         "1"),
     Axis("temperature_k", "the thermochemistry's temperatures, and the "
          "modes' own", "K"),
     Axis("fc_step", "a SIESTA force-constant run's steps", "1"),

@@ -263,7 +263,7 @@ def test_a_states_list_is_cut_for_the_largest_rule_the_doors_offer():
     frames from the list are the state's.  THE SILENT FAILURE: the doors
     offering more frames than the list was cut for, the outermost frames'
     averages off."""
-    from molbuilder.vibration_frames import OFFERED_NODES
+    from molbuilder.vibration import OFFERED_NODES
     order = 2 * max(OFFERED_NODES) - 2
     s = states.thermal(temperature_k=300.0).on(Oscillator(50.0))
     assert s.populations.size >= s.populations_for(order).size

@@ -7,6 +7,7 @@ import numpy as np
 from click.testing import CliRunner
 
 from molbuilder.cli import cli
+from molbuilder.pyscf.input import CREATED_BY
 from molbuilder.trajectory_log.emitter import MolwatchEmitter
 
 
@@ -42,7 +43,8 @@ def test_the_runtime_info_is_named_beside_the_file_on_its_stem(tmp_path):
     ``job_01_relax.molwatch.runtime_info.json`` beside the progress log --
     which no reader of the run reads back."""
     read = "job_01_relax.molwatch.log"
-    MolwatchEmitter(str(tmp_path / read), "job", _Mol(),
+    MolwatchEmitter(str(tmp_path / read), "job", _Mol(), engine="pyscf",
+                    generator=CREATED_BY,
                     runtime_info={"mpi_np": 2})
     result = CliRunner().invoke(cli, ["runtime-info", str(tmp_path / read)])
     assert result.exit_code == 0, result.output

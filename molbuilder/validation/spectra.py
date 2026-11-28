@@ -20,18 +20,15 @@ def _sentence(text: str) -> str:
     return text[:1].upper() + text[1:]
 
 
-def spectra_render_checks(struct: Structure, cfg, *,
-                          inactive=frozenset()) -> List[Issue]:
+def spectra_render_checks(struct: Structure, cfg) -> List[Issue]:
     """PySCF SCIENTIFIC advisories — THE render gate for a vibration
-    deck (grid / amplitude / the mode selection / the frozen set).  The
-    charge and the spin are the electronic state's one family, asked from
-    `validate` for every kind.
+    deck (grid / the mode selection / the frozen set / what the asked
+    phases cost).  The charge and the spin are the electronic state's one
+    family, asked from `validate` for every kind.
 
     Called from ``validation/__init__.py``'s vibration arm, over the
     deck's config view -- an ADAPTER over PySCFConfig, so ``cfg`` is
-    duck-typed to the spectra vocabulary.  ``inactive`` names the settings
-    that enter nothing here (`metadata.inactive_settings`): the probe's advice
-    stands aside while its displacement is one of them."""
+    duck-typed to the spectra vocabulary."""
     issues: List[Issue] = []
 
     # -- PySCF-specific scientific advisories ------------------
@@ -45,67 +42,6 @@ def spectra_render_checks(struct: Structure, cfg, *,
     # "spectra" context selects the frequency-error rationale.
     from .pyscf import check_dft_grid_level
     issues.extend(check_dft_grid_level(cfg, context="spectra"))
-
-    # THE PROBE'S ADVICE, while the probe runs: its displacement enters
-    # nothing under `skip` (the item's `active_when`), and no advice is
-    # given about a value that enters nothing (`engines/template.md` § 5).
-    if "displacement_amplitude_ang" not in inactive:
-        # Displacement amplitude.  The [0.02, 0.20] Å acceptance
-        # range is empirical -- not derived from a single source.
-        # 0.02 Å keeps
-        # the probe inside the linear-response regime (ΔE_orbital
-        # ∝ A), at the cost of needing a tight SCF tolerance to
-        # resolve the smaller ΔE.  The script's default
-        # ``scf_conv_tol = 1e-9`` is usually sufficient (FD noise on ΔE_HOMO
-        # at 0.02 Å is ~1e-8 Ha << ΔE for a typical bond-stretch
-        # mode).  Above 0.20 Å cubic anharmonicity in the
-        # potential becomes significant (cf. Mills1972 §2.4).
-        amp = cfg.displacement_amplitude_ang
-        if amp < 0.02:
-            issues.append(Issue(
-                severity="warn",
-                message=(f"Displacement amplitude {amp:g} Å is "
-                         f"smaller than the accepted range "
-                         f"(0.02-0.20 Å).  At this scale the "
-                         f"finite-difference orbital-energy slope "
-                         f"is at or below the noise floor of "
-                         f"the default scf_conv_tol=1e-9 SCF; either tighten "
-                         f"scf_conv_tol further or raise the "
-                         f"displacement to at least 0.02 Å."),
-                where="config.displacement_amplitude_ang",
-            ))
-        elif amp > 0.20:
-            issues.append(Issue(
-                severity="warn",
-                message=(f"Displacement amplitude {amp:g} Å is "
-                         f"larger than the accepted range "
-                         f"(0.02-0.20 Å).  At large amplitudes the "
-                         f"potential isn't linear in the displacement "
-                         f"any more -- anharmonic terms contaminate "
-                         f"the orbital-energy slope you want to "
-                         f"measure.  Lower to 0.20 Å or less."),
-                where="config.displacement_amplitude_ang",
-            ))
-
-        # ---- Amplitude x SCF-tolerance coupling (SCIENTIFIC-AUDIT, FN-4) ----
-        # The finite-difference orbital-energy SIGNAL scales with the
-        # displacement amplitude; it must sit well ABOVE the SCF noise floor
-        # (~scf_conv_tol).  A SMALL amplitude paired with a LOOSE conv_tol
-        # buries the signal -- the exact failure the amplitude window guards,
-        # but the window alone never looked at the actual tolerance.  Warn
-        # when both are near their risky ends (conservative; a soft advisory).
-        conv = getattr(cfg, "scf_conv_tol", None)
-        if (conv is not None and conv > 1e-7 and amp <= 0.05):
-            issues.append(Issue(
-                severity="warn",
-                message=(f"Small displacement ({amp:g} Å) with a loose "
-                         f"scf_conv_tol ({conv:g}): the finite-difference "
-                         f"orbital-energy slope (∝ amplitude) may be at or "
-                         f"below the SCF noise floor (~conv_tol), giving noisy "
-                         f"electronic-structure shifts.  Tighten scf_conv_tol "
-                         f"(≤1e-8) or raise the displacement amplitude."),
-                where="config.scf_conv_tol",
-            ))
 
     # The charge, the spin and the method are NOT judged here: they are the
     # electronic state's, and `validate` asks its one family once for every
@@ -195,14 +131,21 @@ def spectra_render_checks(struct: Structure, cfg, *,
                            else modes_of(struct, "pyscf")[2])
             except ValueError:
                 _picked = None   # refused by the selector's own check
+            # ONE SCF FEWER THAN THE NODES A MODE: node 0 is the equilibrium
+            # SCF the run already has (`engines/vibration.md` § 4.8).
+            _each = int(cfg.probe_nodes) - 1
             if _picked:
                 issues.append(Issue(
                     severity="info",
                     message=(
-                        "Orbital energies along a mode: "
-                        + (f"{2 * _picked} extra SCFs (2 per mode listed)"
+                        f"Orbital energies along a mode, at "
+                        f"{int(cfg.probe_nodes)} nodes of each mode's thermal "
+                        f"state at {float(cfg.probe_temperature_K):g} K: "
+                        + (f"{_each * _picked} extra SCFs ({_each} per mode "
+                           f"listed)"
                            if _probe == "explicit" else
-                           f"up to {2 * _picked} extra SCFs (2 per mode"
+                           f"up to {_each * _picked} extra SCFs ({_each} per "
+                           f"mode"
                            + (" within the window" if (
                                getattr(cfg, "freq_min_cm1", None) is not None
                                or getattr(cfg, "freq_max_cm1", None)
@@ -683,9 +626,8 @@ def modes_of(struct: Structure, engine: str):
 
 # The render-time checks are the module's public door.
 def validate_vibration_kind(struct: Structure, cfg, cell, *, engine: str,
-                            state, design=None, inactive=frozenset(),
-                            **_) -> List[Issue]:
-    """The vibration kind's science (grid / amplitude / frozen atoms /
+                            state, design=None, **_) -> List[Issue]:
+    """The vibration kind's science (grid / frozen atoms / what it costs /
     the relaxation record), over the deck's own config view -- the part its
     record in the kind table names (``validator``), run by the settings gate
     on every deck of the kind; the charge and spin are the electronic
@@ -694,8 +636,8 @@ def validate_vibration_kind(struct: Structure, cfg, cell, *, engine: str,
     § 3.3), chosen by ``engine``, the config's as the gate found it."""
     if engine == "pyscf":
         from ..pyscf.vibration_deck import VibrationConfigView
-        return list(spectra_render_checks(struct, VibrationConfigView(cfg, struct),
-                                          inactive=inactive))
+        return list(spectra_render_checks(struct,
+                                          VibrationConfigView(cfg, struct)))
     if engine == "siesta":
         return list(siesta_vibration_checks(struct, cfg, state=state,
                                             design=design))

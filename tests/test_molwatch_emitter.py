@@ -30,6 +30,7 @@ import numpy as np
 import pytest
 
 from molbuilder.constants import HARTREE_BOHR_EV_ANGSTROM_ASE, HARTREE_EV
+from molbuilder.pyscf.input import CREATED_BY
 from molbuilder.trajectory_log import MolwatchEmitter
 
 
@@ -60,17 +61,19 @@ def h2_mol():
 
 
 def test_constructor_writes_header_and_preview_block(tmp_path, h2_mol):
-    """Constructor writes (a) the v1 header lines and (b) the step-0
+    """Constructor writes (a) the v1 header lines -- the engine and the
+    writer the deck told it (`engines/pyscf.md` § 4) -- and (b) the step-0
     preview block, in that order, to the given path.  The preview is
     written before any SCF would run -- so molwatch can render the
     structure the moment a user loads the file."""
     p = tmp_path / "test.molwatch.log"
-    em = MolwatchEmitter(str(p), "h2", h2_mol)
+    em = MolwatchEmitter(str(p), "h2", h2_mol, engine="pyscf",
+                         generator=CREATED_BY)
 
     txt = p.read_text()
     # Header lines
     assert "# molwatch trajectory log v1" in txt
-    assert "# generator: molbuilder/pyscf_input" in txt
+    assert f"# generator: {CREATED_BY}" in txt
     assert "# engine: pyscf" in txt
     assert "# job: h2" in txt
     assert "# units: energy=eV, force=eV/Ang, coords=Ang" in txt
@@ -103,7 +106,8 @@ def test_scf_cycle_hook_buffers_per_cycle_data(tmp_path, h2_mol):
     into the step's scf_history table.  cycle=0 resets the buffer
     (a new SCF run is starting)."""
     p = tmp_path / "test.molwatch.log"
-    em = MolwatchEmitter(str(p), "h2", h2_mol)
+    em = MolwatchEmitter(str(p), "h2", h2_mol, engine="pyscf",
+                         generator=CREATED_BY)
 
     # Two cycles of a fresh SCF run:
     em.scf_cycle_hook({"cycle": 0, "e_tot": -1.10, "last_hf_e": None,
@@ -142,7 +146,8 @@ def test_opt_step_hook_writes_block_with_forces_and_scf_history(tmp_path,
     block, with forces in eV/Å (sign-flipped from the gradient input
     which is in Ha/Bohr) and a scf_history table of buffered cycles."""
     p = tmp_path / "test.molwatch.log"
-    em = MolwatchEmitter(str(p), "h2", h2_mol)
+    em = MolwatchEmitter(str(p), "h2", h2_mol, engine="pyscf",
+                         generator=CREATED_BY)
 
     # Buffer one SCF cycle so the opt-step block has scf_history.
     em.scf_cycle_hook({"cycle": 0, "e_tot": -1.15, "last_hf_e": -1.10,
@@ -187,7 +192,8 @@ def test_opt_step_hook_missing_envs_is_noop(tmp_path, h2_mol):
     write a stale block.  One example, as the emitter has one rule for
     it: the gradients not yet there."""
     p = tmp_path / "test.molwatch.log"
-    em = MolwatchEmitter(str(p), "h2", h2_mol)
+    em = MolwatchEmitter(str(p), "h2", h2_mol, engine="pyscf",
+                         generator=CREATED_BY)
 
     before = p.read_text()
     em.opt_step_hook({"mol": h2_mol, "energy": -1.0})
@@ -202,7 +208,8 @@ def test_emitted_lines_exact_for_zero_force_step(tmp_path, h2_mol):
     history): every line of the block must match an exact substring,
     so a parser change downstream is forced to be deliberate."""
     p = tmp_path / "test.molwatch.log"
-    em = MolwatchEmitter(str(p), "h2", h2_mol)
+    em = MolwatchEmitter(str(p), "h2", h2_mol, engine="pyscf",
+                         generator=CREATED_BY)
     em.opt_step_hook({
         "mol":       h2_mol,
         "energy":    0.0,
@@ -239,7 +246,8 @@ def test_each_scf_value_is_read_back_from_the_column_it_was_written_in(
     import time
     from molbuilder.parse import parse
     p = tmp_path / "h2.molwatch.log"
-    em = MolwatchEmitter(str(p), "h2", h2_mol)
+    em = MolwatchEmitter(str(p), "h2", h2_mol, engine="pyscf",
+                         generator=CREATED_BY)
     before = time.time()
     em.scf_cycle_hook({"cycle": 0, "e_tot": -1.10, "last_hf_e": None,
                        "norm_gorb": 1.0e-2, "norm_ddm": 1.0e-3})

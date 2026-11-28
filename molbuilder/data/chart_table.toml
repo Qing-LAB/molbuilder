@@ -64,7 +64,7 @@ tags = ["raman_strength", "raman_curve", "ir_intensity", "ir_curve"]
 marks = []
 
 [charts.levels]
-words = "a mode's frontier orbitals at its two displaced geometries and at equilibrium"
+words = "a mode's frontier orbitals at the nodes of its state the probe computed at"
 tags = ["mo_energy"]
 marks = []
 
@@ -110,10 +110,10 @@ units = "cm-1"
 long_name = "the frequency the curve is evaluated at"
 definition = "a point of the broadened curve, in cm-1"
 
-[xs.mode_displacement_ang]
-units = "angstrom"
-long_name = "the displacement along the mode"
-definition = "-A, 0 and +A: the geometries the electronic-structure probe ran at, A its amplitude (amplitude_ang)"
+[xs.mode_coordinate_amu12_ang]
+units = "amu^1/2 angstrom"
+long_name = "the node's coordinate along the mode"
+definition = "each node of the mode's state the electronic-structure probe ran at, ascending (q_amu12_ang, engines/vibration.md 6.11 4)"
 
 [xs.temperature_k]
 of = "molbuilder.spectra.datafile:GRID_VARS"
@@ -255,8 +255,8 @@ x = "curve_frequency_cm1"
 y = { name = "ir_curve_relative_percent", kind = "derived", units = "%", long_name = "the IR lane's broadened curve", definition = "a Lorentzian of each real band drawn, its height the band's percentage of the strongest real band, its full width at half maximum the broadening chosen -- summed; an imaginary mode's band is drawn and left out of the curve" }
 
 [tags.mo_energy]
-x = "mode_displacement_ang"
-y = { name = "mo_energy_ev", kind = "derived", units = "eV", long_name = "an orbital's energy", definition = "the probe's mo_energy_minus_eh, mo_energy_eq_eh and mo_energy_plus_eh, in eV: a curve each orbital of the window, named by its place beside the HOMO and LUMO" }
+x = "mode_coordinate_amu12_ang"
+y = { name = "mo_energy_ev", kind = "derived", units = "eV", long_name = "an orbital's energy", definition = "the probe's mo_energies_eh at each node, in eV: a curve each orbital of the window, named by its place beside the HOMO and LUMO" }
 
 [tags.thermo_g]
 x = "temperature_k"

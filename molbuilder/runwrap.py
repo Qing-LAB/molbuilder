@@ -3514,7 +3514,8 @@ def _finish_main(module: str, what: str, name: str,
 # sidecar module its ``write_moved`` reaches; the relaxation; and a
 # vibration's rules -- the PySCF route's, the harmonic path and
 # thermochemistry, the structure the result states and the result's writer
-# (its JSON and its data file) -- and its mode selector.
+# (its JSON and its data file) -- its mode selector, the probe's rule and
+# geometry (`vibration`), and the run's one clock (`runrecord.stamp`).
 # The script imports them by their names there --
 # `pyscf.input.emit_bundle_imports` reads them from :func:`members`.
 #
@@ -3529,13 +3530,15 @@ def _finish_main(module: str, what: str, name: str,
 #: the objects the deck writers hand `pyscf.input.emit_bundle_imports`,
 #: which refuses at render an object from any other module.
 _PYSCF_IMPORTED = ("molbuilder.atom_permutation", "molbuilder.constants",
-                   "molbuilder.pyscf.relax_policy", "molbuilder.runtime_info",
+                   "molbuilder.pyscf.relax_policy", "molbuilder.runrecord",
+                   "molbuilder.runtime_info",
                    "molbuilder.sidecars.spectra", "molbuilder.spectra.activity",
                    "molbuilder.spectra.normal_modes",
                    "molbuilder.spectra.pyscf_vibration",
                    "molbuilder.spectra.results",
                    "molbuilder.spectra.selection",
                    "molbuilder.trajectory_log.emitter",
+                   "molbuilder.vibration",
                    "molbuilder.workingcopy_structure")
 
 

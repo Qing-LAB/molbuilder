@@ -992,12 +992,15 @@ def water_held(tmp_path_factory) -> RealRun:
 
 def water_probed(tmp_path_factory) -> RealRun:
     """Free water, infrared on, the per-mode probe on the modes the list names
-    -- ``1, 3, 9``, of three: 9 names none (`engines/vibration.md` § 4.8).
-    Raman's 6N SCFs are not its subject, and Raman is off by default."""
+    -- ``1, 3, 9``, of three: 9 names none (`engines/vibration.md` § 4.8) --
+    at three nodes of each mode's thermal state at 300 K, the bend and the
+    antisymmetric stretch, both stiff against kT (§ 6.11 § 4).  Raman's 6N
+    SCFs are not its subject, and Raman is off by default."""
     return water_vibration(
         tmp_path_factory, "probed",
         settings={"es_mode_selection": "explicit",
-                  "es_explicit_indices": "1, 3, 9"})
+                  "es_explicit_indices": "1, 3, 9",
+                  "probe_temperature_K": 300.0, "probe_nodes": 3})
 
 
 def water_linear(tmp_path_factory) -> RealRun:

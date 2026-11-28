@@ -246,11 +246,14 @@ writes nothing — and name each that differs: `mesh_cutoff: 300 → 400`.
   or one an older molbuilder wrote, missing a value this one records — says
   so in one spelling on every surface (`prepared_with.UNRECORDED_SAID`) and is
   compared with nothing; prepared again, it is recorded.
-- **A launch compares nothing**: it sends what prep wrote (§ 6.0). **But a
-  launch that names no group offers none changed since its prep**, never
-  launched: it is passed by — said *prepare it again*, as `status` says it,
-  wherever the launch lists the groups — and named, `--group N`, it goes as
-  asked *(the user, 2026-11-12)*.
+- **A launch decides nothing by comparing**: it sends what prep wrote
+  (§ 6.0). **But a launch that names no group offers none changed since its
+  prep**, never launched: it is passed by — said *prepare it again*, as
+  `status` says it, wherever the launch lists the groups — and named,
+  `--group N` or `--stage`, it goes as asked *(the user, 2026-11-12)*, **the
+  change said before it runs**, each stage's line in `status`'s words beside
+  what the launch shows: *stage: changed since prepared: … -- this launch
+  runs it as it was prepared* (`_cli._changed_since_prepared`).
 
 The way on:
 

@@ -53,7 +53,7 @@ by a second reader: it is that composition on its grid, for analysis.
 | file | what it is | written by | schema | its chapter · its names |
 |---|---|---|---|---|
 | `<label>.transport.nc` | every result of a transport calculation, in groups: the junction, each stage, each point and its device run, and the summary across the points | `jobset summarize task`; an export composes the same file | `molbuilder/transport-data@14` | `engines/transport.md` § 2a.12 · § 9.1 |
-| `<label>.spectra.nc` | a vibration result, beside its JSON — the same payload, tied by the JSON's sha256 | the result's one writer, at every write on both engines | `molbuilder/spectra-data@11`, any other refused | `engines/vibration.md` § 6.10, *The data file* · § 9.2 |
+| `<label>.spectra.nc` | a vibration result, beside its JSON — the same payload, tied by the JSON's sha256 | the result's one writer, at every write on both engines | `molbuilder/spectra-data@12`; `@11` read where it holds no probe, any other refused | `engines/vibration.md` § 6.10, *The data file* · § 9.2 |
 | `<label>.TBT.digest.nc` (`.TBT_UP` / `.TBT_DN`) | a TBtrans data file's DOS per orbital, k-averaged once and kept | the reading of the `.TBT.nc` beside it | `molbuilder/tbt-digest@5` | `model/parse.md` § 5e · § 9.6 |
 | `<label>.optical.nc` | a SIESTA vibration's optical calls — each frame's ε₂ on the photon energies, its mode, side and geometry, the settings the calls read: the record of the Raman phase so far | the run's own record steps — the force constants', every frame pending, then each optical call's — and its finish | `molbuilder/optical-data@5`, any other refused | `engines/vibration.md` § 5.11 § 8 · § 9.3 |
 | `<label>.optimization.nc` · `<label>.steps.nc` | a calculation's runs and their steps (§ 9.5): every step its runs finished on one grid — each atom's position and force, its charges where the run printed them, the energy, the stress, the largest force — each step's SCF cycles, and each run's own record: whether it converged, how it ended; an optimization's data file, and a vibration's runs beside its own data files | an export alone (`stepsdata`, through `optimization.export` and `spectra.export`), never into the calculation | `molbuilder/run-steps@1` | `engines/optimization-postprocessing.md` § 6, `engines/vibration-postprocessing.md` § 1 · § 9.5 |
@@ -274,9 +274,10 @@ naming this section — in every file, every group, the root's included.
    here and to `ncdata.AXES` — its name made by rule 2 and checked against
    every row for a concept already named. Until then the writer refuses it.
 5. **A row is never renamed in place.** Renaming an axis is a new `schema`
-   of every file that uses it, and every reader reads its own schema alone:
-   a file of another is refused by its version (§ 3a), naming both and the
-   way on, and its reader asks only for the names its schema writes. A file
+   of every file that uses it, and every reader reads its own schema — and
+   an older one only where it translates it (the vibration result's `@11`
+   with no probe, § 9.2): a file of another is refused by its version
+   (§ 3a), naming both and the way on, and its reader asks only for the names its schema writes. A file
    refused is written again by its command — the vibration result's and the
    optical calls', which a run wrote, by running the vibration again; a kept
    reading is out of date at another version and made again from its source
@@ -309,6 +310,7 @@ naming this section — in every file, every group, the root's included.
 | `mo` | molecular orbitals | from 0, ascending energy | 1 | vibration |
 | `probed_mode` | the modes the electronic-structure probe ran on | each mode's 1-based index | 1 | vibration |
 | `window` | an orbital's place in the probe's window | from 0, ascending energy | 1 | vibration |
+| `node` | the nodes of a probed mode's state the probe computed at (from `spectra-data@12`) | from 0 in the set's order, 0 the equilibrium, then $+q_1, -q_1, +q_2, \dots$ ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.11 § 4) | 1 | vibration |
 | `temperature_k` | the temperatures a quantity is stated at — the thermochemistry's grid, and the modes' own (`/modes/thermal`, from `spectra-data@11`, which temperatures: [`engines/vibration.md`](?doc=engines/vibration.md) § 6.11 § 3) | each temperature | K | vibration |
 | `fc_step` | a SIESTA force-constant run's steps | from 0, step 0 the reference geometry, then each displacement in SIESTA's order | 1 | vibration (`/partial_charges`) |
 | `photon_energy_ev` | the light's energy, ħω — a concept apart from `energy_ev`, which is an electron's energy relative to the device's Fermi level at 0 V | each photon energy as SIESTA wrote it, ascending | eV | optical |
@@ -447,8 +449,10 @@ payload, the optical calls' frames, the Raman view's modes — does that from
 the same doors.
 
 Each file moves its schema with this, and its reader reads that one schema
-alone: the vibration result's and the optical calls', which a run wrote,
-are refused by version and made again by running the vibration again; the
+— and an older one only where it translates it, the vibration result's
+`@11` holding no probe read as `@12` (§ 9.2): the vibration result's and the
+optical calls', which a run wrote, are otherwise refused by version and made
+again by running the vibration again; the
 transport and steps files and the Raman view, which an export or
 `summarize` writes, are refused by version, their writer's command writing
 them again.
@@ -1102,8 +1106,9 @@ Every raw variable here is *from the device point's SIESTA output*.
 The vibration result as data — the same payload as `<label>.spectra.json`
 beside it, tied to it by that JSON's sha256 (`json_sha256`). Written by the
 job at every write of the result, on both engines (the result's one writer,
-`write_spectra_payload`); schema `molbuilder/spectra-data@11`, the one its
-reader reads (§ 1). The science is [`engines/vibration.md`](?doc=engines/vibration.md)
+`write_spectra_payload`); schema `molbuilder/spectra-data@12`, the one its
+reader reads — and `@11` where its probe group holds no mode, read as `@12`
+(§ 1; [`engines/vibration.md`](?doc=engines/vibration.md) § 6.10.5). The science is [`engines/vibration.md`](?doc=engines/vibration.md)
 § 4 (PySCF) and § 5 (SIESTA); the result's keys, § 6.2–6.6.
 
 ```text
@@ -1233,7 +1238,7 @@ temperatures are the file's own
 |---|---|
 | `title` | *each mode's spread and mean quanta …* |
 
-#### `/modes/electronic_structure` — the electronic-structure probe ([`engines/vibration.md`](?doc=engines/vibration.md) § 4.8)
+#### `/modes/electronic_structure` — the electronic-structure probe ([`engines/vibration.md`](?doc=engines/vibration.md) § 4.8, § 6.11 § 4)
 
 Always written; a row per mode PySCF's probe ran on, none otherwise.
 
@@ -1241,10 +1246,18 @@ Always written; a row per mode PySCF's probe ran on, none otherwise.
 |---|---|---|---|---|
 | `probed_mode` | probed_mode | coordinate | 1 | a probed mode, by its 1-based index in the result |
 | `window` | window | coordinate | 1 | an orbital's place in the probe's window, from 0, ascending energy |
+| `node` | node | coordinate | 1 | a node of the mode's state, from 0 in the set's order, 0 the equilibrium |
 | `homo_index_in_window` | probed_mode | given | 1 | the HOMO's index among the window's orbitals, from 0 |
-| `amplitude_ang` | probed_mode | given | angstrom | the push A each way along the mode: the mode's display form's largest Cartesian component moves by it |
-| `total_energy_eq_eh` · `total_energy_minus_eh` · `total_energy_plus_eh` | probed_mode | raw | Eh | the total energy at equilibrium, displaced by −A, displaced by +A along the mode · *the record's keys* `scf_energy_eq_eh` · `scf_energy_minus_eh` · `scf_energy_plus_eh` |
-| `mo_energy_eq_eh` · `mo_energy_minus_eh` · `mo_energy_plus_eh` | probed_mode, window | raw | Eh | the window's orbital energies, ascending, at equilibrium, at −A, at +A · *the record's keys* `mo_energies_eq_eh` · `mo_energies_minus_eh` · `mo_energies_plus_eh` |
+| `state` | probed_mode | given | — | the state the nodes are of, as JSON text — the chain, its temperature and where it came from (`ModeDistribution.to_record`) |
+| `q_amu12_ang` | probed_mode, node | derived | amu^1/2 angstrom | each node's coordinate along the mode, the state's Gauss rule in the set's order (`vibration.probe_rule`) |
+| `weights` | probed_mode, node | derived | 1 | each node's weight in the state's average, summing to 1 |
+| `total_energy_eh` | probed_mode, node | raw | Eh | the SCF's total energy at the node; NaN at a node whose SCF failed (did not converge, or stopped) · *the record's key* `scf_energies_eh` |
+| `mo_energy_eh` | probed_mode, node, window | raw | Eh | the window's orbital energies at the node, ascending, around that geometry's own HOMO; NaN at a failed node · *the record's key* `mo_energies_eh` |
+| `orbital_match` | probed_mode, node, window | derived | 1 | the window orbital's equilibrium partner — the equilibrium orbital it overlaps most, its place in the window; −1 outside the window or at a failed node |
+| `average_eh` | probed_mode, window | derived | Eh | each orbital's average over the state, $\sum_j w_j\varepsilon_j$; NaN where a node failed |
+| `shift_eh` | probed_mode, window | derived | Eh | that average less its equilibrium energy; NaN where a node failed |
+| `marks` | probed_mode, window | derived | — | each orbital's mark, `degenerate`, `reordered` or `noise`, empty for none ([`engines/vibration.md`](?doc=engines/vibration.md) § 6.11 § 4) |
+| `scf_conv_tol_eh` · `scf_conv_tol_grad_eh` | probed_mode | given | Eh | the SCF's energy and orbital-gradient tolerances, read off the solver — the gradient's $\sqrt{\texttt{conv\_tol}}$ where none was set · *the record's keys* `scf_conv_tol` · `scf_conv_tol_grad` |
 
 Every raw variable here is *from the probe's SCFs*.
 
@@ -1665,7 +1678,7 @@ entry.
 | `iv_current` · `iv_current_by_spin` | `iv_current_a` · `iv_current_by_spin_a` — computed from T(E, 0) under the low-bias approximation; each spin's, TBtrans's printed figure or the record's own integral as `iv_current_by_spin_a` says, on either treatment | the transport file's (9.1) | `iv_bias_v`, the transport file's |
 | `raman_strength` · `ir_intensity` | `raman_strength_ang4_per_amu` · `ir_intensity_relative_percent` | the chart's: derived — a mode's band as drawn: SIESTA's Raman strength at the laser named (in the root's `chosen`) or PySCF's activity, Å⁴/amu; the IR intensity — the infrared view's or the result's own km/mol — as a percentage of the lane's strongest real band; a gap where no band is drawn (the display floor, the lane's band floor, no value) | `frequency_cm1`, the vibration file's (9.2) |
 | `raman_curve` · `ir_curve` | `raman_curve_ang4_per_amu` · `ir_curve_relative_percent` | the chart's: derived — the lane's broadened curve, a Lorentzian of each real band drawn (its height the band's, its full width at half maximum the broadening chosen), summed; an imaginary mode's band is drawn and left out | `curve_frequency_cm1` (cm-1): a point of the curve |
-| `mo_energy` | `mo_energy_ev` | the chart's: derived, eV — the probe's orbital energies at −A, 0, +A, a curve each orbital of the window, named by its place beside the HOMO and LUMO | `mode_displacement_ang` (angstrom): −A, 0, +A, A the probe's amplitude |
+| `mo_energy` | `mo_energy_ev` | the chart's: derived, eV — the probe's orbital energies at the nodes of the mode's state, a curve each orbital of the window, named by its place beside the HOMO and LUMO | `mode_coordinate_amu12_ang` (amu^1/2 angstrom): the nodes, ascending |
 | `thermo_g` · `thermo_h` · `thermo_ts` | `free_energy_above_electronic_kcal_per_mol` · `enthalpy_above_electronic_kcal_per_mol` · `temperature_times_entropy_kcal_per_mol` | the chart's: derived, kcal/mol — G − E_elec (F_vib), H − E_elec (ZPE + U_vib) and T·S (T·S_vib) from the vibration file's grid | `temperature_k`, the vibration file's (9.2) |
 | `thermo_part` | `part_kcal_per_mol` | the chart's: derived, kcal/mol — each part at the grid temperature nearest the headline one: ZPE, U_vib, trans + rot + pV (what is left of H − E_elec), −T·S, G − E_elec (F_vib) | `thermo_part` (labels): the parts' names |
 | `s_per_iter` · `cpu_mean_pct` · `gpu_sm_mean_pct` | `scf_iteration_time_s` · `cpu_busy_percent` · `gpu_busy_percent` | the chart's: derived — each trial's mean seconds per SCF iteration, and its mean CPU and GPU use in %, molbuilder's from the run's SCF timing and its utilisation log | `bench_setting` (labels): the trial's value of the setting the sweep varies |

@@ -809,11 +809,11 @@ labour is reproduced here with a third column — what this tool does today.
 | fixed atoms electronically present | yes | yes | yes on both: every atom is in `gto.M` and in the SIESTA cell |
 | the Hessian | analytic, for supported methods | finite displacement of the forces | `hess_elec` + `hess_nuc` over the free atoms plus the dispersion block; `MD.TypeOfRun FC` over the free range |
 | the partial Hessian | the `atmlst` framework | displace the active atoms only | both built (`vibration.md` § 4.4, § 5.3) |
-| δ convergence | none for the Hessian | required | `fc_displacement` is a stage item, so a ladder of δ runs is describable, and `jobset summarize task` compares the stages into `<label>.fc-sweep.json` (§ 4b.6 C; `spectra/displacement_sweep.py`). PySCF's strengths and its probe are finite differences with steps of their own (§ 4b.5) |
+| δ convergence | none for the Hessian | required | `fc_displacement` is a stage item, so a ladder of δ runs is describable, and `jobset summarize task` compares the stages into `<label>.fc-sweep.json` (§ 4b.6 C; `spectra/displacement_sweep.py`). PySCF's strengths are finite differences with steps of their own; its probe computes at the nodes of a stated state (§ 4b.5) |
 | active-region convergence | useful | strongly recommended | two structures, two runs; the artifact records the free set; no matching tool (§ 4b.9) |
 | normal modes | yes | yes | one function for both, with the rank rule in front of the eigenproblem (§ 4b.1) |
 | infrared and Raman | molecular response calculations | hard at a metal surface | PySCF: built (§ 4a); SIESTA: the infrared of the free atoms from the run's charges, Raman from its optical calls at a laser (§ 4a.6, § 4b.7) |
-| frontier-orbital modulation | natural | use projected densities of states and resonances instead | the PySCF probe is built, two points per mode (§ 4b.5 G); nothing on SIESTA |
+| frontier-orbital modulation | natural | use projected densities of states and resonances instead | the PySCF probe is built, at the nodes of each mode's thermal state — three by default (§ 4b.5 F–G); nothing on SIESTA |
 | surface modes | a finite-cluster approximation | natural | — |
 | transport $T(E, Q)$ | not its strength | TranSIESTA / TBtrans | built: a mode's frame set, and transport at every frame (`vibration.md` § 5.10 ③; `transport.md` § 2a.9) |
 | the same model as the transport | no | yes | the reason the SIESTA route exists at all |
@@ -882,8 +882,8 @@ flowchart LR
   A["A · relax the free atoms<br/>geomeTRIC, $freeze"] --> B["B · analytic H_AA<br/>atmlst, CPHF/CPKS"]
   B --> C["C · mass-weight · remove<br/>surviving motions · diagonalise"]
   C --> D["D/E · ∂μ/∂Q, ∂α/∂Q<br/>analytic or central differences<br/>over the free atoms"]
-  C --> F["F · displace along a mode<br/>q ± A·L_display"]
-  F --> G["G · SCF at each point:<br/>orbital window, ΔE/(2A)"]
+  C --> F["F · displace along a mode<br/>to the nodes of its thermal state<br/>R₀ + Q_j·L"]
+  F --> G["G · SCF at each node:<br/>orbital window, the average<br/>over the state and its shift"]
   D --> R["&lt;label&gt;.spectra.json"]
   G --> R
 ```
@@ -915,10 +915,11 @@ refuses an atom list, so the reduced route rebuilds a plain mean field, and
 summed by hand — and the block agrees with compute-everything-and-slice to
 $1\cdot10^{-8}\ \mathrm{Hartree/Bohr^2}$ (Hartree–Fock) and $7.5\cdot10^{-6}$ (DFT, grid 4). **One
 precision on "no $\delta$ to converge":** it is true of the Hessian. The tool's
-Raman activities, its infrared with atoms held, and its electronic-structure
-probe are finite differences with steps of their own (E, F below), and those
-steps are as much a convergence question on PySCF as `FC.Displacement` is on
-SIESTA.
+Raman activities and its infrared with atoms held are finite differences
+with steps of their own (D, E below), and those steps are as much a
+convergence question on PySCF as `FC.Displacement` is on SIESTA; its
+electronic-structure probe computes at the nodes of a stated state, whose
+count is the question there (F).
 
 **C — mass-weight and diagonalise.** *Discussion:*
 $D = M^{-1/2} H_{AA} M^{-1/2}$, $D\,e_\nu = \omega_\nu^2\,e_\nu$. *Tool:* one function for
@@ -947,44 +948,48 @@ engine.
 **F — structures displaced along a mode.** *Discussion:*
 $R(Q_\nu) = R_0 + Q_\nu\,e_\nu$ "with the appropriate mass-weighting conversion", at
 several points such as $-Q,\ -Q/2,\ 0,\ +Q/2,\ +Q$, the held coordinates unchanged
-($R_F(Q) = R_F(0)$). *Tool:* two points per mode, $q \pm A\,L_{\mathrm{display}}$, where
-$A$ = `displacement_amplitude_ang` (0.02 Å by default, window 0.02–0.20 Å) and
-$L_{\mathrm{display}}$ is the eigenvector rescaled so its largest absolute Cartesian
-component is 1 (an atom moving off-axis swings up to $\sqrt{3}\,A$) — a
-deterministic peak displacement per mode, chosen on purpose as a *probe*
-geometry rather than a physical amplitude. The held atoms do not move: the
-displacement loop runs over the free atoms only, which is the discussion's
-$R_F(Q) = R_F(0)$. The two pictures are one change of coordinate, and both
-eigenvector forms are in the file, so the conversion is exact:
+($R_F(Q) = R_F(0)$). *Tool:* the nodes of the mode's thermal state at the
+probe's temperature — the Gauss–Hermite rule of
+[`vibrational-averaging.md`](?doc=science/vibrational-averaging.md) § 5.1,
+three by default ($0$, $\pm\sqrt3\,\sigma(T)$), five or seven on request — each
+geometry $R_0 + Q_j\,L_c$ with the canonical eigenvector, $Q$ in amu$^{1/2}$·Å
+(`engines/vibration.md` § 4.8, § 6.11 § 4). So each mode is pushed by its own
+spread, the physical amplitude of the state, and the points are the ones an
+average over that state needs. The held atoms do not move: their rows of the
+eigenvector are zero, which is the discussion's $R_F(Q) = R_F(0)$.
 
 | | | |
 |---|---|---|
 | canonical | $L_c:\ \sum_k m_k \lvert L_{c,k}\rvert^2 = 1$ | amu$^{-1/2}$; $u_k = Q\cdot L_{c,k}$ with $Q$ in amu$^{1/2}$·Å |
-| display | $L_d = L_c / \max\lvert L_c\rvert$ | dimensionless; max over every Cartesian component, largest entry 1 |
-| the probe's step in the normal coordinate | $Q_{\mathrm{probe}} = A / \max\lvert L_c\rvert$ | |
-| the discussion's coupling, from the file | $\partial\varepsilon/\partial Q_\nu = \Delta E/(2A)\cdot\max\lvert L_c\rvert$ | |
 | the zero-point amplitude of the mode | $Q_{\mathrm{zp}} = \sqrt{\hbar/2\omega} = 4.106 / \sqrt{\tilde\nu / \mathrm{cm^{-1}}}$ | amu$^{1/2}$·Å |
+| its thermal spread | $\sigma(T) = Q_{\mathrm{zp}}\sqrt{\coth(\hbar\omega/2k_BT)}$ | amu$^{1/2}$·Å |
+| the three nodes, their weights | $0,\ \pm\sqrt3\,\sigma$; $\tfrac23,\ \tfrac16,\ \tfrac16$ | |
+| the slope from the nodes | $\partial\varepsilon/\partial Q_\nu = \sum_j w_j\varepsilon_jQ_j/\sum_j w_jQ_j^2$, for three $(\varepsilon_+-\varepsilon_-)/2Q_+$ | Eh/(amu$^{1/2}$·Å) |
 | the coupling per zero-point displacement | $g_\nu = (\partial\varepsilon/\partial Q_\nu)\cdot Q_{\mathrm{zp}}$ | the IETS number, in meV |
 
 *(Check: H₂ at 4400 cm⁻¹ gives $Q_{\mathrm{zp}} = 0.062\ \mathrm{amu}^{1/2}\,\text{Å}$, a bond-length
 r.m.s. of $Q_{\mathrm{zp}}/\sqrt{\mu} = 0.087\ \text{Å}$ with $\mu = 0.504\ \mathrm{amu}$ — the textbook zero-point
-amplitude.)* What the file reports is $\Delta E/(2A)$; $g_\nu$ is the comparable
-number and is not computed today (§ 4b.9).
+amplitude.)* The file states the node energies and each level's average over
+the state and its shift; the slope, $g_\nu$ and the Huang–Rhys factor are
+derived from them when the result is read (`postprocess.vibration`'s
+`m.probe`, which the Results tab shows).
 
 **G — the electronic modulation.** *Discussion:* an SCF at every displaced
 geometry, $E_{\mathrm{HOMO}}(Q_\nu)$, $E_{\mathrm{LUMO}}(Q_\nu)$, and the slopes
 $\partial E_{\mathrm{HOMO}}/\partial Q_\nu$, $\partial E_{\mathrm{LUMO}}/\partial Q_\nu$, plotted; the interesting mode is the one
 with both a large dipole derivative and a large frontier slope. *Tool:* the
 orbital window `[HOMO − es_n_homo_below, LUMO + es_n_lumo_above]` and the SCF
-energy at $+A$, $-A$ and the equilibrium; the viewer draws the three level
-stacks joined orbital by orbital, the gap's shift, and the coupling
-$\Delta E/(2A)$. Two points are a central difference and give the slope; they do
-not show whether the response is linear over the amplitude — the
-discussion's five points would, and are owed. And a caution the discussion
+energy at each node; the viewer draws the level stacks at the nodes along $Q$,
+joined orbital by orbital, the levels' average over the state and its shift,
+the slope, $g_\nu$, the Huang–Rhys factor and the mode's harmonicity — the
+energy the nodes cost against the harmonic $\tfrac12\omega^2\langle Q^2\rangle$,
+1 for a harmonic mode. Three nodes give the slope, the curvature and the
+average at once (§ 4c.5); five or seven show whether the response is linear
+over the state. And a caution the discussion
 makes for SIESTA that applies to any *cluster* on PySCF: once metal atoms
 are in the molecule, the cluster's HOMO and LUMO are metal states, and the
 window the probe records is theirs; a molecule-projected quantity is the
-PySCF analogue of the projected density of states, and it is owed too
+PySCF analogue of the projected density of states, and it is owed
 (§ 4b.9).
 
 ### 4b.6 The SIESTA workflow, step by step
@@ -1115,10 +1120,11 @@ frame's plain displacement and its mass-weighted position along the mode, every
 weight stated and the set's summing to 1 (the rows: the toolkit's
 vocabulary, [`engines/vibration-frames.md`](?doc=engines/vibration-frames.md)
 § 5.1; the container: `model/structure.md` § 2.2f). The
-displacement arithmetic exists twice (the PySCF probe, the animation), and
-the amplitude has one right answer rather than being a knob — the nodes of the
-thermal distribution, paired with the canonical eigenvector (`vibration.md`
-§ 5.6, "level one"; § 4c.5). Each of PDOS, $\Delta\rho$ and $T(E, Q)$ is a run of its own
+displacement has one rule, $R_0 + Q\,L$ (`vibration.displaced`), which the
+frame sets and the PySCF probe share — the animation's drawn frames stay its
+own — and the amplitude has one right answer rather than being a knob: the
+nodes of the thermal distribution, paired with the canonical eigenvector
+(`vibration.md` § 5.6, "level one"; § 6.11 § 4; § 4c.5). Each of PDOS, $\Delta\rho$ and $T(E, Q)$ is a run of its own
 kind on the frame set.
 
 **H — spectroscopy on this route.** § 4b.7.
@@ -1227,9 +1233,9 @@ implementation sections cited are [`engines/vibration.md`](?doc=engines/vibratio
 | PySCF is a finite-system code; a metal surface is a periodic solid | **the same, and it is why there are two routes**: the isolated molecule goes to PySCF, the slab or junction to SIESTA, and both hand the same block to the same harmonic path |
 | a fixed atom's displacement is zero, its interaction is not: $F_F = -H_{FA}\,u_A \neq 0$ | **the same**, and it is the sentence a reader of a held-atom result should carry: the held atoms shape every number in $H_{AA}$ |
 | three outputs in a chain — modes, optical activity, electronic and transport modulation | **the same organisation** (§ 4b.3): the tool covers the first link on both engines, the second on both — on SIESTA the infrared from its charges and the Raman from its optical calls — and the third in part — the PySCF probe and transport along a mode's frames |
-| on PySCF there is no finite step to converge | **for the Hessian, the same**; the tool's Raman activities, its infrared with atoms held and its probe are finite differences with steps of their own (§ 4b.5 B, E, F), untested for convergence by the tool |
+| on PySCF there is no finite step to converge | **for the Hessian, the same**; the tool's Raman activities and its infrared with atoms held are finite differences with steps of their own (§ 4b.5 B, E), untested for convergence by the tool; its probe computes at the nodes of a stated state, three, five or seven (§ 4b.5 F) |
 | infrared and Raman for the constrained system "depends on the property implementation" (first turn); for a finite cluster, obtainable by displacing along $\pm Q_\nu$ and differentiating (later turn) | **settled** (§ 4a; `vibration.md` § 4.6): with atoms held the analytic dipole route takes no atom list, so infrared goes by central differences of the dipole and Raman by central differences of the polarizability — over the free atoms' Cartesian coordinates, projected onto every mode at once, rather than one displaced pair per selected mode: the same derivative, organised per coordinate |
-| $R(Q_\nu) = R_0 + Q_\nu\,e_\nu$ with the mass-weighting conversion, at five points, the held coordinates unchanged | **differs in the coordinate and the count**: two points along the display eigenvector at a peak displacement $A$; the held atoms unchanged; the conversion to the discussion's $\partial\varepsilon/\partial Q_\nu$ and to the coupling per zero-point amplitude is § 4b.5 F, and the five-point sample is owed |
+| $R(Q_\nu) = R_0 + Q_\nu\,e_\nu$ with the mass-weighting conversion, at five points, the held coordinates unchanged | **the same, at the state's nodes**: $R_0 + Q_j L$ along the canonical eigenvector at the Gauss–Hermite nodes of the mode's thermal state — three by default, five or seven on request; the held atoms unchanged; $\partial\varepsilon/\partial Q_\nu$ and the coupling per zero-point amplitude derived when the result is read (§ 4b.5 F) |
 | a metal-connected molecule has no clean HOMO and LUMO; use the projected density of states and resonances | **the same**; the probe is PySCF's and records the cluster's own window — a molecule-projected quantity is owed, and nothing of this exists on SIESTA (§ 4b.6 G) |
 | on SIESTA, relax with $\Delta R_F = 0$ first; $F_A \approx 0$, $F_F$ need not vanish | **the same, as the `relax` phase of one run** when the box is unticked (§ 4b.6 A), and the tool **verifies** it: the reference-step forces are read back and judged, and the assertion `already_relaxed` is asked on this engine too (§ 4b.6 A) |
 | one $\pm\delta$ pair per column; only the active coordinates displaced; 90 columns rather than 900 for 30 of 300 atoms | **the same** (`FC.First..FC.Last` on the sorted copy): six whole-system SCFs per free atom, stated by the pre-run check (`vibration.md` § 5.8) |
@@ -1257,7 +1263,7 @@ decision.
 | V1.22 | **a warning threshold** for the asymmetry `engine_metadata.fc_asymmetry_max_ev_ang2` records | on an axial block the off-diagonals vanish by symmetry (§ 4b.6 C) | § 4b.6 C |
 | V1.24 | **mode matching across runs**: the overlap of eigenvectors in the shared free subspace, mass-weighted, between Model A/B/C runs or between a PySCF and a SIESTA run of the same molecule | the active-region convergence test and the cross-engine comparison are both this one calculation | § 4b.6 F, § 4b.3 |
 | V1.26 | **$\Delta\rho_\nu(r)$ maps**: SIESTA's density grid at $\pm Q_\nu$, differenced | the discussion's intermediate quantity; two SCFs per mode on the displaced pair | § 4b.7 |
-| V1.27 | **the PySCF probe**: five points per mode; the coupling per zero-point amplitude $g_\nu$ in meV beside $\Delta E/(2A)$; a molecule-projected frontier quantity for a cluster | § 4b.5 F–G | § 4b.5 |
+| V1.27 | **the PySCF probe**: a molecule-projected frontier quantity for a cluster (the nodes, five on request, and $g_\nu$ are built, § 4b.5 F–G) | § 4b.5 G | § 4b.5 |
 
 Born-effective-charge infrared on SIESTA stays where it was recorded
 (`vibration.md` § 5.6, V1.15): a feature of its own.
@@ -1451,12 +1457,13 @@ the spread; when they do not, $T(Q)$ is not a polynomial there — a resonance
 crossing $E_F$ — and the average of more frames is the better answer, with
 that said.
 
-This replaces a fixed probe step for the purpose. The PySCF probe's
-$A = 0.02\ \text{Å}$ and the force constants' $\delta$ measure a derivative at a point and
-are chosen small, and a curvature from so small a step drowns in the SCF's
-noise — the large-minus-large problem of § 4b.7 point 2, in $T$ and $\varepsilon$ instead
-of the density. At the temperature the person states the nodes are as large
-as the motion at that temperature makes them.
+This replaces a fixed small step for the purpose — the PySCF probe's push
+of 0.02 Å before 2.89.0, which the probe's nodes now replace (§ 4b.5 F). A
+step chosen small measures a derivative at a point, as the force constants'
+$\delta$ does, and a curvature from so small a step drowns in the SCF's
+noise — the large-minus-large problem of § 4b.7 point 2, in $T$ and
+$\varepsilon$ instead of the density. At the temperature the person states
+the nodes are as large as the motion at that temperature makes them.
 
 Two cautions, each **stated per frame rather than enforced**. *Soft modes:*
 $\sigma$ grows as $1/\sqrt{\omega}$ and the thermal factor $\sqrt{\coth}$ adds more (× 2.9 at 50 cm⁻¹ and 298 K,

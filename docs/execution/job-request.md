@@ -839,7 +839,10 @@ record names (`same_calculation`, [`architecture.md`](?doc=execution/architectur
   Methods text, bibliography and result-record version, and its words: each
   message it records in its result, hands a call or writes on a saved
   geometry, put there where it is composed and read from there where it is
-  used), a message it prints,
+  used), and a call handed one of the words by a keyword
+  (`k=_MB_WORDS[...]`) compared without that keyword — the progress log's
+  engine and writer among them ([`engines/pyscf.md`](?doc=engines/pyscf.md)
+  § 4) — a message it prints,
   a string standing alone (its docstrings), and the message a `raise` carries,
   the raise itself compared — none of which PySCF's computation reads, another
   release free to word or record them otherwise, and every value that changes

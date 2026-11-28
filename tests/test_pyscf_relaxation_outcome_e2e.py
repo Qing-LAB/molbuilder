@@ -503,3 +503,34 @@ def test_the_wall_stops_a_vibration_before_its_spectrum(
                   "nothing of it copied in", "this kind of run does not "
                                              "resume"):
         assert words in session, (words, session[-3000:])
+
+
+@makes_a_real_run("module", "molbuilder-pySCF")
+def probe_past_its_wall(tmp_path_factory):
+    """H2's vibration stated relaxed, frequencies alone and its one mode
+    probed, its run card's wall 1 s (:func:`_run`): the probe's first node is
+    the deck's first SCF past the deadline."""
+    return _run(tmp_path_factory, "probe-walled", calculation="vibration",
+                overrides={},
+                template={"compute_raman": False, "compute_ir": False,
+                          "already_relaxed": True, "es_mode_selection": "all"},
+                execution={"time": "00:00:01"})
+
+
+def test_the_wall_stops_a_probe_and_its_node_is_not_a_failed_scf(
+        probe_past_its_wall):
+    """`engines/pyscf.md` § 3.9, `engines/vibration.md` § 4.8: past its wall
+    the probe starts no SCF -- the run ends failed, saying it stopped before
+    the wall before the spectrum was written, and a launch runs it again --
+    while an SCF that fails at a node is recorded as failed and the run goes
+    on.  The deadline is past when the deck starts; stated relaxed, with no
+    strength asked, the probe's first node is the deck's first SCF.
+
+    THE SILENT FAILURE (round 1's fix, found by its reader): the wall's stop
+    taken for a node's failed SCF -- every node written failed, the run
+    reading finished."""
+    run, state, said = probe_past_its_wall
+    assert state == "failed", said[-3000:]
+    assert ("stopped before the time limit (the job's time limit less its "
+            "slack) before the spectrum was written") in said, said[-3000:]
+    assert "recorded as failed" not in said, said[-3000:]

@@ -10,9 +10,9 @@ at 2.77.23 is [`archive/2026-11-22-plan-consolidation.md`](?doc=archive/2026-11-
 
 ---
 
-## ▶ Where we are *(2026-11-27)*
+## ▶ Where we are *(2026-11-28)*
 
-**2.88.0.** F0–F11 and F7a are closed (2.56.2–2.77.2). F12, *Proven*,
+**2.89.0.** F0–F11 and F7a are closed (2.56.2–2.77.2). F12, *Proven*,
 walked its three roads in the browser on real runs and ran the full batch
 (6106 fast and 805 e2e tests, none failed, at 2.77.2); its two review rounds
 ([`archive/audits/2026-11-18-f12-review/`](?doc=archive/audits/2026-11-18-f12-review/TRIAGE-round1.md))
@@ -20,7 +20,7 @@ sorted every finding into the releases below. **The finish plan** *(the
 user, 2026-11-19: "a consolidated plan to get things finished, not to drag
 things along")*: five releases, R1–R5, each with its review rounds. R1 and R2
 are done; R3, one home per fact on the server side, grew from one release
-into parts as reviews and the user's decisions added work, twenty-three of them
+into parts as reviews and the user's decisions added work, twenty-four of them
 shipped:
 
 | version | part | what it did | record |
@@ -51,6 +51,7 @@ shipped:
 | 2.86.0 | R3d2b2b4b, the weights | every frame's weight required and their sum 1, refused by name otherwise wherever frames are averaged or cited; the weights assigned (`with_weights`, `equal_weights`); every analysis on the weights a set stores; a finished calculation's frames averaged at a person's own weights (`postprocess.averaged_at`) | `fix29-review.md` |
 | 2.87.0 | R3d2b2b4b, the older files | every reader at its current version, an older file refused by name with its way on (vibration results before 2026-11-23, structure pairs and the calculations holding them before 2026-11-04); a file that does not read one refusal, said at the command line's and the web server's edge, each family of files with its own way on | `fix30-review.md` |
 | 2.88.0 | R3d2b2c | the example notebook on a carried PySCF methanol vibration — every number computed, every check against the science, one photon on the C–O stretch, the soft torsion left out of every motion; molbuilder's examples in the projects tree's `notebooks/examples/` by every installation and `molbuilder examples`; a frame set read back carrying its rows; a result recording no machine's name | `fix31-review.md` |
+| 2.89.0 | R3d2c | PySCF's orbital probe at the Gauss–Hermite nodes of each mode's thermal state — three by default, five or seven — its record what the weights alone give, its slope, coupling, Huang–Rhys factor, harmonicity and noise views, a marked level's shift blank; schema 16, a schema-15 result with no probe read; the PySCF decks' change said | `fix32-review.md` |
 
 Records: `archive/audits/2026-11-18-f12-review/fix<N>-review.md`. Since
 2.77.23 the host env holds `molbuilder-source.pth` on the development machine
@@ -285,8 +286,16 @@ and an API reviewer** *(the user, 2026-11-23)*.
   snapshots tested; a set read back carrying its rows; each row's meaning
   and the name `frame_rows` kept, said in `engines/vibration-frames.md`
   § 5.1 and § 7).
-- **R3d2c** — the probe at the frame rule's nodes (§ 6.11 § 4; § 9 items 1,
-  5, 6) with the PySCF deck changes below.
+- **R3d2c** — the probe at the frame rule's nodes — built in 2.89.0, with
+  the PySCF decks' change.
+- **The bond check** *(the user, 2026-11-27: "Numbers + a sentence, next
+  release")* — a frame set's and the probe's outer frames read against the
+  molecule: each bond's change split into its first-order part (the mode's
+  own motion) and the straight path's second-order rest, the rest read
+  against that bond's own zero-point stretch width, the numbers in the
+  frame-set readout and `m.probe`'s view, one sentence where the rest exceeds
+  the width; said, never refused (the soft-mode lesson of 2.88.0,
+  `fix31-review.md`).
 - **R3d2d** — the force constants stored and `with_masses` (§ 9 item 3),
   SIESTA's Raman step and its verdict (§ 9 item 4), the diagrams (§ 6.11
   § 8); the imaginary flag and a derivative's projection onto a mode into
@@ -297,13 +306,6 @@ and an API reviewer** *(the user, 2026-11-23)*.
   loops and encode their attributes by hand; and the status door's
   unreadable copy note in its own field, where the transport record says
   `unreadable`; the record's and the data file's builders are long functions.
-- **With the PySCF decks' change, said as its visible change**
-  (`fix18-review.md` round 1 #2): the progress log's writer told its engine
-  and writer by the deck that builds it (`r2-6` F15's third part), and the
-  PySCF script's result stamped by `runrecord.stamp` (F9's PySCF part) —
-  each a statement a launched PySCF stage's deck is compared by
-  ([`execution/job-request.md`](?doc=execution/job-request.md) § 5), so the
-  release that makes them says a launched PySCF stage is started again.
 
 ### 3. R3e — parse, structure and builders
 
@@ -423,7 +425,7 @@ and an API reviewer** *(the user, 2026-11-23)*.
 
 ## Waiting on the user
 
-- **Next**: R3d2c, the probe — and the amplitude check beside the energy mark (a mode's frames read against its bonds), the user's to decide at that release.
+- **Next**: the bond check (a mode's frames read against its bonds), then R3d2d.
 - At their releases: R3f's Prep-as-a-process
   design, the side rail's change after measuring, and deletions #6, #26; R4's
   selection-route design and MolView's atom filter; every deletion, listed

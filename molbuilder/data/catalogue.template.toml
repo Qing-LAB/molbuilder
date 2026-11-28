@@ -1988,33 +1988,47 @@ PySCF: with no atom held, the dipole derivative from the response the Hessian al
 SIESTA: every atom's Hirshfeld and Voronoi charge at every force-constant step (Charge.Hirshfeld, Charge.Voronoi) -- a grid integration per step, no extra SCF.  The infrared of the free atoms -- the ones the vibration moves -- is worked out from them when you open the result, for the light's direction and the charges you pick.
 """
 
-[item.displacement_amplitude_ang]
+[item.probe_temperature_K]
 kind = "deck"
 calculations = ["vibration"]
-stages = ["force_constants"]
-expands = ["mode displacement step"]
-category = ["accuracy"]
+expands = ["the probe's thermal state"]
+category = ["procedure"]
 engines = ["pyscf"]
-engine_key = "(molbuilder: finite-difference step amplitude)"
+engine_key = "(molbuilder: the temperature of the thermal state whose nodes the probe computes at)"
 type = "float"
-value = 0.02
-default = 0.02
-range = [0.02, 0.2]
-unit = "Å"
+value = 298.15
+default = 298.15
+unit = "K"
+range = [0.0, 5000.0]
 active_when = { es_mode_selection = ["all", "explicit"] }
 result = { vibration = "probe" }
 group = "stage"
-label = "Displacement amplitude"
+label = "Probe temperature"
+tier = "basic"
+help = """
+The temperature of each mode's thermal state the probe computes at.  Every selected mode gets an SCF at the nodes of that state's bell curve -- with three nodes, at 0 and at plus and minus the square root of 3 times its spread -- so each mode is pushed by its own spread at this temperature, a stiff mode a little and a soft one far.  The record keeps each level's energy at every node and its average over the state; the slope, the coupling and the mode's harmonicity are worked out from them when the result is read, and can be re-weighted to another temperature there.
+0 K is the zero-point motion alone.  The standard temperature is 298.15 K.
+The probe suits modes stiff against the temperature: a soft mode's outer nodes push its atoms far along a straight line, which the run says (the largest atom move at the outer nodes), and its harmonicity reads well above 1.
+"""
+
+[item.probe_nodes]
+kind = "deck"
+calculations = ["vibration"]
+expands = ["the probe's nodes"]
+category = ["accuracy"]
+engines = ["pyscf"]
+engine_key = "(molbuilder: how many nodes of the state's rule the probe computes at)"
+type = "int"
+choices = [3, 5, 7]
+value = 3
+default = 3
+active_when = { es_mode_selection = ["all", "explicit"] }
+result = { vibration = "probe" }
+group = "stage"
+label = "Probe nodes"
 tier = "advanced"
 help = """
-How far atoms are pushed along each mode eigenvector when probing how the orbitals shift.  Only the per-mode electronic-structure step uses it.
-
-The two ends of the allowed window (0.02-0.20 A) are the two ways this goes wrong, which is why it is narrow:
-
-  too small -- the orbital-energy difference shrinks toward the SCF noise floor and the slope you measure is numerical noise.  0.02 A is the smallest amplitude the default scf_conv_tol=1e-9 resolves cleanly (FD noise on the HOMO shift is ~1e-8 Ha there, well under the signal); below it you must tighten scf_conv_tol as well, and the preflight says so.
-  too large -- the response stops being linear.  Anharmonic mixing becomes noticeable near 0.10 A ([Mills1972] section 2.4), and by 0.20 A the linear-response assumption has broken, so the slope describes the amplitude you chose rather than the mode.
-
-The default sits at the BOTTOM of the window on purpose: inside it, smaller is more linear, so the only reason to raise it is an SCF you cannot tighten.  Treat anything between 0.10 and 0.20 A as contaminated rather than clean.
+How many nodes of the state's Gauss-Hermite rule the probe computes at: 3, 5 or 7, the counts a frame set offers too.  Three average a response exactly up to degree 5 and give its slope and curvature; five and seven check them further out.  The middle node -- node 1 as the run's output names the nodes -- is the equilibrium SCF the run already has, so each mode costs an SCF at every node but that one: 2, 4 or 6.
 """
 
 [item.es_mode_selection]
@@ -2036,9 +2050,9 @@ tier = "basic"
 help = """
 Which vibrational modes get the displaced-geometry orbital-energy probe -- a look at the orbital energies with the molecule pushed along a mode.
   skip      -- don't run this step at all; you get a spectrum but no per-mode HOMO/LUMO data.  Use this for first-pass exploration.
-  all       -- every mode inside the frequency window (cost ~ 2 N modes).
+  all       -- every mode inside the frequency window.
   explicit  -- you list specific mode numbers.
-Each chosen mode costs two extra SCF calculations (one at +A, one at -A along the mode), so this is the most expensive part of the run and its cost scales linearly with how many modes you pick; the frequency window is the cost control.
+Each chosen mode costs an SCF at every node of the probe but the middle one, the equilibrium -- two at the default three -- so this is the most expensive part of the run and its cost scales linearly with how many modes you pick; the frequency window is the cost control.
 It is not tied to Raman, which has its own choice of modes ("Raman for").  The probe is PySCF's: on SIESTA the electrons' response along a mode is the projected density of states at displaced structures, planned.
 """
 

@@ -1,8 +1,9 @@
 """THE VIBRATION RESULT'S KEYS, each block's -- the rows of
 `engines/vibration.md` § 6.2-6.4, and nothing else.
 
-MODULE  spectra.result_keys (L2; it imports three words -- the atom index
-        map's key, the derived mode keys and the modes' thermal block's key
+MODULE  spectra.result_keys (L2; it imports four words -- the atom index
+        map's key, the derived mode keys, the probe's (`vibration`'s) and
+        the modes' thermal block's key
         -- and nothing else, two ways, for it travels beside the job in both
         bundles, `runwrap.members`)
 ROLE    the keys of each block the reader reads key by key
@@ -31,16 +32,22 @@ from __future__ import annotations
 # TWO WAYS, because this module travels beside the job in both bundles.
 try:                                        # inside molbuilder
     from ..atom_permutation import MAP_KEY
+    from ..vibration import PROBE_DERIVED_KEYS
     from .derived import DERIVED_MODE_KEYS, THERMAL_KEY
 except ImportError:                         # beside a job, in a bundle
     from atom_permutation import MAP_KEY  # type: ignore[no-redef]
-    from derived import DERIVED_MODE_KEYS, THERMAL_KEY  # type: ignore[no-redef]
+    from vibration import PROBE_DERIVED_KEYS  # type: ignore[no-redef]
+    from derived import (  # type: ignore[no-redef]
+        DERIVED_MODE_KEYS, THERMAL_KEY)
 
 
+#: The probe's block (v16, `engines/vibration.md` § 6.11 § 4): what the deck
+#: records at the nodes, and its derived values beside them.
 ES_KEYS = frozenset({
-    "amplitude_ang", "mo_energies_eq_eh", "mo_energies_minus_eh",
-    "mo_energies_plus_eh", "homo_index_in_window", "scf_energy_eq_eh",
-    "scf_energy_minus_eh", "scf_energy_plus_eh",
+    "state", "mo_energies_eh", "scf_energies_eh", "orbital_match",
+    "homo_index_in_window", "scf_conv_tol", "scf_conv_tol_grad",
+    # DERIVED (`spectra.derived`) -- stated by the writer, checked on read.
+    *PROBE_DERIVED_KEYS,
 })
 MODE_KEYS = frozenset({
     "index_1based", "frequency_cm1", "raman_activity_a4_amu",
@@ -80,6 +87,12 @@ OPTICAL_KEYS = frozenset({"data_file", "data_sha256", "direction",
 OPTICAL_MODE_KEYS = frozenset({"mode", "frequency_cm1", "dq_amu12_ang",
                                "plus", "minus"})
 
+#: WHY A SCHEMA-15 RESULT HOLDING A PROBE, AND ITS DATA FILE AT ``@11``, ARE
+#: NOT READ (`engines/vibration.md` § 6.1, § 6.10.5): the refusal's words,
+#: the JSON's reader's and the data file's.
+OLD_PROBE_WORDS = ("its orbital check pushed each mode a fixed length; this "
+                   "molbuilder's checks at the nodes of each mode's state")
+
 #: WHAT A WRITER STATES OF EACH BLOCK -- every key the reader takes.  The
 #: data file states each, and checks so as it loads (`spectra.datafile`), so
 #: a key a writer starts stating is a row there too, never dropped from the
@@ -94,10 +107,10 @@ WRITTEN_KEYS = {
 
 __all__ = ["ES_KEYS", "MODE_KEYS", "EQUILIBRIUM_KEYS", "RESULT_KEYS",
            "PARTIAL_CHARGES_KEYS", "CHARGE_STEP_KEYS", "OPTICAL_KEYS",
-           "OPTICAL_MODE_KEYS", "WRITTEN_KEYS"]
+           "OPTICAL_MODE_KEYS", "WRITTEN_KEYS", "OLD_PROBE_WORDS"]
 
 
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it
 #: imports there by their bare names (`runwrap.bundle_members`).
 TRAVELS_WITH = ("molbuilder.atom_permutation",
-                "molbuilder.spectra.derived")
+                "molbuilder.spectra.derived", "molbuilder.vibration")

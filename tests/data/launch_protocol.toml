@@ -119,15 +119,19 @@ launch_mode = "direct"
 launch_refused = ["changed since prepared", "prepare it again", "no prepared group can go yet"]
 launch_writes_nothing = true
 
+# ...the change said before it runs, in the words `status` says it: the
+# launch runs what was prepared, and the person reads first that it is not
+# the description as it stands (R3d2c's round 1: a PySCF vibration prepared
+# by an older molbuilder would otherwise be told only after its run).
 [[case]]
-name = "...and named, the changed group goes as asked -- a dry run, which writes nothing (the user, 2026-11-12)"
+name = "...and named, the changed group goes as asked, the change said before it runs -- a dry run, which writes nothing (the user, 2026-11-12)"
 before = [["prep", "task", "--group", "1"]]
 changed = { template = { mesh_cutoff = 350.0 } }
 stage = "medium"
 launch = ["--group", "1"]
 launch_stage = ""
 launch_mode = "direct"
-listing = ["WOULD start", "bash H2_01_coarse.run.sh"]
+listing = ["coarse: changed since prepared: ", "mesh_cutoff", "runs it as it was prepared", "WOULD start", "bash H2_01_coarse.run.sh"]
 launch_writes_nothing = true
 
 # THE DRY RUN SHOWS THE PLAN THE LAUNCH WOULD SEND (`job-system.md` § 6.0):

@@ -210,13 +210,17 @@ class PySCFConfig:
     raman_modes: str = 'all'
     raman_freq_min_cm1: Optional[float] = None
     raman_freq_max_cm1: Optional[float] = None
-    displacement_amplitude_ang: float = 0.02
     es_mode_selection: str = 'skip'
     es_explicit_indices: str = ''
     freq_min_cm1: Optional[float] = None
     freq_max_cm1: Optional[float] = None
     es_n_homo_below: int = 5
     es_n_lumo_above: int = 5
+    # THE PROBE'S STATE AND ITS NODES (`engines/vibration.md` § 6.11 § 4):
+    # each selected mode computed at the nodes of its thermal state at this
+    # temperature -- three, five or seven (`vibration.OFFERED_NODES`).
+    probe_temperature_K: float = 298.15
+    probe_nodes: int = 3
     temperature_K: float = 298.15
     pressure_atm: float = 1.0
 

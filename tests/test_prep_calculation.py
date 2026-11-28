@@ -214,6 +214,54 @@ def test_a_template_that_does_not_read_is_refused_by_migrate(tmp_path,
     assert template.read_text() == edited
 
 
+def test_a_pyscf_vibration_stating_the_old_push_is_migrated_to_the_probes_nodes(
+        tmp_path, monkeypatch):
+    """`engines/vibration.md` § 6.11 § 9 item 1, `engines/template.md` § 3:
+    a PySCF vibration's template stating the probe's fixed push,
+    `displacement_amplitude_ang` -- as every one 2.88.0 wrote does, here
+    typed into today's described template -- is refused by prep naming
+    `jobset migrate`; the migration takes it out at its value (0.1 Å, no
+    value of it running as before), writes the probe's temperature from the
+    thermochemistry's (the person's 300 K) and three nodes, says each, keeps
+    the file as it was as the release's, and prep then runs.  THE SILENT
+    FAILURE: a described probe taking a temperature nobody stated -- the
+    class's -- or a template no prep can read and no way on said."""
+    from molbuilder.calculation import open as open_calculation
+    from molbuilder.template import one, read_template
+    from support.road import set_by_the_person
+    calc = described(road_tree(tmp_path, monkeypatch, engine="pyscf"),
+                     calculation="vibration", engine="pyscf")
+    set_by_the_person(calc, {"temperature_K": 300.0})
+    template = open_calculation(calc).template.path
+    # THE ITEM AS 2.88.0 WROTE IT, its keys the reader requires
+    # (`engines/template.md` § 5), set by the person.
+    older = template.read_text() + (
+        '\n[item.displacement_amplitude_ang]\nkind = "deck"\n'
+        'category = ["accuracy"]\n'
+        'engine_key = "(molbuilder: finite-difference step amplitude)"\n'
+        'expands = ["mode displacement step"]\ntype = "float"\nvalue = 0.1\n'
+        'source = "person"\ndefault = 0.02\nunit = "Å"\n'
+        'label = "Displacement amplitude"\n'
+        'help = "How far atoms are pushed along each mode."\n')
+    template.write_text(older)
+    r = jobset("prep", "task", *group_words(calc, "freq"), "--bundle", calc,
+               "--target", "this")
+    assert r.exit_code != 0, r.output
+    for words in ("displacement_amplitude_ang", "jobset migrate"):
+        assert words in r.output, (words, r.output)
+    r = jobset("migrate", "--bundle", calc)
+    assert r.exit_code == 0, r.output
+    for words in ("displacement_amplitude_ang = 0.1 removed",
+                  "probe_temperature_K = 300", "probe_nodes = 3"):
+        assert words in r.output, (words, r.output)
+    read = read_template(template.read_text())
+    assert one(read, "probe_temperature_K").value == 300.0
+    assert one(read, "probe_nodes").value == 3
+    assert template.with_name(template.name + ".pre-2.89.0").read_text() \
+        == older
+    _prep(calc, "freq")
+
+
 def test_a_prep_takes_away_a_bundle_no_deck_of_its_carries(tmp_path,
                                                             monkeypatch):
     """`job-system.md` § 5.0, checkpoint 6: every file prep lays beside a

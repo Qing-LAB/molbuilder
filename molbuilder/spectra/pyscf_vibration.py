@@ -250,6 +250,32 @@ def mo_window(mo_energy, homo, n_below, n_above):
     return e[lo:hi].copy(), int(homo) - lo
 
 
+def orbital_match(mo_coeff_eq, mo_coeff_node, overlap, lo_eq: int,
+                  lo_node: int, size: int):
+    """EACH WINDOW ORBITAL'S EQUILIBRIUM PARTNER (`engines/vibration.md`
+    § 6.11 § 4, the `reordered` mark's rule): the node's orbital at
+    ``lo_node + k``, for ``k`` in the window's ``size``, overlaps most --
+    the largest ``|C_0^T S C_j|`` over every equilibrium orbital -- the
+    equilibrium orbital it is the same state as; its place in the
+    equilibrium's window (which starts at ``lo_eq``), ``None`` outside it.
+    ``overlap`` the two geometries' basis functions' overlap,
+    ``gto.intor_cross('int1e_ovlp', equilibrium_mol, node_mol)``; the
+    coefficients a restricted reference's, ``(basis, orbitals)``."""
+    import numpy as np
+    c0 = np.asarray(mo_coeff_eq, dtype=float)
+    cj = np.asarray(mo_coeff_node, dtype=float)
+    across = np.abs(c0.T @ np.asarray(overlap, dtype=float) @ cj)
+    out = []
+    for k in range(int(size)):
+        column = int(lo_node) + k
+        if column >= across.shape[1]:
+            out.append(None)
+            continue
+        place = int(np.argmax(across[:, column])) - int(lo_eq)
+        out.append(place if 0 <= place < int(size) else None)
+    return out
+
+
 def as_numpy(x):
     """A CuPy or NumPy array -- or a list, or a scalar -- as NumPy.
 
@@ -266,7 +292,8 @@ def as_numpy(x):
     return np.asarray(x)
 
 
-__all__ = ["homo_index", "mo_window", "dipole_derivatives", "as_numpy"]
+__all__ = ["homo_index", "mo_window", "dipole_derivatives",
+           "orbital_match", "as_numpy"]
 
 
 #: WHAT THIS MODULE NEEDS BESIDE IT in a job's bundle -- the modules it

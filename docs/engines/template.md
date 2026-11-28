@@ -352,7 +352,10 @@ naming its engine (`Retired.engines`) — `es_mode_selection`,
 `es_explicit_indices`, `freq_min_cm1` and `freq_max_cm1`, which picked
 SIESTA's Raman modes until *Compute Raman* and *Raman for* did; on PySCF
 they stay the orbital probe's ([`engines/vibration.md`](?doc=engines/vibration.md)
-§ 3.1) *(the user, 2026-10-27)*. A run setting retires the same way, on the
+§ 3.1) *(the user, 2026-10-27)*. And at 2.89.0, PySCF's
+`displacement_amplitude_ang` retired: the orbital probe's fixed push, which
+its nodes at a stated temperature replace
+([`engines/vibration.md`](?doc=engines/vibration.md) § 6.11 § 4). A run setting retires the same way, on the
 run card: `continue_retries`, the run script's count of starts — a run is one
 start, and to continue is to launch again
 ([`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.6.1;
@@ -387,7 +390,13 @@ which would send a person to a migration that does not reach them.
 **`molbuilder jobset migrate` takes a retired item out** — of the template,
 of a stage's own values and of `varies`, blank or set — **when its value
 runs as before without it** (each item's `runs`: any value of `copy_psml`
-and of the three dynamics settings, `optimizer = "geometric"`). A retired
+and of the three dynamics settings, `optimizer = "geometric"`) — and
+`displacement_amplitude_ang` at any value, the rule changed for that one by
+the person's decision: no push runs as before once the probe computes at
+nodes, so migrate takes it out and states the probe's temperature from the
+thermochemistry's, `probe_temperature_K = temperature_K` (that item's default
+where the file left it blank), and `probe_nodes = 3`, saying each
+([`engines/vibration.md`](?doc=engines/vibration.md) § 6.11 § 9 item 1). A retired
 run setting it takes off the job request's run cards, the calculation's and
 each stage's, and out of each job's resources in `job-set.json`
 ([`execution/job-request.md`](?doc=execution/job-request.md) § 8). SIESTA's

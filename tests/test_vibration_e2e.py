@@ -21,6 +21,8 @@ from __future__ import annotations
 import json
 import subprocess
 
+import re
+
 import numpy as np
 import pytest
 
@@ -692,8 +694,10 @@ def test_the_listed_modes_get_the_probe_and_no_other(real_water_probed):
     """`engines/vibration.md` § 4.8: `explicit` gives the per-mode probe to
     the modes its list names -- "1, 3, 9"; water has three modes, so 9 names
     none: dropped from the selection and said in the run's output, the
-    count known only once the Hessian is done.  (A list the reader cannot
-    take is refused at prep: `tests/data/the_deck.toml`.)
+    count known only once the Hessian is done -- and each probed mode's
+    nodes said there with the largest move its outer nodes make, an SCF and
+    a window at each node.  (A list the reader cannot take is refused at
+    prep: `tests/data/the_deck.toml`.)
 
     MUTATION THIS MUST FAIL AGAINST: the deck's constant written as
     `list(cfg.es_explicit_indices)`.
@@ -713,10 +717,14 @@ def test_the_listed_modes_get_the_probe_and_no_other(real_water_probed):
         es = m["electronic_structure"]
         if es is None:
             continue
-        # the two displaced SCFs and their orbital windows, both sides
-        assert np.isfinite(es["scf_energy_plus_eh"]), es
-        assert np.isfinite(es["scf_energy_minus_eh"]), es
-        assert es["mo_energies_plus_eh"] and es["mo_energies_minus_eh"], es
+        # an SCF and an orbital window at each of its three nodes, the
+        # outer nodes said with the largest move they make (§ 4.8)
+        assert len(es["scf_energies_eh"]) == 3, es
+        assert all(np.isfinite(e) for e in es["scf_energies_eh"]), es
+        assert all(es["mo_energies_eh"]), es
+        assert re.search(rf"Mode {m['index_1based']} \([\d.]+ cm-1\) at "
+                         rf"300 K: nodes q = [^\n]*; the outer nodes move an "
+                         rf"atom by at most [\d.]+ Å", said), said[-3000:]
 
 
 @makes_a_real_run("module", "molbuilder-pySCF")

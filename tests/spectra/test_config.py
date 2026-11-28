@@ -8,9 +8,6 @@ Pinned here: its defaults and its validation-facing metadata.
 
 from __future__ import annotations
 
-
-import pytest
-
 from tests.spectra._helpers import _spectra_cfg
 
 
@@ -68,12 +65,13 @@ class TestSpectraDefaults:
         cfg = _spectra_cfg()
         assert (cfg.compute_ir, cfg.compute_raman) == (True, False)
 
-    def test_displacement_amplitude_production_default(self):
-        """0.02 Å keeps ES probes inside the linear-response regime
-        (ΔE_orbital ∝ displacement) and well below the threshold
-        where Mills 1972 §2.4 anharmonic mixing becomes meaningful."""
+    def test_the_probe_computes_at_three_nodes_at_room_temperature_by_default(self):
+        """`engines/vibration.md` § 3.1, § 6.11 § 4: a new description's
+        probe takes three nodes of each mode's thermal state at the
+        catalogue's 298.15 K -- the rule's default, exact to degree 5, and
+        the thermochemistry's standard temperature."""
         cfg = _spectra_cfg()
-        assert cfg.displacement_amplitude_ang == pytest.approx(0.02)
+        assert (cfg.probe_temperature_K, cfg.probe_nodes) == (298.15, 3)
 
 
 class TestSpectraFieldMetadata:

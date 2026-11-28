@@ -14,9 +14,10 @@ text"): a statement filling one of the names it reports under
 convergence targets its progress log shows, a vibration's settings copy,
 Methods text, bibliography and result-record version, and its words: each
 message it records in its result, hands a call or writes on a saved
-geometry -- a message it prints, a string standing alone (its
-docstrings), and the message a ``raise`` carries, the raise itself
-compared.  A later release may word or
+geometry -- and a call handed one of the words by a keyword
+(``k=_MB_WORDS[...]``) compared without that keyword; a message it prints,
+a string standing alone (its docstrings), and the message a ``raise``
+carries, the raise itself compared.  A later release may word or
 record any of them otherwise (2.69.43 recorded another default), and nothing
 PySCF computes reads them; every value that changes what PySCF computes is
 stated by statements that are compared (`test_every_form_field_reaches_
@@ -62,7 +63,9 @@ from ..deck_record import BLOCK_RUN_SETTINGS, in_blocks, without_stamps
 #: each message it records in its result, hands a call or writes on a saved
 #: geometry, put there where it is composed and read from there where it is
 #: used (`pyscf.input.emit_words`), so a release that words it otherwise
-#: changes no statement that is compared.
+#: changes no statement that is compared -- and a call handed words by a
+#: keyword compares as the call without them (the progress log's engine and
+#: writer, `engines/pyscf.md` § 4).
 PARAMS_NAME = "_MB_PARAMS"
 RUNTIME_NAME = "_RUNTIME_INFO"
 TARGETS_NAME = "_CONVERGENCE_TARGETS"
@@ -116,6 +119,12 @@ class _WhatItComputes(ast.NodeTransformer):
                                            or _only_reports(node)):
             return None
         node = super().generic_visit(node)
+        if isinstance(node, ast.Call):
+            # WORDS HANDED BY A KEYWORD are no part of the call: a call is
+            # the same without them, so a release that starts handing a
+            # call its words compares as the one before it.
+            node.keywords = [k for k in node.keywords
+                             if not _reads_the_words(k.value)]
         if isinstance(node, ast.Raise) and isinstance(node.exc, ast.Call):
             node.exc.args = [_message_aside(a) for a in node.exc.args]
             for keyword in node.exc.keywords:
@@ -125,6 +134,14 @@ class _WhatItComputes(ast.NodeTransformer):
                 and node.targets[0].id == SIDECAR_NAME):
             node.value = _by_what_it_holds(node.value)
         return node
+
+
+def _reads_the_words(value) -> bool:
+    """Whether ``value`` is one of the deck's words, ``_MB_WORDS[...]``
+    (:data:`WORDS_NAME`)."""
+    return (isinstance(value, ast.Subscript)
+            and isinstance(value.value, ast.Name)
+            and value.value.id == WORDS_NAME)
 
 
 def _only_reports(node) -> bool:

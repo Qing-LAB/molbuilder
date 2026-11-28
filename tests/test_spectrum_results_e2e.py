@@ -363,6 +363,20 @@ class _EveryState:
                     v.mode(mode["index_1based"]),
                     chains.thermal(temperature_k=kelvin))
 
+    def test_its_timestamp_is_the_clock_its_runs_records_are_stamped_by(
+            self, state):
+        """§ 6.2: a result's `timestamp` by the clock every record of its
+        run is stamped with (`runrecord.stamp`: UTC, to the second, ``Z``),
+        on both engines, at every state its file passes through -- the
+        PySCF script's since 2.89.0 too.  THE SILENT FAILURE: a spelling of
+        its own -- microseconds, an offset -- the run's records do not
+        compare with."""
+        import re
+        path, _states = state
+        stamped = _read(path)["timestamp"]
+        assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z",
+                            stamped), stamped
+
 
 @pytest.fixture(scope="module", params=list(_PYSCF))
 def pyscf_state(request, real_water_vibration, real_water_held,
@@ -393,19 +407,6 @@ class TestOnSIESTA(_EveryState):
     @pytest.fixture
     def state(self, siesta_state):
         return siesta_state
-
-    def test_its_timestamp_is_the_clock_its_runs_records_are_stamped_by(
-            self, state):
-        """§ 6.2: a SIESTA result's `timestamp` by the clock every record of
-        its run is stamped with (`runrecord.stamp`: UTC, to the second,
-        ``Z``), at every state its file passes through.  THE SILENT FAILURE: a
-        spelling of its own -- microseconds, an offset -- the run's records do
-        not compare with."""
-        import re
-        path, _states = state
-        stamped = _read(path)["timestamp"]
-        assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z",
-                            stamped), stamped
 
 
 # --------------------------------------------------------------------- #
@@ -504,14 +505,25 @@ def test_a_pyscf_vibrations_export_holds_its_relaxations_steps(
             scf["scf_energy_ev"]["data"][k, int(n) - 1], e, atol=1e-6)
 
 
+def _es_rows(page) -> dict:
+    """The probe panel's numbers as drawn: each row's name and its value."""
+    page.locator("#es-summary dt").first.wait_for(state="visible")
+    names = page.locator("#es-summary dt").all_inner_texts()
+    values = page.locator("#es-summary dd.es-val").all_inner_texts()
+    return dict(zip(names, values))
+
+
 def test_each_vibration_chart_exports_what_it_draws(real_water_probed, page,
                                                      monkeypatch, tmp_path):
     """`web/results.md` § 1.2, `model/datafiles.md` § 9.7: the vibration's four
     charts each export what they draw, held to the run's result file: the
     spectrum -- a sealed chart, read through its one door -- each mode's IR
     band at its frequency as a percentage of the strongest, and its curve
-    reaching the strongest; the probed mode's orbitals, each at -A, 0, +A,
-    the probe's energies in eV; the thermochemistry over temperature, the
+    reaching the strongest; the probed mode's orbitals, each at the nodes
+    of its state along Q, the probe's energies in eV -- and the probe's
+    panel and the table's gap shift reading the numbers the load door
+    serves, a marked level named by its mark (`web/spectra.md` § 3.1); the
+    thermochemistry over temperature, the
     grid less E_elec in kcal/mol; its parts at the headline temperature, the
     last the free energy. Each keeps Plotly's toolbar, less its picture
     button, with its Export above the drawing.
@@ -547,9 +559,18 @@ def test_each_vibration_chart_exports_what_it_draws(real_water_probed, page,
         # THE SEALED PICTURE, made inside the seal.
         png = chart_exported(page, page.locator("#spectrum-chart-wrap"),
                              "PNG", tmp_path)
+        # THE TABLE'S GAP SHIFT, each probed mode's, as drawn (meV).
+        gap_cells = {k: page.locator(f'#modes-tbody tr[data-mode="{k}"] '
+                                     f'td.es-col').nth(4).inner_text()
+                     for k in (1, 3)}
         page.locator('#modes-tbody tr[data-mode="1"]').click()
         page.locator('[aria-controls="mode-tab-es"]').click()
         levels = exported(page.locator("#es-bar-diagram"))
+        panels = {1: _es_rows(page)}
+        page.locator('[aria-controls="mode-tab-table"]').click()
+        page.locator('#modes-tbody tr[data-mode="3"]').click()
+        page.locator('[aria-controls="mode-tab-es"]').click()
+        panels[3] = _es_rows(page)
         page.locator('[aria-controls="mode-tab-thermo"]').click()
         thermo = exported(page.locator("#thermo-curves"))
         parts = exported(page.locator("#thermo-decomp"))
@@ -564,15 +585,39 @@ def test_each_vibration_chart_exports_what_it_draws(real_water_probed, page,
     assert np.nanmax(line) >= 100 - 1e-9, np.nanmax(line)
 
     block = modes[0]["electronic_structure"]
-    A = block["amplitude_ang"]
-    sides = [np.asarray(block[f"mo_energies_{s}_eh"]) * C.HARTREE_EV
-             for s in ("minus", "eq", "plus")]
+    order = np.argsort(block["q_amu12_ang"])
+    nodes = np.asarray(block["mo_energies_eh"]) * C.HARTREE_EV
     drawn = curves(levels, "mo_energy_ev")
-    assert len(drawn) == len(sides[1]), [c[2] for c in drawn]
+    assert len(drawn) == nodes.shape[1], [c[2] for c in drawn]
     for i, (x, y, name) in enumerate(drawn):
-        np.testing.assert_allclose(x, [-A, 0, A])
-        np.testing.assert_allclose(y, [side[i] for side in sides])
+        np.testing.assert_allclose(x, np.asarray(block["q_amu12_ang"])[order])
+        np.testing.assert_allclose(y, nodes[order, i])
     assert drawn[block["homo_index_in_window"]][2] == "HOMO"
+    # A MARKED ORBITAL NAMED BY ITS MARK on its line (`web/spectra.md`
+    # § 3.1): exactly the orbitals the record marks -- the bend's LUMO+2 to
+    # LUMO+5 `reordered` on the real water.
+    assert any(block["marks"]), block["marks"]
+    for (_x, _y, name), mark in zip(drawn, block["marks"]):
+        assert name.endswith(f" ({mark})") == (mark is not None), (name,
+                                                                    mark)
+
+    # THE PANEL AND THE TABLE READ THE SERVED VIEW (`web/spectra.md` § 3.1):
+    # each number the load door's, in meV or eV, a marked level named so.
+    from molbuilder.postprocess import vibration
+    v = vibration(_final(run))
+    mev = lambda x: f"{x * C.HARTREE_EV * 1000:.3f}"
+    for k, rows in panels.items():
+        probe = v.mode(k).probe
+        h = probe.homo_index_in_window
+        name = "HOMO" + (f" ({probe.marks[h]})" if probe.marks[h] else "")
+        assert rows[name] == f"{probe.mo_energies_eh[0][h] * C.HARTREE_EV:.4f}"
+        shift = probe.shift_eh[h]
+        assert rows[name.replace("HOMO", "HOMO shift")] == (
+            "—" if shift is None else mev(shift)), rows
+        gap = probe.gap_shift_eh
+        assert gap_cells[k] == ("—" if gap is None else
+                                f"{gap * C.HARTREE_EV * 1000:.2f}"), gap_cells
+    assert "HOMO (noise)" in panels[3], panels[3]
 
     grid = d["thermo"]["grid"]
     T = np.asarray(grid["temperatures_K"], float)
@@ -730,26 +775,39 @@ def test_a_raman_spectrums_bands_are_each_modes_activity(real_water_vibration,
 
 
 #: A FILE OF ANOTHER VERSION, a row each (`engines/vibration.md` § 6.1,
-#: § 6.10.5, § 5.11 § 8): which of a vibration's files, the version it is
-#: given -- what the run wrote, written again by the file's one writer with
-#: its version set -- and the words its refusal says it in: the version it
-#: states, the one this molbuilder reads, and the way on.  The JSON's own
-#: rows by the version number it states, a data file's by its schema.
+#: § 6.10.5, § 5.11 § 8): which run's file -- the SIESTA CO2's, or the PySCF
+#: water's whose modes the probe ran on -- which of its files, the version it
+#: is given -- what the run wrote, written again by the file's one writer
+#: with its version set -- and the words its refusal says it in: the version
+#: it states, the ones this molbuilder reads, and the way on.  The JSON's own
+#: rows by the version number it states, a data file's by its schema.  A
+#: schema-15 file holding a probe is refused by its content (§ 6.1: the one
+#: translation reads only those holding none).
 _ANOTHER_VERSION = {
     "a result a later molbuilder wrote": (
-        ROLE_SPECTRA, 16,
-        ("is schema 16", "written by a later molbuilder",
-         "reads schema 15 alone", "open it with the molbuilder that wrote it")),
+        "co2", ROLE_SPECTRA, 17,
+        ("is schema 17", "written by a later molbuilder",
+         "reads schema 16, and 15 without a probe",
+         "open it with the molbuilder that wrote it")),
     "a result written before 2.79.0": (
-        ROLE_SPECTRA, 14,
+        "co2", ROLE_SPECTRA, 14,
         ("is schema 14", "written by a molbuilder before 2.79.0 (2026-11-23)",
-         "reads schema 15 alone", "run the vibration again")),
+         "reads schema 16, and 15 without a probe",
+         "run the vibration again")),
+    "a probed result written at schema 15": (
+        "probed", ROLE_SPECTRA, 15,
+        ("is schema 15", "pushed each mode a fixed length",
+         "run the vibration again")),
     "its data file, written before 2.79.0": (
-        ROLE_SPECTRA_DATA, "molbuilder/spectra-data@10",
-        ("molbuilder/spectra-data@10", "reads molbuilder/spectra-data@11",
+        "co2", ROLE_SPECTRA_DATA, "molbuilder/spectra-data@10",
+        ("molbuilder/spectra-data@10", "molbuilder/spectra-data@12",
+         "run the vibration again")),
+    "a probed result's data file written at @11": (
+        "probed", ROLE_SPECTRA_DATA, "molbuilder/spectra-data@11",
+        ("molbuilder/spectra-data@11", "pushed each mode a fixed length",
          "run the vibration again")),
     "its optical calls' file, written before 2.72.3": (
-        ROLE_OPTICAL, "molbuilder/optical-data@4",
+        "co2", ROLE_OPTICAL, "molbuilder/optical-data@4",
         ("molbuilder/optical-data@4", "reads molbuilder/optical-data@5",
          "run the vibration again")),
 }
@@ -757,11 +815,14 @@ _ANOTHER_VERSION = {
 
 @pytest.mark.parametrize("row", list(_ANOTHER_VERSION))
 def test_a_file_of_another_version_is_refused_by_that_version(
-        row, real_co2_vibration, web_client, tmp_path, monkeypatch):
+        row, real_co2_vibration, real_water_probed, web_client, tmp_path,
+        monkeypatch):
     """`engines/vibration.md` § 6.1, § 6.7, § 6.10.5, § 5.11 § 8: each of a
     vibration's files reads its own version alone (the user's decision,
     2026-11-26: every result before 2.79.0 stops opening, its run made
-    again).  What the run's writer wrote, its version set, is refused by
+    again), and schema 15 and `@11` only where no mode holds a probe (the
+    user, 2026-11-27).  What the run's writer wrote, its version set, is
+    refused by
     name, in words naming its version, the one this molbuilder reads and the
     way on -- the result through the load door, a 422 `schema_mismatch`
     carrying the two versions and the sentence the page prints, and through
@@ -783,8 +844,9 @@ def test_a_file_of_another_version_is_refused_by_that_version(
     from molbuilder.spectra import datafile, optical_data
     from molbuilder.spectra.datafile import SpectraDataError
     from molbuilder.spectra.optical_data import OpticalDataError
-    role, version, words = _ANOTHER_VERSION[row]
-    final = _final(real_co2_vibration)
+    which, role, version, words = _ANOTHER_VERSION[row]
+    final = _final({"co2": real_co2_vibration,
+                    "probed": real_water_probed}[which])
     written = {ROLE_SPECTRA: final, ROLE_SPECTRA_DATA: _data_file(final),
                ROLE_OPTICAL: on_label_at(final.parent, ROLE_OPTICAL)}[role]
     path = point_the_one_door_at(tmp_path, monkeypatch.setenv) / written.name
@@ -812,7 +874,11 @@ def test_a_file_of_another_version_is_refused_by_that_version(
         sentence = said["error"]
     elif role == ROLE_SPECTRA_DATA:
         monkeypatch.setattr(datafile, "DATA_SCHEMA", version)
-        write_spectra_payload(_read(final), path.with_name(final.name))
+        # AN `@11` FILE WAS WRITTEN WITH ITS RESULT AT SCHEMA 15.
+        payload = {**_read(final), **(
+            {"schema_version": 15}
+            if version == datafile.TRANSLATED_DATA_SCHEMA else {})}
+        write_spectra_payload(payload, path.with_name(final.name))
     else:
         # THE OPTICAL CALLS' PAYLOAD, as its reader gives it back, and the
         # engine the run's result states (the file says it in its source).
@@ -830,6 +896,49 @@ def test_a_file_of_another_version_is_refused_by_that_version(
     assert path.name in sentence, sentence
     for word in words:
         assert word in sentence, (word, sentence)
+
+
+#: THE ONE OLDER VERSION READ, a row each (`engines/vibration.md` § 6.1,
+#: § 6.10.5): which of a result's files the SIESTA CO2's run states at it --
+#: no mode probed, as no SIESTA result is.
+_TRANSLATED = {"a result written at schema 15": ROLE_SPECTRA,
+               "its data file written at @11": ROLE_SPECTRA_DATA}
+
+
+@pytest.mark.parametrize("row", list(_TRANSLATED))
+def test_a_schema_15_file_with_no_probe_reads_as_16(
+        row, real_co2_vibration, web_client, tmp_path, monkeypatch):
+    """`engines/vibration.md` § 6.1, § 6.10.5, `execution/job-contracts.md`
+    § 6.1, the one translation (the user, 2026-11-27: *"Read those without
+    an old probe"*): a result written at schema 15 -- and its data file at
+    `@11` -- whose every mode states no probe is schema 16 with another
+    number, read as 16 by the result's reader, its data file's and the load
+    door.  The run's own result, its version stated as 2.79.0-2.88.0 wrote
+    it.  THE SILENT FAILURE: every SIESTA result, every PySCF result that
+    asked for no probe and the example molbuilder carries refused for a
+    block they do not hold."""
+    from conftest import point_the_one_door_at
+    from molbuilder.sidecars.spectra import read_vibration_result
+    from molbuilder.spectra import datafile
+    role = _TRANSLATED[row]
+    final = _final(real_co2_vibration)
+    path = point_the_one_door_at(tmp_path, monkeypatch.setenv) / final.name
+    payload = {**_read(final), "schema_version": 15}
+    if role == ROLE_SPECTRA:
+        path.write_text(json.dumps(payload), encoding="utf-8")
+    else:
+        monkeypatch.setattr(datafile, "DATA_SCHEMA",
+                            datafile.TRANSLATED_DATA_SCHEMA)
+        write_spectra_payload(payload, path)
+        path = _data_file(path)
+    got = read_vibration_result(path)
+    assert got.schema_version == SCHEMA_VERSION
+    assert len(got.modes) == len(payload["modes"])
+    assert all(m.electronic_structure is None for m in got.modes)
+    if role == ROLE_SPECTRA:
+        r = web_client.post("/api/spectra/load", json={"path": str(path)})
+        assert r.status_code == 200, r.get_json()
+        assert r.get_json()["results"]["schema_version"] == SCHEMA_VERSION
 
 
 # --------------------------------------------------------------------- #
@@ -887,48 +996,117 @@ def test_an_imaginary_mode_stays_negative_and_has_no_amplitude(
 # --------------------------------------------------------------------- #
 
 
-def test_a_probes_two_sides_are_the_pushes_it_names(real_water_probed):
-    """`engines/vibration.md` § 4.8, § 6.3, K2674-4: a probed mode's block on
-    what a run wrote, its amplitude the push the person's item states, its
-    equilibrium the file's own -- and, since each number is a push of that size
-    along the display form, the two sides' mean rise is the harmonic energy of
-    that push, `1/2 lambda Q^2` with `lambda` from the mode's own frequency and
-    `Q = A / max|L_canonical|`.  An analytic answer, across four keys and the
-    frequency: measured here within 0.3 %.  THE SILENT FAILURE: a coupling
-    `dE / 2A` whose denominator is not the push its numerator was taken at; the
-    energy at -A read as the one at +A gives a shift of nothing with no word.
-    The modes' sides differ where the symmetry says they do: the bend breaks no
-    symmetry, so its two sides differ, and the asymmetric stretch's are mirror
-    images."""
-    from molbuilder.constants import (BOHR_ANGSTROM,
-                                      CM1_PER_SQRT_HARTREE_BOHR2_AMU)
+def _sigma_codata(nu_cm1: float, temperature_k: float) -> float:
+    """A mode's thermal spread ``Q_zp sqrt(2n + 1)``, amu^1/2.Å, from
+    CODATA (`science/vibrational-averaging.md` § 2a)."""
+    from scipy import constants as codata
+    omega = 2.0 * math.pi * codata.c * nu_cm1 * 100.0
+    amu = codata.physical_constants["atomic mass constant"][0]
+    q_zp = math.sqrt(codata.hbar / (2.0 * omega) / amu) * 1e10
+    n = 1.0 / math.expm1(codata.h * codata.c * nu_cm1 * 100.0
+                         / (codata.k * temperature_k))
+    return q_zp * math.sqrt(2.0 * n + 1.0)
+
+
+def test_a_probes_nodes_are_its_states_and_its_physics_holds(
+        real_water_probed):
+    """`engines/vibration.md` § 4.8, § 6.11 § 4: a probed mode's block as a
+    real run wrote it -- its nodes the thermal state's Gauss-Hermite rule at
+    the probe's temperature, 0 and +-sqrt(3) sigma(T) at 2/3, 1/6, 1/6, from
+    the file's own frequency, sigma from CODATA; node 0 the equilibrium's own
+    SCF and window; read back typed as written.  And the physics a check of
+    the code against its formulas cannot see: the bend, stiff against kT,
+    costs the energy the harmonic picture says at its nodes -- a harmonicity
+    within a few percent of 1 (measured 0.997 at its 300 K nodes); the
+    antisymmetric stretch's two sides are mirror images, its frontier levels
+    marked `noise` and their even share null (the raw ratio measured 5.2e4
+    for its HOMO).  THE SILENT FAILURE: nodes at a temperature or width nobody
+    stated; a share shaped like a number, made of SCF noise."""
+    from molbuilder.postprocess import vibration
     path = _final(real_water_probed)
     d = _read(path)
     got = parse_spectra_json(path)
-    bend, _symmetric, asymmetric = d["modes"]
-    amplitude = d["config"]["displacement_amplitude_ang"]
+    v = vibration(path)
+    eq = d["equilibrium"]
     for row, mode in zip(d["modes"], got.modes):
         block = row["electronic_structure"]
         if block is None:
             assert mode.electronic_structure is None
+            assert v.mode(row["index_1based"]).probe is None
             continue
+        assert block["state"]["temperature_k"] == 300.0
+        sigma = _sigma_codata(row["frequency_cm1"], 300.0)
+        np.testing.assert_allclose(block["q_amu12_ang"],
+                                   [0.0, math.sqrt(3) * sigma,
+                                    -math.sqrt(3) * sigma], rtol=1e-6)
+        np.testing.assert_allclose(block["weights"], [2 / 3, 1 / 6, 1 / 6],
+                                   rtol=1e-9)
+        assert block["scf_energies_eh"][0] == eq["scf_energy_eh"]
+        lo = eq["homo_idx"] - block["homo_index_in_window"]
+        window = block["mo_energies_eh"][0]
+        assert window == eq["mo_energies_eh"][lo:lo + len(window)]
+        assert all(e is not None for e in block["scf_energies_eh"]), block
         typed = mode.electronic_structure
-        assert block["amplitude_ang"] == amplitude == typed.amplitude_ang
-        assert block["scf_energy_eq_eh"] == d["equilibrium"]["scf_energy_eh"]
-        assert typed.scf_energy_minus_eh == block["scf_energy_minus_eh"]
-        assert typed.scf_energy_plus_eh == block["scf_energy_plus_eh"]
-        rise = (block["scf_energy_minus_eh"] + block["scf_energy_plus_eh"]
-                ) / 2.0 - block["scf_energy_eq_eh"]
-        largest = np.abs(row["eigenvector_canonical"]).max()
-        q_bohr = amplitude / largest / BOHR_ANGSTROM
-        curvature = (row["frequency_cm1"]
-                     / CM1_PER_SQRT_HARTREE_BOHR2_AMU) ** 2
-        assert rise == pytest.approx(curvature * q_bohr ** 2 / 2.0, rel=0.01), (
-            row["index_1based"], rise)
-    sides = (lambda m: abs(m["electronic_structure"]["scf_energy_plus_eh"]
-                           - m["electronic_structure"]["scf_energy_minus_eh"]))
-    assert sides(bend) > 1e-6, bend["electronic_structure"]
-    assert sides(asymmetric) < 1e-6, asymmetric["electronic_structure"]
+        assert typed.scf_energies_eh == block["scf_energies_eh"]
+        assert typed.mo_energies_eh == block["mo_energies_eh"]
+    homo = d["modes"][0]["electronic_structure"]["homo_index_in_window"]
+    bend, stretch = v.mode(1).probe, v.mode(3).probe
+    assert bend.harmonicity == pytest.approx(1.0, abs=0.03), bend.harmonicity
+    assert bend.marks[homo] is None and bend.even_share[homo] is not None
+    for k in (homo, homo + 1):
+        assert stretch.marks[k] == "noise", (k, stretch.marks)
+        assert stretch.even_share[k] is None
+        assert stretch.noise_ratio[k] < 1.0, stretch.noise_ratio
+        assert stretch.slope_eh_per_amu12_ang[k] == pytest.approx(0.0,
+                                                                  abs=1e-3)
+
+
+def test_the_load_door_serves_each_probed_modes_view(
+        real_water_probed, web_client, monkeypatch):
+    """`engines/vibration.md` § 6.11 § 4, § 9 item 5; `web/spectra.md`
+    § 3.1: the load door serves each probed mode's probe -- the record's
+    values and the views across the nodes -- as `postprocess.vibration`'s
+    mode answers them, and a mode the run did not probe none; the page
+    draws them and computes nothing.  THE SILENT FAILURE: a page deriving
+    a coupling the server never served, or a view of another mode's."""
+    from molbuilder.postprocess import vibration
+    path = _final(real_water_probed)
+    v = vibration(path)
+    served = spectra_served(web_client, monkeypatch, path)
+    for mode in served["modes"]:
+        probe = v.mode(mode["index_1based"]).probe
+        if probe is None:
+            assert "probe" not in mode
+            continue
+        view = mode["probe"]
+        for key in ("q_amu12_ang", "weights", "average_eh", "shift_eh",
+                    "marks", "slope_eh_per_amu12_ang", "coupling_eh",
+                    "huang_rhys", "even_share", "noise_ratio"):
+            assert view[key] == list(getattr(probe, key)), key
+        assert view["harmonicity"] == probe.harmonicity
+        assert view["largest_move_ang"] == probe.largest_move_ang
+        assert view["temperature_k"] == 300.0
+
+
+def test_a_stored_probe_average_its_node_energies_contradict_is_refused(
+        real_water_probed, tmp_path):
+    """§ 6.6, § 6.7, § 6.11 § 4: the probe's average over the state is
+    written beside the node energies it comes from and checked on read; a
+    file whose stored average its own energies contradict is refused by name,
+    the mode, the key and the orbital said.  The run's file edited by hand,
+    the one way to show it: no writer states a value its inputs contradict.
+    THE SILENT FAILURE: an average taken on trust that its own node energies
+    do not give."""
+    from molbuilder.sidecars.spectra import SpectraJsonFieldError
+    payload = _read(_final(real_water_probed))
+    block = payload["modes"][0]["electronic_structure"]
+    block["average_eh"][2] += 1e-3
+    path = tmp_path / _final(real_water_probed).name
+    path.write_text(json.dumps(payload))
+    with pytest.raises(SpectraJsonFieldError,
+                       match=r"mode 1: electronic_structure\.average_eh\[2\] "
+                             r"is .*, its derivation"):
+        parse_spectra_json(path)
 
 
 # --------------------------------------------------------------------- #
@@ -1037,7 +1215,7 @@ def test_what_a_frame_sets_state_means_is_served_as_the_script_says_it(
     `spectra/test_what_a_temperature_means.py`'s.  The silent failure: a dialog whose numbers
     are not the frames the doors write, or a script told another."""
     from molbuilder.postprocess import outermost_move
-    from molbuilder.vibration_frames import OFFERED_NODES
+    from molbuilder.vibration import OFFERED_NODES
     path = _final(real_water_probed)
     served = spectra_served(web_client, monkeypatch, path,
                             frameset_state=asked)
@@ -1228,11 +1406,12 @@ def test_every_axis_is_a_coordinate_a_reader_selects_by(real_water_probed):
     assert float(thermo.s_eh_per_k) == th["s_eh_k"]
     probe = xr.load_dataset(nc, group="modes/electronic_structure")
     probed = next(m for m in d["modes"] if m["electronic_structure"])
+    es = probed["electronic_structure"]
     row = probe.sel(probed_mode=probed["index_1based"])
-    assert float(row.total_energy_eq_eh) == \
-        probed["electronic_structure"]["scf_energy_eq_eh"]
-    assert np.array_equal(row.mo_energy_eq_eh.values,
-                          probed["electronic_structure"]["mo_energies_eq_eh"])
+    assert float(row.total_energy_eh.sel(node=0)) == es["scf_energies_eh"][0]
+    assert np.array_equal(row.mo_energy_eh.sel(node=1).values,
+                          es["mo_energies_eh"][1])
+    assert np.array_equal(row.q_amu12_ang.values, es["q_amu12_ang"])
     for k, m in enumerate(d["modes"]):
         for name, key in (("ir_intensity_km_per_mol", "ir_intensity_km_mol"),
                           ("raman_activity_ang4_per_amu",

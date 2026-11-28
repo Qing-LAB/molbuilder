@@ -154,17 +154,26 @@ class TestRenderMethodsMdPreRun:
         assert "Komornicki1979" in md
         assert "Wilson1955" in md
 
-    def test_selector_all_emits_es_paragraph(self):
+    @pytest.mark.parametrize("asked, nodes, temperature", [
+        ({}, "three", "298.15 K"),
+        ({"probe_nodes": 5, "probe_temperature_K": 77.0}, "five", "77 K"),
+    ])
+    def test_selector_all_emits_es_paragraph(self, asked, nodes, temperature):
+        """`engines/vibration.md` § 4.10, § 6.11 § 4: the probe's paragraph
+        says where it computed -- the nodes of each mode's thermal state at
+        the probe's temperature, the Gauss-Hermite rule cited -- never a
+        push of a length.  THE SILENT FAILURE: a Methods text naming a
+        displacement the run never made."""
         from molbuilder.spectra import render_methods_md
-        cfg = _spectra_cfg(es_mode_selection="all")
+        cfg = _spectra_cfg(es_mode_selection="all", **asked)
         md = render_methods_md(cfg)
         assert "every vibrational mode" in md
         assert "Galperin2007" in md
         assert "Frederiksen2007" in md
-        assert "Mills1972" in md
-        # Default amplitude 0.02 Å should appear.
-        assert "0.02" in md
-        assert "A = 0.02" in md or "A=0.02" in md or "0.02 Å" in md
+        assert "AbramowitzStegun1964" in md
+        assert f"{nodes} Gauss–Hermite nodes" in md, md
+        assert f"thermal distribution at {temperature}" in md, md
+        assert "Mills1972" not in md and " Å [" not in md, md
 
     def test_selector_explicit_states_count(self):
         """The count is of MODES, read from the text by the one reader:
@@ -468,3 +477,30 @@ def test_a_reference_with_no_occupied_levels_is_refused_not_indexed():
         homo_index([0.0, 0.0, 0.0])
 
 
+
+
+@pytest.mark.parametrize("node, signs, lo_node, expected", [
+    ([0, 1, 2, 4, 3, 5, 6, 7], 1, 2, [0, 2, 1, 3]),
+    ([0, 1, 2, 3, 4, 5, 6, 7], 1, 3, [1, 2, 3, None]),
+    ([0, 1, 2, 3, 4, 5, 6, 7], [1, -1, 1, -1, -1, 1, -1, 1], 2,
+     [0, 1, 2, 3]),
+], ids=["two window orbitals trading places",
+        "the window moved with its HOMO", "orbitals of the other sign"])
+def test_each_window_orbitals_partner_is_the_one_it_overlaps_most(
+        node, signs, lo_node, expected):
+    """`engines/vibration.md` § 6.11 § 4, the `reordered` mark's rule:
+    each window orbital's equilibrium partner is the equilibrium orbital it
+    overlaps most, ``|C_0^T S C_j|``, its place in the equilibrium's window
+    -- two orbitals that cross between the geometries are each other's
+    partner, and a window that starts one orbital higher (its HOMO moved)
+    names its partners by the equilibrium's places, ``None`` past them, and
+    an orbital whose sign the solver turned is its own partner still.
+    Orthonormal orbitals at one geometry, S = 1.  THE SILENT FAILURE: two
+    levels crossing inside the push joined by index, their slope a
+    "shift" that depends on the push, never marked."""
+    from molbuilder.spectra.pyscf_vibration import orbital_match
+    c0, _ = np.linalg.qr(np.random.default_rng(0).normal(size=(8, 8)))
+    got = orbital_match(c0, c0[:, node] * np.asarray(signs), np.eye(8),
+                        lo_eq=2,
+                        lo_node=lo_node, size=4)
+    assert got == expected, got

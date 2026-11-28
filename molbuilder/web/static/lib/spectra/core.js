@@ -707,7 +707,7 @@
      * (`web/blueprints/spectra.py::_page_constants`) -- the physical
      * constants from their one home (`molbuilder.constants`), each channel's
      * band floor (`spectra.activity`), the frame counts the doors offer
-     * (`vibration_frames.OFFERED_NODES`) and each engine's name (the engine
+     * (`vibration.OFFERED_NODES`) and each engine's name (the engine
      * table) --
      * and `renderResults` takes it in before any panel draws
      * (`architecture.md` § 3; user: one source per fact). */
@@ -2581,13 +2581,9 @@
             m.has_imag ? "imag" : "",
             es ? "es" : "",
         ];
-        if (es) {
-            const homo = es.mo_energies_eq_eh[es.homo_index_in_window];
-            const lumo = es.mo_energies_eq_eh[es.homo_index_in_window + 1];
-            if (homo != null) vals.push((homo * K.hartree_ev).toFixed(3));
-            if (lumo != null) vals.push((lumo * K.hartree_ev).toFixed(3));
-            if (homo != null && lumo != null)
-                vals.push(((lumo - homo) * K.hartree_ev).toFixed(3));
+        // THE PROBE'S SERVED NUMBERS, as the table shows them.
+        for (const v of [_homoEq(m), _lumoEq(m), _gapEq(m)]) {
+            if (v != null) vals.push(v.toFixed(3));
         }
         return vals.some(v => v.toLowerCase().includes(filt));
     }
@@ -2605,40 +2601,36 @@
             case "homo_eq_ev":            return _homoEq(m);
             case "lumo_eq_ev":            return _lumoEq(m);
             case "gap_eq_ev":             return _gapEq(m);
-            case "dgap_max_mev":          return _dgapMax(m);
+            case "gap_shift_mev":         return _gapShift(m);
             default:                      return m.index_1based;
         }
     }
 
-    function _homoEq(m) {
-        const es = m.electronic_structure;
-        if (!es) return null;
-        const e = es.mo_energies_eq_eh[es.homo_index_in_window];
+    /* THE PROBE'S NUMBERS ARE THE LOAD DOOR'S (web/spectra.md § 3.1): each
+     * probed mode is served its `probe` -- the record's values and every
+     * view across its nodes, as `postprocess.vibration` answers them -- and
+     * the page converts Hartree to eV for display, nothing more. */
+    function _probeOf(m) {
+        return m && m.probe ? m.probe : null;
+    }
+    function _frontier(m, above) {
+        // The equilibrium's (node 0's) HOMO, or the LUMO above it, in eV.
+        const p = _probeOf(m);
+        if (!p) return null;
+        const e = p.mo_energies_eh[0][p.homo_index_in_window + above];
         return e == null ? null : e * K.hartree_ev;
     }
-    function _lumoEq(m) {
-        const es = m.electronic_structure;
-        if (!es) return null;
-        const e = es.mo_energies_eq_eh[es.homo_index_in_window + 1];
-        return e == null ? null : e * K.hartree_ev;
-    }
+    function _homoEq(m) { return _frontier(m, 0); }
+    function _lumoEq(m) { return _frontier(m, 1); }
     function _gapEq(m) {
-        const h = _homoEq(m), l = _lumoEq(m);
-        return h == null || l == null ? null : l - h;
+        const p = _probeOf(m);
+        return !p || p.gap_eh == null ? null : p.gap_eh * K.hartree_ev;
     }
-    function _dgapMax(m) {
-        const es = m.electronic_structure;
-        if (!es) return null;
-        const h = es.mo_energies_eq_eh[es.homo_index_in_window];
-        const l = es.mo_energies_eq_eh[es.homo_index_in_window + 1];
-        const hp = es.mo_energies_plus_eh[es.homo_index_in_window];
-        const lp = es.mo_energies_plus_eh[es.homo_index_in_window + 1];
-        const hm = es.mo_energies_minus_eh[es.homo_index_in_window];
-        const lm = es.mo_energies_minus_eh[es.homo_index_in_window + 1];
-        if ([h, l, hp, lp, hm, lm].some(x => x == null)) return null;
-        const dPlus  = ((lp - hp) - (l - h)) * K.hartree_ev * 1000;  // meV
-        const dMinus = ((lm - hm) - (l - h)) * K.hartree_ev * 1000;
-        return Math.max(Math.abs(dPlus), Math.abs(dMinus));
+    function _gapShift(m) {
+        // The gap's shift over the mode's state, meV.
+        const p = _probeOf(m);
+        return !p || p.gap_shift_eh == null ? null
+            : p.gap_shift_eh * K.hartree_ev * 1000;
     }
 
     function _renderModeRow(m, anyES) {
@@ -2691,7 +2683,7 @@
         addCell(anyES ? fmt(_homoEq(m), 3)  : "", "es-col");
         addCell(anyES ? fmt(_lumoEq(m), 3)  : "", "es-col");
         addCell(anyES ? fmt(_gapEq(m),  3)  : "", "es-col");
-        addCell(anyES ? fmt(_dgapMax(m), 1) : "", "es-col");
+        addCell(anyES ? fmt(_gapShift(m), 2) : "", "es-col");
         return tr;
     }
 
@@ -2832,7 +2824,7 @@
             .concat(["has_imag"])
             .concat(hasEs ? ["has_es"] : []);
         if (anyES) headers.push("homo_eq_ev", "lumo_eq_ev",
-                                 "gap_eq_ev", "dgap_max_mev");
+                                 "gap_eq_ev", "gap_shift_mev");
         const lines = [headers.join(",")];
         for (const m of _modesForTable()) {
             const row = [m.index_1based, Number(m.frequency_cm1).toFixed(4)];
@@ -2851,7 +2843,8 @@
                 row.push(fmt4(_homoEq(m)));
                 row.push(fmt4(_lumoEq(m)));
                 row.push(fmt4(_gapEq(m)));
-                row.push(_dgapMax(m) == null ? "" : Number(_dgapMax(m)).toFixed(2));
+                row.push(_gapShift(m) == null ? ""
+                    : Number(_gapShift(m)).toFixed(4));
             }
             lines.push(row.join(","));
         }
@@ -2904,17 +2897,18 @@
         els.esPanel.hidden = false;
         els.esModeIdx.textContent  = String(m.index_1based);
 
-        const es = m.electronic_structure;
+        const p = _probeOf(m);
 
-        /* THE DISPLACEMENT THE LEVELS WERE COMPUTED AT belongs in the header,
-         * beside the mode it describes: it is the INPUT every number
-         * below depends on, and the one the coupling divides by.  Stated here it
-         * labels the whole panel, which is what "±A" in the diagram means. */
+        /* THE STATE THE LEVELS WERE COMPUTED IN belongs in the header,
+         * beside the mode it describes: the probe's temperature and its
+         * nodes are the INPUT every number below depends on (web/spectra.md
+         * § 3.1). */
         els.esModeFreq.textContent =
             Number(m.frequency_cm1).toFixed(1) + " cm⁻¹"
             + (m.has_imag ? " (imaginary)" : "")
-            + (es ? "  ·  A = " + es.amplitude_ang.toFixed(3) + " Å" : "");
-        if (!es) {
+            + (p ? "  ·  " + p.q_amu12_ang.length + " nodes of its thermal "
+                   + "state at " + Number(p.temperature_k) + " K" : "");
+        if (!p) {
             /* PURGE BEFORE OVERWRITING.  A mode with no electronic structure
              * replaces the figure with a sentence, and the node may be holding a
              * Plotly figure from the previously selected mode -- clearing its
@@ -2951,15 +2945,20 @@
             return;
         }
 
-        // Convert MO arrays to eV.
-        const eq    = es.mo_energies_eq_eh.map(e => e * K.hartree_ev);
-        const minus = es.mo_energies_minus_eh.map(e => e * K.hartree_ev);
-        const plus  = es.mo_energies_plus_eh.map(e => e * K.hartree_ev);
-        const hi    = es.homo_index_in_window;
-        const li    = hi + 1;
+        /* THE LEVELS AT EACH NODE, along the coordinate: a node whose SCF
+         * did not converge states no levels and is not drawn (the said
+         * lines below name it). */
+        const nodes = p.q_amu12_ang
+            .map((q, j) => ({ q: q, row: p.mo_energies_eh[j] }))
+            .filter(n => n.row != null)
+            .sort((a, b) => a.q - b.q)
+            .map(n => ({ q: n.q, arr: n.row.map(
+                e => e == null ? null : e * K.hartree_ev) }));
+        const hi = p.homo_index_in_window;
+        const li = hi + 1;
 
-        // Y-range: include all three displaced + eq arrays.
-        const all = eq.concat(minus, plus);
+        // Y-range: every node's levels.
+        const all = [].concat(...nodes.map(n => n.arr)).filter(v => v != null);
         const lo  = Math.min.apply(null, all);
         const up  = Math.max.apply(null, all);
         const pad = (up - lo) * 0.05 || 0.1;
@@ -2976,8 +2975,7 @@
                 '<p class="status muted">chart library unavailable on this page</p>';
         } else {
             const fig = _renderLevelDiagram({
-                minus: minus, eq: eq, plus: plus,
-                homo_idx: hi, lumo_idx: li, amplitude: es.amplitude_ang,
+                nodes: nodes, homo_idx: hi, lumo_idx: li, marks: p.marks,
             });
             fig.layout.yaxis.range = [yMin, yMax];
             fig.layout.uirevision = m.index_1based;
@@ -2989,46 +2987,50 @@
                     data: () => ({ curves: fig.curves, marks: [] }) }));
         }
 
-        /* THE NUMBERS, GROUPED BY THE QUESTION THEY ANSWER.
-         *
-         * Three groups
-         * say what each number is FOR -- where the levels sit, how the gap
-         * moves when the molecule does, and how strongly this mode couples --
-         * and that is the order a reader asks them in.
+        /* THE NUMBERS, GROUPED BY THE QUESTION THEY ANSWER -- where the
+         * levels sit, how they move over the state, how strongly this mode
+         * couples -- each the load door's, converted for display; a number
+         * the probe's marks leave out is "—", the mark beside it.
          *
          * Value and unit are separate fields so the stylesheet can right-align
          * the digits into a column; "−6.1234 eV" as one string cannot line up
          * with "12.34 meV" below it. */
-        const gap_eq    = eq[li]    - eq[hi];
-        const gap_plus  = plus[li]  - plus[hi];
-        const gap_minus = minus[li] - minus[hi];
-        const dgap_plus_mev  = (gap_plus  - gap_eq) * 1000;
-        const dgap_minus_mev = (gap_minus - gap_eq) * 1000;
-        // Electron-phonon coupling magnitude per spec § 9.2.4:
-        //   g_HOMO = ΔE_HOMO(+A→−A) / (2A)  (meV/Å -- approximate)
-        // The dimensionless coupling g_ν (per zero-point amplitude,
-        // `zero_point_amplitude_amu12_ang`, which the file carries)
-        // is V1.27's, the PySCF probe over five points per mode -- decided,
-        // not built (`engines/vibration.md` § 4.8).  Until then the simpler
-        // ΔE/(2A) form is shown.
-        const g_HOMO_mev_A = ((plus[hi] - minus[hi]) / (2 * es.amplitude_ang)) * 1000;
-        const g_LUMO_mev_A = ((plus[li] - minus[li]) / (2 * es.amplitude_ang)) * 1000;
-
+        const ev = (x, dp) => x == null ? "—" : (x * K.hartree_ev).toFixed(dp);
+        const mev = (x, dp) => x == null ? "—"
+            : (x * K.hartree_ev * 1000).toFixed(dp);
+        const sig = (x) => x == null ? "—" : Number(x).toPrecision(3);
+        // A MARKED LEVEL NAMED BY ITS MARK beside every number of it (§ 6.11
+        // § 4): its blank shift, slope or coupling said why, as served.
+        const named = (word, i) => word + (p.marks[i] ? " (" + p.marks[i] + ")"
+                                                      : "");
+        const gapMarks = [[hi, "HOMO"], [li, "LUMO"]]
+            .filter(([i]) => p.marks[i])
+            .map(([i, w]) => w + " " + p.marks[i]);
+        const eq = p.mo_energies_eh[0];
         const groups = [
             ["Where the levels sit", [
-                ["HOMO",       eq[hi].toFixed(4),  "eV"],
-                ["LUMO",       eq[li].toFixed(4),  "eV"],
-                ["Gap",        gap_eq.toFixed(4),  "eV"],
+                [named("HOMO", hi), ev(eq[hi], 4), "eV"],
+                [named("LUMO", li), ev(eq[li], 4), "eV"],
+                ["Gap",             ev(p.gap_eh, 4), "eV"],
             ]],
-            ["How the gap moves", [
-                ["at −A",      gap_minus.toFixed(4),      "eV"],
-                ["at +A",      gap_plus.toFixed(4),       "eV"],
-                ["change, −A", dgap_minus_mev.toFixed(2), "meV"],
-                ["change, +A", dgap_plus_mev.toFixed(2),  "meV"],
+            ["How they move over the state", [
+                [named("HOMO shift", hi), mev(p.shift_eh[hi], 3), "meV"],
+                [named("LUMO shift", li), mev(p.shift_eh[li], 3), "meV"],
+                ["Gap shift" + (gapMarks.length
+                                ? " (" + gapMarks.join(", ") + ")" : ""),
+                 mev(p.gap_shift_eh, 3), "meV"],
             ]],
-            ["Coupling, ΔE/(2A)", [
-                ["HOMO",       g_HOMO_mev_A.toFixed(1), "meV/Å"],
-                ["LUMO",       g_LUMO_mev_A.toFixed(1), "meV/Å"],
+            ["Coupling", [
+                [named("HOMO slope", hi), mev(p.slope_eh_per_amu12_ang[hi], 2),
+                 "meV/(amu½·Å)"],
+                [named("LUMO slope", li), mev(p.slope_eh_per_amu12_ang[li], 2),
+                 "meV/(amu½·Å)"],
+                [named("HOMO g", hi), mev(p.coupling_eh[hi], 3), "meV"],
+                [named("LUMO g", li), mev(p.coupling_eh[li], 3), "meV"],
+                [named("HOMO S", hi), sig(p.huang_rhys[hi]), ""],
+                [named("LUMO S", li), sig(p.huang_rhys[li]), ""],
+                ["Harmonicity", p.harmonicity == null ? "—"
+                    : Number(p.harmonicity).toFixed(3), ""],
             ]],
         ];
 
@@ -3047,7 +3049,7 @@
             const group = node("div", "es-group");
             group.append(node("h4", "es-group-title", title), dl);
             return group;
-        }));
+        }), ...(p.said || []).map(line => node("p", "status muted", line)));
     }
 
 
@@ -3094,38 +3096,41 @@
 
     function _renderLevelDiagram(opts) {
         const th = _esTheme();
-        const cols = [
-            { label: "−A", arr: opts.minus },
-            { label: "eq", arr: opts.eq    },
-            { label: "+A", arr: opts.plus  },
-        ];
-        /* The three geometries sit at x = 0, 1, 2 and each level is drawn as a
-         * dash of ±HALF around its column.  HALF under 0.5 is what leaves a gap
-         * between columns for the tie lines to cross -- the columns are as wide
-         * as they are apart, so nothing is spread across empty space. */
-        const HALF   = 0.3;
-        const centre = (c) => c;
+        /* THE NODES STAND WHERE THEY ARE ALONG THE MODE: each stack at its
+         * node's coordinate Q (amu½·Å), ascending, so five or seven nodes keep
+         * their spacing (web/spectra.md § 3.1). */
+        const cols = opts.nodes.map(n => ({
+            label: (n.q > 0 ? "+" : "") + Number(n.q).toFixed(3), arr: n.arr,
+            q: n.q }));
+        /* Each level is drawn as a dash of ±HALF around its node: HALF under
+         * half the nodes' nearest spacing leaves a gap between neighbours for
+         * the tie lines to cross. */
+        const gaps = cols.slice(1).map((c, k) => c.q - cols[k].q);
+        const HALF = 0.3 * (gaps.length ? Math.min.apply(null, gaps) : 1);
+        const centre = (c) => cols[c].q;
 
-        const nLevels = Math.max(opts.eq.length, opts.minus.length, opts.plus.length);
-        const crowd = { x: [], y: [] }, ties = { x: [], y: [] };
+        const nLevels = Math.max.apply(null, cols.map(c => c.arr.length));
+        const crowd = { x: [], y: [], text: [] }, ties = { x: [], y: [] };
         const traces = [];
-        /* WHAT IS DRAWN, as data: each orbital across -A, 0, +A, named by
-         * its place beside the frontier pair -- the chart's own Export
-         * takes these (web/results.md § 1.2), not the dashes. */
-        const A = opts.amplitude;
+        /* WHAT IS DRAWN, as data: each orbital across the nodes along Q,
+         * named by its place beside the frontier pair -- the chart's own
+         * Export takes these (web/results.md § 1.2), not the dashes. */
+        // A MARKED ORBITAL NAMED BY ITS MARK on its line (§ 6.11 § 4).
+        const marks = opts.marks || [];
         const place = (i) => (i === opts.homo_idx ? "HOMO"
             : i === opts.lumo_idx ? "LUMO"
             : i < opts.homo_idx ? "HOMO−" + (opts.homo_idx - i)
-            : "LUMO+" + (i - opts.lumo_idx));
+            : "LUMO+" + (i - opts.lumo_idx))
+            + (marks[i] ? " (" + marks[i] + ")" : "");
         const curves = [];
 
         for (let i = 0; i < nLevels; i++) {
             // ``legend``: the entry it is drawn under, whose hiding the
             // chart's Export reads (lib/chart-export.js).
             curves.push({ tag: "mo_energy", name: place(i),
-                          legend: i === opts.homo_idx ? "HOMO"
-                              : i === opts.lumo_idx ? "LUMO" : "other levels",
-                          x: [-A, 0, A],
+                          legend: (i === opts.homo_idx || i === opts.lumo_idx)
+                              ? place(i) : "other levels",
+                          x: cols.map((c) => c.q),
                           y: cols.map((c) => (c.arr[i] === undefined
                                               ? null : c.arr[i])) });
             const seg = _levelSegments(cols, i, centre, HALF);
@@ -3134,6 +3139,9 @@
                            : (i === opts.lumo_idx) ? "lumo" : null;
             if (!frontier) {
                 crowd.x.push.apply(crowd.x, seg.x); crowd.y.push.apply(crowd.y, seg.y);
+                // Each dash hovers its orbital's name, its mark with it.
+                crowd.text.push.apply(crowd.text,
+                                      seg.x.map(v => v == null ? null : place(i)));
                 ties.x.push.apply(ties.x, tie.x);   ties.y.push.apply(ties.y, tie.y);
                 continue;
             }
@@ -3151,19 +3159,19 @@
                 line: { color: colour, width: 1.1 }, opacity: 0.8,
             });
             traces.push({
-                type: "scatter", mode: "lines", name: frontier.toUpperCase(),
+                type: "scatter", mode: "lines", name: place(i),
                 x: seg.x, y: seg.y,
                 line: { color: colour, width: 3 },
-                hovertemplate: frontier.toUpperCase() + ": %{y:.4f} eV<extra></extra>",
+                hovertemplate: place(i) + ": %{y:.4f} eV<extra></extra>",
             });
         }
 
         // Behind the frontier pair: the tie lines, then the levels themselves.
         traces.unshift(
             { type: "scatter", mode: "lines", name: "other levels",
-              x: crowd.x, y: crowd.y,
+              x: crowd.x, y: crowd.y, text: crowd.text,
               line: { color: th.dim, width: 1.3 },
-              hovertemplate: "%{y:.4f} eV<extra></extra>" },
+              hovertemplate: "%{text}: %{y:.4f} eV<extra></extra>" },
         );
         traces.unshift(
             { type: "scatter", mode: "lines", showlegend: false, hoverinfo: "skip",
@@ -3172,18 +3180,21 @@
         );
 
         const layout = {
-            margin: { t: 8, r: 8, b: 30, l: 52 },
+            margin: { t: 8, r: 8, b: 40, l: 52 },
             /* NO `height` HERE.  The box owns the height (spectra.css
              * .es-bar-diagram) and the plot fills it, so the figure follows the
              * layout rather than fighting it -- setting both means the CSS box
              * and the library disagree about how tall the figure is. */
             xaxis: {
-                // Three geometries, not a continuum: no grid, no zoom, and a
-                // little slack so the outer columns are not clipped.
+                // The nodes are all the geometries there are: their values
+                // as ticks, no zoom, and slack so the outer dashes show.
+                title: { text: "Q (amu½·Å)", font: { size: 11 } },
                 tickmode: "array",
                 tickvals: cols.map((_, c) => centre(c)),
                 ticktext: cols.map(c => c.label),
-                range: [-0.5, cols.length - 0.5],
+                range: cols.length
+                    ? [cols[0].q - 2 * HALF, cols[cols.length - 1].q + 2 * HALF]
+                    : [-1, 1],
                 fixedrange: true,
                 zeroline: false, showgrid: false,
                 color: th.ink,
@@ -3703,7 +3714,7 @@
         const recordT = held.thermo && held.thermo.temperature_K != null
             ? Number(held.thermo.temperature_K) : null;
         // THE FRAME COUNTS THE DOORS OFFER, served with the load, the
-        // default first (`vibration_frames.OFFERED_NODES`, § 4.3).
+        // default first (`vibration.OFFERED_NODES`, § 4.3).
         const RULES = (K.frameset_nodes || []).map(String);
         // WHAT THE DOOR SAID OF THIS MODE: ``{state, f}``, the state it
         // computed at and the mode's ``frameset`` there.

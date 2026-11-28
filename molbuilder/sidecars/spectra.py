@@ -194,15 +194,17 @@ def dump_spectra_json(results: "SpectraResults",
 # --------------------------------------------------------------------- #
 
 
-def _validate_schema_version(actual: Any, where: str) -> None:
-    """The version, by the one rule (`spectra.results.readable_version`,
-    which `SpectraResults.from_dict` asks too), refused in this reader's
-    own error, its words the rule's, naming the file (``where``)."""
-    from ..spectra.results import SCHEMA_VERSION, readable_version
+def _at_this_version(d: Dict[str, Any], where: str) -> Dict[str, Any]:
+    """The result at the version this molbuilder writes, by the one rule
+    (`spectra.results.translated`, which `SpectraResults.from_dict` asks
+    too) -- a version it does not read, or a schema-15 file holding the old
+    probe, refused in this reader's own error, its words the rule's, naming
+    the file (``where``)."""
+    from ..spectra.results import SCHEMA_VERSION, translated
     try:
-        readable_version(actual)
+        return translated(d)
     except ValueError as exc:
-        raise SpectraJsonSchemaError(SCHEMA_VERSION, actual,
+        raise SpectraJsonSchemaError(SCHEMA_VERSION, d.get("schema_version"),
                                      f"{where}: {exc}") from None
 
 
@@ -255,7 +257,7 @@ def parse_spectra_json(
     except ValueError as e:
         raise SpectraJsonMalformedError(f"{p!r}: {e}") from e
 
-    _validate_schema_version(d.get("schema_version"), Path(p).name)
+    d = _at_this_version(d, Path(p).name)
 
     return _validate_dict_to_results(d, repr(p))
 

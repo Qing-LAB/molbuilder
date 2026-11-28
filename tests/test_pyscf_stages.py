@@ -203,6 +203,20 @@ def _another_release_worded_the_way_back():
             {}, "Worded otherwise, the way back.")
 
 
+def _another_release_named_its_writer():
+    from molbuilder.pyscf import vibration_deck
+    return (lambda moved: moved.setattr(vibration_deck, "CREATED_BY",
+                                        "worded otherwise"),
+            {}, "'worded otherwise'")
+
+
+def _another_release_keyed_its_writer():
+    from molbuilder.pyscf import input as pyscf_input
+    return (lambda moved: moved.setattr(pyscf_input, "LOG_WRITER_WORD",
+                                        "keyed_otherwise"),
+            {}, "'keyed_otherwise'")
+
+
 def _another_job_request():
     from support.road import RUN_CARD
     threads = RUN_CARD["pyscf"]["threads"] + 1
@@ -223,7 +237,9 @@ def _another_job_request():
 #: docstring holds too, a message it prints, and a message it records in
 #: its result, the way back an unrelaxed structure's warning gives
 #: (`engines/vibration.md` § 5.5), held in its words
-#: (`pyscf.script_input.WORDS_NAME`); and the job request, which its
+#: (`pyscf.script_input.WORDS_NAME`), and its progress log's writer, a word
+#: handed to the log's writer by a keyword (`engines/pyscf.md` § 4) -- named
+#: otherwise, or held under another key; and the job request, which its
 #: settings copy echoes (§ 5: a launched stage's request may change).  Each
 #: row: how the other release is made while prep writes the deck, the
 #: request the other calculation is described with, and the words its deck
@@ -238,6 +254,10 @@ _BESIDE_THE_CALCULATION = [
                  id="a-comment-beside-a-statement"),
     pytest.param(_another_release_worded_the_way_back,
                  id="a-message-it-records"),
+    pytest.param(_another_release_named_its_writer,
+                 id="the-progress-logs-writer"),
+    pytest.param(_another_release_keyed_its_writer,
+                 id="a-word-handed-by-keyword"),
     pytest.param(_another_job_request, id="the-job-request"),
 ]
 

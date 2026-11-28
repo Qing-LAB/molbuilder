@@ -312,12 +312,12 @@ def _stated(p: Path) -> Optional[AtomIndexMap]:
     if p.suffix == ".json":
         d = read_json(p) if p.stat().st_size else None
         if role_of(name) == ROLE_SPECTRA and isinstance(d, dict):
-            # A VIBRATION RESULT, read at its one version
-            # (`engines/vibration.md` § 6.1): one of another refused in the
-            # result reader's words, never answered by its run.
-            from .spectra.results import readable_version
+            # A VIBRATION RESULT, read at the version the result reader reads
+            # it at (`engines/vibration.md` § 6.1): one it does not read
+            # refused in the result reader's words, never answered by its run.
+            from .spectra.results import translated
             try:
-                readable_version(d.get("schema_version"))
+                translated(d)
             except ValueError as exc:
                 raise AtomIndexUnknown(f"{name}: {exc}") from None
         block = d.get(MAP_KEY) if isinstance(d, dict) else None

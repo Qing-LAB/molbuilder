@@ -15,8 +15,10 @@ ROLE    from what a mode STATES -- its frequency, whether it is imaginary, its
         displacement at it, each free atom's share of the motion, the
         largest zero-point move, the reduced mass and force constant, and
         the block of each mode's spread and mean quanta at the modes' own
-        temperatures -- each by its one home (`oscillator`, `vibration`),
-        composed there; this module states them
+        temperatures, and a probed mode's nodes, weights, average, shift and
+        marks (`vibration.probe_derivations`, `engines/vibration.md` § 6.11
+        § 4) -- each by its one home (`oscillator`, `vibration`), composed
+        there; this module states them
 USED-BY the one writer of a result file, every engine's
         (`sidecars.spectra.write_spectra_payload`); `SpectraResults.to_dict`;
         the reader's check (`SpectraResults.from_dict`)
@@ -47,19 +49,20 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 # TWO WAYS, because this module travels beside the job (see the header).
 try:                                        # inside molbuilder
     from ..oscillator import zero_point_amplitude_amu12_ang
-    from ..vibration import (THERMAL_ROW_KEYS, force_constant_mdyn_per_ang,
+    from ..vibration import (PROBE_DERIVED_KEYS, THERMAL_ROW_KEYS,
+                             force_constant_mdyn_per_ang,
                              largest_zero_point_move_ang, motion_shares_of,
-                             reduced_mass_amu, thermal_row,
-                             zero_point_displacement_ang)
+                             probe_derivations, reduced_mass_amu,
+                             thermal_row, zero_point_displacement_ang)
     from .activity import classify_modes
     from .normal_modes import mode_temperatures
 except ImportError:                         # beside a job, in a bundle
     from oscillator import (  # type: ignore[no-redef]
         zero_point_amplitude_amu12_ang)
     from vibration import (  # type: ignore[no-redef]
-        THERMAL_ROW_KEYS, force_constant_mdyn_per_ang,
-        largest_zero_point_move_ang, motion_shares_of, reduced_mass_amu,
-        thermal_row, zero_point_displacement_ang)
+        PROBE_DERIVED_KEYS, THERMAL_ROW_KEYS, force_constant_mdyn_per_ang,
+        largest_zero_point_move_ang, motion_shares_of, probe_derivations,
+        reduced_mass_amu, thermal_row, zero_point_displacement_ang)
     from activity import classify_modes  # type: ignore[no-redef]
     from normal_modes import mode_temperatures  # type: ignore[no-redef]
 
@@ -173,11 +176,20 @@ def stated_temperatures(block: Any) -> Optional[Any]:
 def with_derived(modes: Sequence[Mapping[str, Any]],
                  masses_free_amu: Optional[Sequence[float]]
                  ) -> List[Dict[str, Any]]:
-    """The mode rows, each with its derived values stated beside the rest --
+    """The mode rows, each with its derived values stated beside the rest
+    -- a probed mode's block with its own (:func:`probe_derivations`) --
     what a writer writes; ``masses_free_amu`` as :func:`mode_derivations`
     takes them."""
-    return [{**dict(m), **d}
-            for m, d in zip(modes, mode_derivations(modes, masses_free_amu))]
+    out = []
+    for m, d in zip(modes, mode_derivations(modes, masses_free_amu)):
+        row = {**dict(m), **d}
+        block = row.get("electronic_structure")
+        if block is not None:
+            row["electronic_structure"] = {
+                **dict(block),
+                **probe_derivations(row["frequency_cm1"], block)}
+        out.append(row)
+    return out
 
 
 def free_masses_of(payload: Mapping[str, Any]) -> List[float]:
@@ -228,6 +240,8 @@ def disagreements(payload: Mapping[str, Any],
     its modes exist."""
     modes = payload.get("modes") or []
     out: List[str] = []
+    for m in modes:
+        out += _probe_disagreements(m)
     for m, d in zip(modes, mode_derivations(modes, masses_free_amu)):
         for key in DERIVED_MODE_KEYS:
             if key not in m:
@@ -267,6 +281,31 @@ def disagreements(payload: Mapping[str, Any],
                 said += f" at {temps[at[1]]:g} K"
             out.append(f"{said} is {stated!r}, its derivation {value!r}"
                        if len(at) >= 2 else f"{said} is not its derivation")
+    return out
+
+
+def _probe_disagreements(m: Mapping[str, Any]) -> List[str]:
+    """What a probed mode's block states of its derived values that their
+    derivation does not (`vibration.PROBE_DERIVED_KEYS`, § 6.11 § 4) -- a key not
+    stated among them; ``[]`` for a mode not probed."""
+    block = m.get("electronic_structure")
+    if block is None:
+        return []
+    where = f"mode {m.get('index_1based')}: electronic_structure"
+    missing = [k for k in PROBE_DERIVED_KEYS if k not in block]
+    if missing:
+        return [f"{where}.{k} is not stated" for k in missing]
+    try:
+        derived = probe_derivations(m["frequency_cm1"], block)
+    except (KeyError, TypeError, ValueError) as e:
+        return [f"{where} does not derive: {e}"]
+    out = []
+    for key in PROBE_DERIVED_KEYS:
+        found = _first_difference(block[key], derived[key])
+        if found is not None:
+            at, stated, value = found
+            out.append(f"{where}.{key}{''.join(f'[{i}]' for i in at)} is "
+                       f"{stated!r}, its derivation {value!r}")
     return out
 
 

@@ -70,6 +70,11 @@ from .vibration_emitters import (
     _emit_raman_block,
 )
 
+#: THE DECK'S NAME, as its spec records it (`DeckSpec.created_by`) and its
+#: progress log's header names its writer (`engines/pyscf.md` § 4).
+CREATED_BY = "molbuilder vibration deck"
+
+
 class VibrationConfigView:
     # Public because it is the SHAPE, not an implementation detail: the
     # emitters and the Methods fragment annotate against it.
@@ -142,7 +147,10 @@ def _vib_constants(cfg, names) -> List[str]:
                                         vibrational_only_thermo)
     from ..spectra.pyscf_vibration import (as_numpy, dipole_derivatives,
                                            equilibrium_structure, homo_index,
-                                           mo_window)
+                                           mo_window, orbital_match)
+    from ..runrecord import stamp
+    from ..vibration import (displaced, largest_move, mode_over_atoms,
+                             probe_rule, probe_state)
     from ..spectra.activity import ir_strength_km_mol
     from ..spectra.selection import select_modes
     from ..trajectory_log.emitter import MolwatchEmitter
@@ -169,12 +177,15 @@ def _vib_constants(cfg, names) -> List[str]:
            # codec, the progress-log writer, the relaxation, the HOMO and
            # Hessian rules, the harmonic path and the thermochemistry, the
            # structure the result states, the result's writer and its scrub,
-           # the mode selector (§ 4.8), and the atom index map the result
-           # states (`model/overview.md` § 2.2b).
+           # the mode selector (§ 4.8), the probe's rule, its geometry and
+           # its orbitals' match (§ 6.11 § 4), the run's one clock
+           # (`runrecord.stamp`), and the atom index map the result states
+           # (`model/overview.md` § 2.2b).
            *emit_bundle_imports(
                StructureCodec, MolwatchEmitter, relax, wall_deadline,
-               stop_if_past_wall,
-               homo_index, mo_window,
+               stop_if_past_wall, stamp,
+               homo_index, mo_window, orbital_match, probe_state, probe_rule,
+               mode_over_atoms, displaced, largest_move,
                dipole_derivatives, as_numpy, vibrational_modes,
                signed_omega, frequencies_cm1, display_form,
                thermo_temperatures, vibrational_only_thermo,
@@ -602,7 +613,7 @@ def vibration_spec(struct: Structure, cfg, *, names) -> "_sc.DeckSpec":
         out += emit_run_settings_block(view)
         out += emit_script_head()
         out += emit_runtime_facts()
-        out += emit_words()
+        out += emit_words(CREATED_BY)
         out += _emit_imports(view)
         out += emit_pyscf_threads()
         out += _emit_constants(struct, view, methods_md=methods_md,
@@ -665,21 +676,23 @@ def vibration_spec(struct: Structure, cfg, *, names) -> "_sc.DeckSpec":
             out += emit_save_helper(bool(getattr(cfg, "verbose_comments", True)))
         if getattr(cfg, "save_initial_xyz", False):
             out.append(emit_save_call("mol", ROLE_INITIAL, names))
+        # THE SCF'S CRITERIA, read off a solver this deck's own dresser
+        # configures -- every mf here is built through it -- once per run:
+        # the progress log states them as the optimization deck's does, and
+        # the probe's record states the tolerances its noise is read
+        # against (`engines/vibration.md` § 6.11 § 4).
+        from .input import _emit_molwatch_emitter, emit_scf_criteria_readback
+        # The solver asked is THIS run's class (`layout.scf_class`).
+        from .layout import scf_module
+        out.append(f"_mb_scf_probe = _mb_configure_scf("
+                   f"{scf_module(view.state)}.{view.scf_class}(mol))")
+        out += emit_scf_criteria_readback("_mb_scf_probe")
+        out.append("del _mb_scf_probe")
         if getattr(cfg, "write_molwatch_log", False):
-            # THE SCF'S CRITERIA, read off a solver this deck's own dresser
-            # configures -- every mf here is built through it -- so the
-            # progress log states them as the optimization deck's does.
-            from .input import (_emit_molwatch_emitter,
-                                emit_scf_criteria_readback)
-            # The probe is THIS run's class (`layout.scf_class`).
-            from .layout import scf_module
-            out.append(f"_mb_scf_probe = _mb_configure_scf("
-                       f"{scf_module(view.state)}.{view.scf_class}(mol))")
-            out += emit_scf_criteria_readback("_mb_scf_probe")
-            out.append("del _mb_scf_probe")
             # THE ATOMS THIS RUN HOLDS -- the set its relaxation freezes
             # (`_vib_relax_block`) -- go into its log's header, as the
-            # optimization deck's do (`model/parse.md` § 5.3).
+            # optimization deck's do (`model/parse.md` § 5.3); its writer
+            # named as this deck's spec names it, through its words.
             out += _emit_molwatch_emitter(
                 bool(getattr(cfg, "verbose_comments", True)), cfg, names,
                 frozen_atoms=list(view.frozen_indices))
@@ -725,7 +738,7 @@ def vibration_spec(struct: Structure, cfg, *, names) -> "_sc.DeckSpec":
         # grids lines.
         line=_layout.line(cfg,
                           is_dft=cfg.is_dft),
-        created_by="molbuilder vibration deck",
+        created_by=CREATED_BY,
         # The engine's own deck gate, shared with the optimization deck:
         # it parses (a non-compiling deck dies on the queue after the
         # wait -- the shipped ECP double-kwarg was exactly this class),

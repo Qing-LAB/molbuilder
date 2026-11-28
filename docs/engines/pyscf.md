@@ -276,7 +276,12 @@ result's record and its non-finite scrub (`spectra/results.py`, and
 every mode and the activity rule they ask (`spectra/derived.py`,
 `spectra/activity.py`, [`vibration.md`](?doc=engines/vibration.md) § 6.6) and
 a mode's mechanics (`vibration`);
-the mode selector ([`vibration.md`](?doc=engines/vibration.md) § 4.8); and the `constants` module,
+the mode selector ([`vibration.md`](?doc=engines/vibration.md) § 4.8); the
+probe's state, its nodes, each node's geometry and the outer nodes' largest
+move (`vibration.probe_state`, `probe_rule`, `mode_over_atoms`, `displaced`,
+`largest_move`) and each orbital's partner across the geometries
+(`spectra/pyscf_vibration.py`, `orbital_match`; § 6.11 § 4 there); the run's
+one clock its result is stamped by (`runrecord.stamp`); and the `constants` module,
 for the one factor its Raman block converts with. Prep writes the file beside
 every PySCF script and copies it into every run with the script. Its first
 lines, right after its docstring, put that file on the import path — when the
@@ -495,14 +500,25 @@ distinguished by the `# engine:` header; a SIESTA run's steps are in its
 file, nothing else changes. Written by
 `MolwatchEmitter` (`trajectory_log/emitter.py`), which the script imports from
 `mb_pyscf.pyz` (§ 3); `pyscf/input.py::_emit_molwatch_emitter` writes the lines
-that construct it and close the log.
+that construct it and close the log. **The deck tells it its engine and its
+writer**: *pyscf* and the deck's own name, the one its spec records
+(`DeckSpec.created_by` — `input.CREATED_BY`, *molbuilder jobset prep*, for the
+optimization deck; `vibration_deck.CREATED_BY`, *molbuilder vibration deck*,
+for the vibration's), so a vibration's log names the deck that wrote it. Both
+are the deck's words (`_MB_WORDS`, `input.emit_words`), handed by keywords
+that read them (`engine=_MB_WORDS['progress_log_engine']`,
+`generator=_MB_WORDS['progress_log_writer']`), which the same-calculation
+reading sets aside (§ 8). **Prep's seed** — the log prep writes beside the deck
+before any run (`trajectory_log.format.write_initial_preview`, told its engine
+by prep) — names its writer *molbuilder*; a PySCF run's emitter writes the
+log anew when it starts, with the deck's own.
 
 Each opt step is one **marker-delimited** block — the parser locates markers by
 prefix, so there's no column-width fragility:
 
 ```text
 # molwatch trajectory log v1
-# generator: molbuilder/pyscf_input
+# generator: <the deck's name: molbuilder jobset prep | molbuilder vibration deck>
 # engine: pyscf
 # job: <job_name>
 # units: energy=eV, force=eV/Ang, coords=Ang
@@ -931,6 +947,36 @@ PySCF "converged" structure generally stops later than a SIESTA one.
 change to what this emitter writes — a promised output file renamed or removed
 among them — moves the last number unless it is new functionality, and has its
 line in the changelog.
+
+**A change to a statement the same-calculation reading compares is a visible
+change** ([`execution/job-request.md`](?doc=execution/job-request.md) § 5, § 6): that
+reading sets aside the deck's reports (`script_input.REPORTS`) and a
+keyword handing a call one of its words (`_MB_WORDS[...]`), so a deck
+rendered by a release that changed any other line is not the calculation an
+earlier release's runs ran. 2.89.0's changes, said precisely:
+
+- **The progress log's engine and writer** (§ 4) are handed through the
+  deck's words, both set aside: **a PySCF optimization** launched under
+  2.88.0 and prepared again — more wall time, memory or threads — is the
+  same calculation, and its next launch runs this molbuilder's deck and
+  bundle.
+- **A PySCF vibration's deck** changed its compared lines: its result is
+  stamped by the run's one clock (`runrecord.stamp`,
+  [`engines/vibration.md`](?doc=engines/vibration.md) § 6.2) and its probe
+  computes at the nodes of each mode's state (§ 4.8 there), the fixed push's
+  constant gone. So a vibration stage launched under 2.88.0 or before and
+  prepared again is refused as not the calculation its runs ran. **The way
+  back** is the state saved before its group's first launch (`molbuilder
+  checkpoint restore`, which prep names) — that state holds the description
+  2.88.0 wrote, so run `jobset migrate` again after the restore, then prepare
+  — and the stage starts again from the beginning. A finished run is
+  unaffected; its result reads where no mode holds a probe (§ 6.1 there).
+- **A PySCF vibration that probes, prepared under 2.88.0 and not yet run**:
+  a launch runs the deck it was prepared with, which writes the fixed push's
+  record — a result this molbuilder refuses (§ 6.1 there). The launch says
+  first that the stage is *changed since prepared* (its template states the
+  retired push) and runs it as asked; to compute the probe at its nodes, run
+  `jobset migrate` and prepare the stage again before launching it.
 
 **Tests:** the PySCF rows of `tests/data/the_deck.toml`, run by
 `tests/test_the_deck.py` — assertions over the deck `prep` writes (*"a PySCF

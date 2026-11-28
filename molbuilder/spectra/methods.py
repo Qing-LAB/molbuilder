@@ -491,11 +491,17 @@ def _paragraph_vibrational(cfg: "VibrationConfigView",
             f"{ir_clause}{raman_clause}")
 
 
+#: A NODE COUNT AS THE PARAGRAPH SAYS IT -- the counts offered
+#: (`vibration.OFFERED_NODES`).
+_COUNT_WORDS = {3: "three", 5: "five", 7: "seven"}
+
+
 def _paragraph_electronic_structure(cfg: "VibrationConfigView") -> str:
-    """Second Methods paragraph: per-mode displaced-geometry SCFs.
-    Only emitted when ``cfg.es_mode_selection != "skip"`` -- the
-    L4 step is opt-in."""
-    amp = cfg.displacement_amplitude_ang
+    """Second Methods paragraph: per-mode SCFs at the nodes of each mode's
+    thermal state (`engines/vibration.md` § 4.10, § 6.11 § 4).  Only emitted
+    when ``cfg.es_mode_selection != "skip"`` -- the L4 step is opt-in."""
+    nodes = int(cfg.probe_nodes)
+    temperature = float(cfg.probe_temperature_K)
     n_below = cfg.es_n_homo_below
     n_above = cfg.es_n_lumo_above
 
@@ -510,14 +516,20 @@ def _paragraph_electronic_structure(cfg: "VibrationConfigView") -> str:
 
     window_clause = _frequency_window_clause(cfg)
 
+    count = _COUNT_WORDS.get(nodes, str(nodes))
     para = (f"For {criterion}{window_clause}, per-mode electronic-"
-            f"structure data were computed at displaced geometries "
-            f"q ± A·Q_i with A = {amp:g} Å [Mills1972 §2.4].  At each "
-            f"displaced geometry the SCF was converged at the same "
-            f"level as the equilibrium structure; the frontier "
-            f"orbital energies (HOMO-{n_below} through LUMO+{n_above}), "
-            f"the HOMO-LUMO gap, and the change relative to the "
-            f"equilibrium values were recorded.  This data supports "
+            f"structure data were computed at the {count} Gauss–Hermite "
+            f"nodes of each mode's thermal distribution at {temperature:g} K "
+            f"[AbramowitzStegun1964] -- the geometry displaced along the "
+            f"mass-weighted normal mode to each node, the middle node the "
+            f"equilibrium structure"
+            + (", the outer ones at ±√3 times the mode's thermal spread"
+               if nodes == 3 else "")
+            + f".  At each node the SCF was converged at the same level "
+            f"as the equilibrium structure, and the frontier orbital "
+            f"energies (HOMO-{n_below} through LUMO+{n_above}) were "
+            f"recorded with each level's average over the distribution and "
+            f"its shift from the equilibrium value.  This data supports "
             f"downstream electron-phonon coupling analysis for "
             f"inelastic-transport modelling [Galperin2007, "
             f"Frederiksen2007].")

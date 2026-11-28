@@ -410,6 +410,12 @@ def vibration(path):
     back, the mode bound to a chain or a distribution (``m.bind(...)``,
     its distribution in amu^1/2.Å, draws, frames and weights), the mode at
     another frequency (`vibration.Mode`), every atom in the user's order;
+    a PySCF mode the probe ran on, its probe (``m.probe``,
+    `vibration.Probe`, `engines/vibration.md` § 6.11 § 4): the levels at the
+    nodes of its thermal state, their average and shift, the slope, the
+    coupling, the Huang-Rhys factor, the even share, the noise ratio and the
+    harmonicity, each orbital's mark, and ``m.probe.at(temperature_k=...)``
+    re-weighted for another temperature;
     and the vibration itself -- ``v.mode(n)``, ``v.displaced({...})``,
     ``v.with_frequency_scale(f)``, ``v.motion(...)``, the molecule's motion and
     its snapshots (`engines/vibration-frames.md` § 1-§ 3); ``v.read_path`` the

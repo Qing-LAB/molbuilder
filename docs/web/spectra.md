@@ -213,8 +213,9 @@ filter**, export to CSV, and click a row to select a mode — each column's
 header a button that sorts by it, and the modes one list of choices: one tab
 stop, the arrows moving, Enter selecting the mode
 *([`ui-contract.md`](?doc=web/ui-contract.md) § 4.1)*. Four more columns
-give that check's numbers: the HOMO, the LUMO, the gap and the gap's largest
-shift along the mode. **A column whose number needs its method said is
+give that check's numbers, each the load door's: the HOMO, the LUMO and the
+gap at the equilibrium, and the gap's shift over the mode's state (§ 3.1) —
+`—` where the probe's marks leave it out. **A column whose number needs its method said is
 named short, with a mark, and the mark's note sits under the table** *(the
 user, 2026-10-28: "the table can have their column name simple and easy to
 understand with a '*' and then notefoot at the bottom to explain the methods
@@ -238,31 +239,33 @@ it was asked and no optical call ran — is not shown, nor exported to CSV
 
 ### 3.1 The level diagram — and why it has to zoom
 
-On the Electronic structure tab, a selected mode with excited-state data draws a **molecular
-orbital correlation diagram**: the same levels at three geometries — pushed to
-$-A$, at equilibrium, and pushed to $+A$ — with **every orbital joined across the
-three**, so the eye follows one level rather than comparing three separate stacks
-of dashes.
+On the Electronic structure tab, a selected mode the probe ran on draws a **molecular
+orbital correlation diagram**: the same levels at the nodes of the mode's
+state the probe computed at ([`engines/vibration.md`](?doc=engines/vibration.md)
+§ 6.11 § 4) — three by default, $-\sqrt3\,\sigma$, $0$ and $+\sqrt3\,\sigma$ at
+the probe's temperature — with **every orbital joined across them**, so the eye
+follows one level rather than comparing separate stacks of dashes. **The
+horizontal axis is the coordinate**, $Q$ in amu^½·Å, each stack at its node's
+own value, so five or seven nodes stand where they are along the mode.
 
 ```
-        E ▲     ─────  ╲___  ─────      each dash is one orbital, in one geometry
+        E ▲     ─────  ╲___  ─────      each dash is one orbital, at one node
           │                              the joins are the same orbital, moving
           │     ═════ ═════ ═════   ← LUMO
           │
           │     ═════ ═════ ═════   ← HOMO
           │     ─────  ___╱  ─────
-          └──────  −A    eq    +A
+          └──────  −q₁    0    +q₁  ─► Q (amu^½·Å)
 ```
 
 **Zoom is not a convenience here, it is the point.** The shifts this panel exists
-to show are *small*: in the BDT result, mode 1's HOMO moves **0.018 meV** between
-−A and +A, against an 11.4 eV span of drawn levels. That is 1/4000 of a pixel —
-literally invisible at full scale. So the figure opens on the whole picture and
-then **scroll to zoom the energy axis, drag to pan, double-click to fit** — the
-zoom kept while a run being followed brings more of the result, another mode
-or a load opening on the whole picture again. The
-energy axis is free; the horizontal axis is locked, because it is three
-geometries rather than a quantity and there is nothing between them.
+to show are *small* against the span of the window's levels — a shift of
+0.1 meV under an 11 eV span is a fraction of a pixel at full scale. So the
+figure opens on the whole picture and then **scroll to zoom the energy axis,
+drag to pan, double-click to fit** — the zoom kept while a run being followed
+brings more of the result, another mode or a load opening on the whole
+picture again. The energy axis is free; the horizontal axis is locked to the
+nodes, which are all the geometries there are.
 
 It is drawn by **Plotly**, the same library as the spectrum above it: zoom,
 pan, a reset and a hover readout are the library's, not written again beside
@@ -275,10 +278,23 @@ reads the tokens off the document and hands them over — the tokens stay the on
 source of truth for every chart ([`results.md`](?doc=web/results.md) § 2.5,
 *one Plotly theme*).
 
-Beside the diagram sits a **panel of numbers**, grouped by the question
-each answers: where the levels sit, how the gap moves, and the electron–phonon
-coupling $\Delta E/(2A)$. The displacement $A$ itself is in the panel header, since it is
-the input every number below depends on rather than a result among them.
+Beside the diagram sits a **panel of numbers**, grouped by the question each
+answers — where the levels sit (the HOMO, the LUMO and the gap at the
+equilibrium), how they move over the state (the HOMO's and the LUMO's average
+shift and the gap's), and how strongly the mode couples (each frontier
+level's slope, $g_\nu$ and Huang–Rhys factor, and the mode's harmonicity) —
+**each number the load door's** (`/api/spectra/load` serves each probed mode's
+`probe`, `vibration.Probe.to_wire`): the page converts Hartree to eV for
+display and computes nothing else. A number the probe's marks leave out is
+`—`, the mark said beside the level's name in every row of it — *HOMO
+(reordered)*, *HOMO shift (reordered)*, *Gap shift (HOMO reordered)* — and on
+the level's line in the diagram, its name and hover; what the probe says of
+itself — a failed node,
+an imaginary mode probed at $|\omega|$'s width, the largest move at the outer
+nodes — is said under the numbers. The header states the probe's
+temperature and its nodes, the input every number depends on. The modes
+table's frontier columns — HOMO, LUMO, gap and the gap's shift over the
+state — the CSV and the filter read the same served values.
 
 **A third, run-level tab: Thermochemistry**. Beside the
 two per-mode views sits a tab that appears when the results carry a
@@ -913,9 +929,9 @@ compute half goes through the catalogue schema + hand-over doors (§ 5):
 
 | Route | Does | Returns |
 |---|---|---|
-| `POST /api/spectra/load` | parses an existing `.spectra.json` into display data, with the page's constants beside it — among them `engine_words`, each engine as the engine table names it, which the run summary's *Engine* line says the result's engine by (a file naming an engine the table does not hold, by the file's own word) — and with `temperature_k`, each mode's thermal spread at it (§ 4.1); with `frameset_state` — the frame-set dialog's state, `{temperature_k?, quanta?, mean_quanta?}`, the thermal state at the record's temperature when not asked, said back as `results.frameset_state` — each mode's `frameset`, the motion toolkit's readout: its mean number of quanta, its spread and that spread against its zero-point one, and the outermost frames' largest atom move for three, five and seven frames, the state in the set's words, what it holds in the command line's words (`holds`), and the words said where its quanta put more than 1 eV into the mode (§ 4.3); with `infrared: {direction, partition}`, the free atoms' infrared at those choices — along z by Hirshfeld charges when not asked, and derived with every load of a result that states its charges (§ 3.2); with `raman: {laser_nm, broaden_ev?}`, the Raman at that laser (§ 3.3) | `{ok, results}`, `results.infrared` the infrared view where the result has one, `results.raman` the Raman view when asked, `infrared_said` and `raman_said` the door's reason where it could not give one — or a **typed** error carrying a `kind` string (missing → 404, wrong schema version → 422, malformed or bad-field → 400) so the UI can react without reading the message |
+| `POST /api/spectra/load` | parses an existing `.spectra.json` into display data, with the page's constants beside it — among them `engine_words`, each engine as the engine table names it, which the run summary's *Engine* line says the result's engine by (a file naming an engine the table does not hold, by the file's own word) — and with `temperature_k`, each mode's thermal spread at it (§ 4.1); with `frameset_state` — the frame-set dialog's state, `{temperature_k?, quanta?, mean_quanta?}`, the thermal state at the record's temperature when not asked, said back as `results.frameset_state` — each mode's `frameset`, the motion toolkit's readout: its mean number of quanta, its spread and that spread against its zero-point one, and the outermost frames' largest atom move for three, five and seven frames, the state in the set's words, what it holds in the command line's words (`holds`), and the words said where its quanta put more than 1 eV into the mode (§ 4.3); with `infrared: {direction, partition}`, the free atoms' infrared at those choices — along z by Hirshfeld charges when not asked, and derived with every load of a result that states its charges (§ 3.2); with `raman: {laser_nm, broaden_ev?}`, the Raman at that laser (§ 3.3); and each probed mode served its `probe` — the record's values and its views, `vibration.Probe.to_wire` (§ 3.1) — always | `{ok, results}`, `results.infrared` the infrared view where the result has one, `results.raman` the Raman view when asked, `infrared_said` and `raman_said` the door's reason where it could not give one — or a **typed** error carrying a `kind` string (missing → 404, wrong schema version → 422, malformed or bad-field → 400) so the UI can react without reading the message |
 | `GET /api/export` | `?path=` the result the viewer shows, `format=` `netcdf` or `csv`, `laser_nm=` and `broaden_ev=` the view's — the calculation's vibration data files and the Raman view, one zip (§ 3.3) | the zip, its name the server's, a sentence beside it in `X-Molbuilder-Said` — or `{ok: false, error}`, 400 naming what is refused, 404 for nothing there |
-| `POST /api/spectra/frameset` | `{path, mode, nodes, out}` and the state's argument — `temperature_k` or `quanta` as the dialog names the state, or `mean_quanta`, which the doors' set takes too — the loaded result, whose folder the server takes as its run's, the frame count one of the load's `constants.frameset_nodes` (`vibration_frames.OFFERED_NODES`; § 4.3), and the pair to write (the tree picker's choice), each fenced inside the tree as `/api/spectra/load`'s path is — through the motion toolkit's doors' set, `vibration_frames.frameset_from_mode` (`engines/vibration-frames.md` § 4, § 5, § 6: a mode's own set, its state asked every time) | `{ok, path, written, frames: [{q_sigma, max_atom_displacement_ang, weight}], lines, holds, said}` — each frame's line and what the state holds in the words the command line prints, the pair's full path the folder announced (§ 4.3) — or the writer's refusal in its words |
+| `POST /api/spectra/frameset` | `{path, mode, nodes, out}` and the state's argument — `temperature_k` or `quanta` as the dialog names the state, or `mean_quanta`, which the doors' set takes too — the loaded result, whose folder the server takes as its run's, the frame count one of the load's `constants.frameset_nodes` (`vibration.OFFERED_NODES`; § 4.3), and the pair to write (the tree picker's choice), each fenced inside the tree as `/api/spectra/load`'s path is — through the motion toolkit's doors' set, `vibration_frames.frameset_from_mode` (`engines/vibration-frames.md` § 4, § 5, § 6: a mode's own set, its state asked every time) | `{ok, path, written, frames: [{q_sigma, max_atom_displacement_ang, weight}], lines, holds, said}` — each frame's line and what the state holds in the words the command line prints, the pair's full path the folder announced (§ 4.3) — or the writer's refusal in its words |
 | `GET /api/spectra/sweep` | `?path=` a SIESTA vibration's `<label>.fc-sweep.json` — read through its reader, the registry's `fc-sweep-json`, for the Results tab's sweep page (`results.md` § 0.2) | `{ok, record}`; a record of another version, or one that does not read, its reader's refusal, a 400 in its words with its way on |
 
 Each follows the app's `{ok: …}` envelope convention, the export's file
@@ -1122,9 +1138,9 @@ number. *(Picking modes from a finished spectrum, and leaving out the modes
 symmetry forbids, are planned — plan § 1ah.)*
 
 **The orbital probe, on PySCF: *Mode selection*** — on PySCF's own form,
-under *Orbital energies along a mode*. Electronic structure at a displaced
-geometry is an SCF per mode, so which modes get one is a real cost
-decision:
+under *Orbital energies along a mode*. Electronic structure at the nodes of a
+mode's state is an SCF at every node but the middle one, per mode, so which
+modes get one is a real cost decision:
 
 | | picks |
 |---|---|
@@ -1154,7 +1170,8 @@ header and beside the finished result** — one composer, so the two cannot
 describe different calculations. Every prose decision comes off the config:
 the level of theory (`PySCFConfig.is_dft` — under Hartree–Fock no functional),
 basis, the dispersion correction on either method with its own papers, the
-selector above, the amplitude convention (§ 4.1) and the frequency window.
+selector above, the probe's nodes and their temperature
+([`engines/vibration.md`](?doc=engines/vibration.md) § 4.10) and the frequency window.
 
 It is composed **once, before the run**, and says *what will be done*; the
 mode count it states is the run's by construction, and the load path adds the
@@ -1180,9 +1197,11 @@ passed-through number is not ours to test, a derived number's rule is
 callable and never only script text), what a SIESTA file looks like beside a
 PySCF file (§ 6.5), the activity classes and the element shares derived at
 serialisation and at load (§ 6.6), and what the reader refuses (§ 6.7). This
-tab reads that file and draws it; the one thing it derives at load is the
-element-share sentence of § 4.2, computed on the server for the reason given
-there.
+tab reads that file and draws it; what is derived at load is computed on
+the server and served beside the file's own fields — the element-share
+sentence of § 4.2, for the reason given there, and each probed mode's probe,
+`modes[].probe`: the record's values and its views (§ 3.1;
+[`engines/vibration.md`](?doc=engines/vibration.md) § 6.11 § 4).
 
 ### 9b.3 A second engine, and what the file says when a number is missing *(user, 2026-09-23)*
 
@@ -1228,7 +1247,11 @@ the end-to-end runs on both engines — are mapped in
 [`engines/vibration.md`](?doc=engines/vibration.md) § 9. This tab's:
 `test_spectrum_results_e2e.py::test_the_animation_stays_in_view_beside_the_views`
 (§ 3: the animation beside the table and in view while the page scrolls, and
-between the chart and the tabs on a narrow card); `test_spectra_transition_js.py` (the viewer's
+between the chart and the tabs on a narrow card);
+`test_spectrum_results_e2e.py::test_each_vibration_chart_exports_what_it_draws`
+(§ 3.1: the levels at the probe's nodes along $Q$, the panel's numbers and the
+table's gap shift the load door's, a marked level named so) and
+`::test_the_load_door_serves_each_probed_modes_view`; `test_spectra_transition_js.py` (the viewer's
 state on each transition, and the older names), `test_the_viewers_follow_a_real_run_e2e.py` (the follow, a poll,
 an answer under its own file's name, and the phase indicator, the
 relaxation dot included, on every phase record real runs wrote),

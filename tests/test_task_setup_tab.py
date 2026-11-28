@@ -1041,7 +1041,7 @@ def test_another_kinds_items_stay_out_of_the_optimization_surfaces(
         web_client.get("/api/task-setup/columns?engine=pyscf"
                        "&calculation=optimization").get_json())
     for name in ("already_relaxed", "compute_raman", "es_mode_selection",
-                 "displacement_amplitude_ang"):
+                 "probe_temperature_K"):
         assert f'"{name}"' not in schema, f"{name} leaked into the form"
         assert f'"{name}"' not in cols, f"{name} leaked into the columns"
     assert '"basis"' in schema, "shared items must stay"

@@ -135,7 +135,7 @@ results = [
     { key = "infrared", title = "Infrared", line = "How strongly each mode absorbs infrared light -- from how the dipole changes as the mode moves.  Cheap on SIESTA and for a free molecule on PySCF; with atoms held and Raman off, PySCF takes 6 extra SCFs per free atom." },
     { key = "raman", title = "Raman", line = "How strongly each mode scatters laser light -- from how the polarizability changes as the mode moves.  The expensive one: extra calculations at displaced geometries." },
     { key = "thermochemistry", title = "Thermochemistry", line = "The zero-point energy, and the energy, entropy and free energy at a temperature -- the vibrational part on SIESTA and with atoms held, the free molecule's whole answer on PySCF (with its translation and rotation).  No extra calculation." },
-    { key = "probe", title = "Orbital energies along a mode", line = "How the frontier orbital energies move when the molecule is pushed along a mode -- two extra SCFs per mode picked." },
+    { key = "probe", title = "Orbital energies along a mode", line = "How the frontier orbital energies move as a mode moves, at the nodes of its thermal state at a temperature you state -- an extra SCF at every node but the middle one, per mode picked: two at three nodes." },
 ]
 
 [vibration.export_asks.laser_nm]

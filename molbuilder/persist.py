@@ -108,8 +108,8 @@ def check_schema(got: str, want, *, label: str = "", error=SchemaMismatch,
                  way: str = "") -> None:
     """Raise ``error`` (:class:`SchemaMismatch`) unless ``got`` names the
     SAME artifact at the same major as ``want`` -- one schema, or every one
-    its reader reads (a data file's reader reads its own version alone,
-    `model/datafiles.md` § 3a) -- tolerating same-major minor bumps,
+    its reader reads (a data file's reader reads its own version, and an
+    older one only where it translates it, `model/datafiles.md` § 3a) -- tolerating same-major minor bumps,
     rejecting a different major.  ``label`` prefixes the message so the
     artifact is obvious; ``way`` is the way on, its family's, said after it
     (a data file written again by its command).  A caller that passes

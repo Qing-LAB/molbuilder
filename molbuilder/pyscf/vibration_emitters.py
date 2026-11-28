@@ -24,9 +24,11 @@ land in code form:
     free Cartesians), projected onto the mass-weighted mode
     eigenvectors → Raman activity scalar via the standard
     45·α'² + 7·γ'² formula [Wilson1955, Komornicki1979];
-  * per-mode displaced SCFs at q ± A·Q_n in real-space along the
-    mode eigenvector for the modes selected by
-    :func:`spectra.selection.select_modes`.
+  * per-mode SCFs at the nodes of each selected mode's thermal state at
+    the probe's temperature (`vibration.probe_rule`, each geometry
+    `vibration.displaced`) for the modes selected by
+    :func:`spectra.selection.select_modes` (`engines/vibration.md` § 4.8,
+    § 6.11 § 4).
 
 The emitted deck's header docstring is the Methods paragraph from
 :func:`spectra.methods.render_methods_md` (the engine-specific
@@ -230,7 +232,6 @@ def _emit_header_docstring(struct: Structure,
 def _emit_imports(cfg: "VibrationConfigView") -> List[str]:
     out: List[str] = []
     out.append("import time")
-    out.append("from datetime import datetime, timezone")
     out.append("")
     out.append("import numpy as np")
     # PySCF imports -- pin to the modules we actually use so the
@@ -329,8 +330,13 @@ def _emit_constants(struct: Structure,
                + ("  # band-level validated 2026-08-20 (the IR banner in "
                   "this deck's opening text); no external mode-by-mode "
                   "cross-check yet" if cfg.compute_ir else ""))
-    out.append(f"DISPLACEMENT_AMPLITUDE_ANG = {float(cfg.displacement_amplitude_ang)!r}  "
-               f"# L4 amplitude A; ±A·Q_i along each mode")
+    # THE PROBE'S STATE AND ITS NODES (engines/vibration.md § 6.11 § 4):
+    # each selected mode is computed at the nodes of its thermal state at
+    # this temperature, by the frame rule a mode's own set is made by.
+    out.append(f"PROBE_TEMPERATURE_K        = {float(cfg.probe_temperature_K)!r}  "
+               f"# the probe's thermal state")
+    out.append(f"PROBE_NODES                = {int(cfg.probe_nodes)!r}  "
+               f"# the nodes of its rule; node 0 the equilibrium")
     out.append(f"RAMAN_FD_STEP_ANG          = {_RAMAN_FD_STEP_ANG!r}  "
                f"# FD step for dα/dR_k (Raman)")
     out.append("")
@@ -558,8 +564,9 @@ def _emit_initial_state() -> List[str]:
     out.append("    engine='pyscf',")
     out.append("    engine_version=ENGINE_VERSION,")
     out.append(f"    molbuilder_version={BUILD_NAME},")
-    out.append("    timestamp=datetime.now(timezone.utc).isoformat()"
-               ".replace('+00:00', 'Z'),")
+    # THE RUN'S ONE CLOCK (`runrecord.stamp`): UTC, to the second, Z -- the
+    # spelling every record of the run is stamped with (vibration.md 6.2).
+    out.append("    timestamp=_mb_stamp(),")
     out.append("    n_atoms_total=N_ATOMS,")
     out.append("    free_atom_idxs=FREE_ATOM_IDXS,")
     # THE HELD ATOMS, as their own list until a geometry exists; the
@@ -865,24 +872,25 @@ def _emit_hessian_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("#       (Å² · amu), which is rescaled by BOHR_ANGSTROM**6 in")
     out.append("#       Phase 3 to get the textbook Å^4/amu (see comments in")
     out.append("#       _emit_raman_block).  CONSUMED BY: the Raman projection")
-    out.append("#       (dα/dQ = Σ_k dα/dR_k · L_cart_k).")
+    out.append("#       (dα/dQ = Σ_k dα/dR_k · L_cart_k), and Phase 4's probe,")
+    out.append("#       its nodes at R0 + Q L_cart.")
     out.append("#")
     out.append("#   NORM_MODES_DISPLAY    (n_modes, N_FREE, 3)")
     out.append("#       Per-mode rescaling of NORM_MODES_CANONICAL so that")
     out.append("#       max(|L_display|) = 1.  Dimensionless.  CONSUMED BY:")
-    out.append("#       the 3Dmol mode-animation viewer in the spectra tab,")
-    out.append("#       and the per-mode ES displacement (q ± A · L_display)")
-    out.append("#       in Phase 4 -- both want a deterministic peak")
-    out.append("#       displacement at the user's chosen amplitude rather")
-    out.append("#       than the canonical mass-weighted scale (where heavy")
-    out.append("#       atoms barely move and light ones move a lot).")
+    out.append("#       the 3Dmol mode-animation viewer in the spectra tab")
+    out.append("#       alone, which wants each mode at one peak size on")
+    out.append("#       screen rather than the canonical mass-weighted scale")
+    out.append("#       (where heavy atoms barely move and light ones move a")
+    out.append("#       lot).")
     out.append("#")
     out.append("# Both forms land in the JSON under explicit labels:")
     out.append("#   eigenvector_canonical -> the SCIENCE form")
     out.append("#   eigenvector_display   -> the UI form")
     out.append("# The Raman projection in Phase 3 reads NORM_MODES_CANONICAL")
-    out.append("# directly; the ES loop in Phase 4 reads")
-    out.append("# eigenvector_display out of the JSON.")
+    out.append("# directly; the ES loop in Phase 4 reads eigenvector_canonical")
+    out.append("# out of the JSON and places each node at R0 + Q L, Q in")
+    out.append("# amu^1/2·Å along the canonical eigenvector (vibration.md 6.11 4).")
     out.append("# ------------------------------------------------------------")
     out.append("")
     out.append("# THE ONE PATH (science/normal-modes.md R1-R4): the free-free block")
@@ -972,7 +980,8 @@ def _emit_displaced_scf_helpers(cfg: "VibrationConfigView") -> List[str]:
     out.append("# displacement (L4).")
     out.append("COORDS_EQ_ANG = np.asarray([[a[1], a[2], a[3]] for a in ATOMS])")
     out.append("")
-    out.append("def _build_mf_at(coords, *, density_fit=None, force_cpu=False):")
+    out.append("def _build_mf_at(coords, *, density_fit=None, force_cpu=False,")
+    out.append("                 must_converge=True):")
     out.append("    '''Re-build mol at new coords + reconverge SCF.")
     out.append("")
     out.append("    density_fit=None  -> follow the global DENSITY_FIT flag.")
@@ -984,7 +993,12 @@ def _emit_displaced_scf_helpers(cfg: "VibrationConfigView") -> List[str]:
     out.append("    force_cpu=True    -> use stock PySCF even when _USING_GPU is True.")
     out.append("                         The Raman polarizability path needs this")
     out.append("                         because gpu4pyscf doesn't yet expose")
-    out.append("                         analytic CPHF polarizability.'''")
+    out.append("                         analytic CPHF polarizability.")
+    out.append("    must_converge=False -> hand back an SCF that did not converge,")
+    out.append("                         for the probe, which records its node")
+    out.append("                         as failed and goes on (vibration.md")
+    out.append("                         4.8); the Raman sweep's every point")
+    out.append("                         enters one derivative, so it stops.'''")
     # THE WALL (`engines/pyscf.md` § 3.9): past the deadline, no displaced
     # SCF starts -- a spectrum half computed is no result, so the run ends
     # with the reason and a launch runs it again.
@@ -1021,7 +1035,7 @@ def _emit_displaced_scf_helpers(cfg: "VibrationConfigView") -> List[str]:
     out.append("    # one does -- init guess, level shift, damping, DIIS.")
     out.append("    _mf2 = _mb_configure_scf(_mf2)")
     out.append("    _mf2.kernel()")
-    out.append("    if not _mf2.converged:")
+    out.append("    if must_converge and not _mf2.converged:")
     out.append("        raise SystemExit('displaced SCF did not converge at "
                "FD step')")
     out.append("    return _mf2")
@@ -1310,17 +1324,20 @@ def _emit_raman_block(cfg: "VibrationConfigView") -> List[str]:
 
 
 def _emit_es_loop(cfg: "VibrationConfigView") -> List[str]:
-    """Per selected mode: displace q ± A·L_n, run SCF at each
-    displaced geometry, record the MO window around HOMO/LUMO."""
+    """Per selected mode: an SCF at each node of its thermal state at the
+    probe's temperature (`engines/vibration.md` § 4.8, § 6.11 § 4), node 0
+    the equilibrium's -- the orbital window, the SCF energy and each
+    window orbital's equilibrium partner at each, a node whose SCF does not
+    converge recorded as failed while the rest go on."""
     out: List[str] = []
     out.append("# ============================================================")
-    out.append("#  Phase 4: per-mode displaced electronic structure")
+    out.append("#  Phase 4: per-mode electronic structure at the probe's nodes")
     out.append("# ============================================================")
-    out.append("# Cost: 2 SCFs per selected mode (q+A·Q and q-A·Q).")
-    out.append("# Output: MO-energy window [HOMO - ES_N_HOMO_BELOW,")
-    out.append("# LUMO + ES_N_LUMO_ABOVE] at each displaced geometry, plus")
-    out.append("# the SCF energy.  Used for electron-phonon coupling")
-    out.append("# analysis [Galperin2007, Frederiksen2007].")
+    out.append("# Cost: PROBE_NODES - 1 SCFs per selected mode, node 0 being the")
+    out.append("# equilibrium SCF above.  Output: the orbital window [HOMO -")
+    out.append("# ES_N_HOMO_BELOW, LUMO + ES_N_LUMO_ABOVE] and the SCF energy at")
+    out.append("# each node, for the electron-vibration coupling and the levels'")
+    out.append("# average over the state [Galperin2007, Frederiksen2007].")
     out.append("print('=== Stage: per-mode electronic structure ===')")
     out.append("state['phase_es'] = PHASE_RUNNING")
     out.append("_mb_write_spectra_payload(state, JSON_PATH)")
@@ -1341,59 +1358,93 @@ def _emit_es_loop(cfg: "VibrationConfigView") -> List[str]:
     out.append("          f'1..{len(modes_payload)}')")
     out.append("state['selected_mode_idxs_1based'] = list(_selected)")
     out.append("")
+    out.append("# THE PROBE'S STATE, its record (vibration.probe_state), and the")
+    out.append("# equilibrium's window -- node 0 of every mode -- around its HOMO,")
+    out.append("# with the orbitals each node's are matched to by overlap.")
+    out.append("_PROBE_STATE = _mb_probe_state(PROBE_TEMPERATURE_K)")
+    out.append("_mos_eq, _homo_in_eq = _mb_mo_window(MO_ENERGIES_EQ, HOMO_IDX,")
+    out.append("                                     ES_N_HOMO_BELOW, ES_N_LUMO_ABOVE)")
+    out.append("_n_win = len(_mos_eq)")
+    out.append("_lo_eq = HOMO_IDX - _homo_in_eq")
+    out.append("_C_EQ = _mb_as_numpy(mf.mo_coeff)")
+    out.append("")
     out.append("for _idx_1 in _selected:")
     out.append("    _mode_pos = _idx_1 - 1")
-    out.append("    # ES displacement uses the DISPLAY form (max|L|=1) so the")
-    out.append("    # user-specified DISPLACEMENT_AMPLITUDE_ANG is a deterministic")
-    out.append("    # peak displacement per mode, independent of mass distribution.")
-    out.append("    # This is a probe geometry for electron-phonon sensitivity, not")
-    out.append("    # a physically-amplitude vibrational sample -- the choice of")
-    out.append("    # display-form is intentional here.")
-    out.append("    _evec = np.asarray(modes_payload[_mode_pos]['eigenvector_display'])")
-    out.append("    # Displace all free atoms; the mode's eigenvector is")
-    out.append("    # already restricted to free atoms.")
-    out.append("    _disp_plus  = COORDS_EQ_ANG.copy()")
-    out.append("    _disp_minus = COORDS_EQ_ANG.copy()")
-    out.append("    for _k_idx, _atom_idx in enumerate(FREE_ATOM_IDXS):")
-    out.append("        _disp_plus[_atom_idx]  += DISPLACEMENT_AMPLITUDE_ANG * _evec[_k_idx]")
-    out.append("        _disp_minus[_atom_idx] -= DISPLACEMENT_AMPLITUDE_ANG * _evec[_k_idx]")
-    out.append("    # Displaced-geometry SCFs.  Same setup as equilibrium")
-    out.append("    # (SCF_CLASS / FUNCTIONAL / BASIS / GRID_LEVEL / DENSITY_FIT);")
-    out.append("    # _build_mf_at handles the gpu4pyscf vs CPU branching")
-    out.append("    # internally via the _USING_GPU flag.")
-    out.append("    _mfp = _build_mf_at(_disp_plus)")
-    out.append("    _mfm = _build_mf_at(_disp_minus)")
+    out.append("    _row = modes_payload[_mode_pos]")
+    out.append("    _nu = float(_row['frequency_cm1'])")
+    out.append("    # THE NODES: the thermal state's Gauss rule on the mode's")
+    out.append("    # oscillator (|nu| for an imaginary mode), in the set's order --")
+    out.append("    # the rule a mode's own frame set is made by.")
+    out.append("    _q, _w = _mb_probe_rule(_nu, _PROBE_STATE, PROBE_NODES)")
+    out.append("    _pattern = _mb_mode_over_atoms(_row['eigenvector_canonical'],")
+    out.append("                                   FREE_ATOM_IDXS, N_ATOMS)")
+    out.append("    _largest = float(np.abs(_q).max()) * _mb_largest_move(_pattern)")
+    out.append("    _nodes_said = ', '.join(f'{_x:+.4f}' for _x in _q)")
+    out.append("    print(f'  Mode {_idx_1} ({_nu:.1f} cm-1) at {PROBE_TEMPERATURE_K:g} K: '")
+    out.append("          f'nodes q = {_nodes_said} amu^1/2·Å; '")
+    out.append("          f'the outer nodes move an atom by at most {_largest:.4f} Å')")
+    out.append("    if _row['has_imag']:")
+    out.append("        print(f'  Mode {_idx_1} is imaginary: probed at the width '")
+    out.append("              f'{abs(_nu):.1f} cm-1 gives')")
+    out.append("    _mos = [_mos_eq]")
+    out.append("    _scf = [float(E_eq)]")
+    out.append("    _match = [list(range(_n_win))]")
+    out.append("    for _j in range(1, len(_q)):")
+    out.append("        # THE ONE DISPLACEMENT RULE, R0 + Q L, every atom's row of the")
+    out.append("        # canonical eigenvector (a held atom's zero).")
+    out.append("        _at = _mb_displaced(COORDS_EQ_ANG, _pattern, float(_q[_j]))")
+    out.append("        # AN SCF THAT FAILS AT A NODE -- does not converge, or stops")
+    out.append("        # with an error -- is recorded as failed and said, and the other")
+    out.append("        # nodes and modes go on (vibration.md 6.11 4).  THE WALL IS NO")
+    out.append("        # NODE'S FAILURE: past it the wall's stop (a RuntimeError,")
+    out.append("        # pyscf.md 3.9) is asked again here and raised, the run ending")
+    out.append("        # failed, a launch running it again.")
+    out.append("        try:")
+    out.append("            _mfj = _build_mf_at(_at, must_converge=False)")
+    out.append("            _why = (None if _mfj.converged")
+    out.append("                    else 'the SCF did not converge')")
+    out.append("        except Exception as _exc:")
+    out.append("            _mb_stop_if_past_wall(_MB_WALL_DEADLINE)")
+    out.append("            _why = f'the SCF stopped: {type(_exc).__name__}: {_exc}'")
+    out.append("        if _why is not None:")
+    out.append("            print(f'  WARN: mode {_idx_1}, node {_j + 1} of {len(_q)} '")
+    out.append("                  f'(q = {_q[_j]:+.4f} amu^1/2·Å): {_why} -- '")
+    out.append("                  f'recorded as failed; the other nodes and modes go on')")
+    out.append("            _mos.append(None)")
+    out.append("            _scf.append(None)")
+    out.append("            _match.append(None)")
+    out.append("            continue")
     # The window around each geometry's own HOMO -- the HOMO rule and the
     # window rule, molbuilder's, imported (spectra/pyscf_vibration).
-    out.append("    _mos_p, _ = _mb_mo_window(_mb_as_numpy(_mfp.mo_energy),")
-    out.append("                              _mb_homo_index(_mb_as_numpy(_mfp.mo_occ)),")
-    out.append("                              ES_N_HOMO_BELOW, ES_N_LUMO_ABOVE)")
-    out.append("    _mos_m, _ = _mb_mo_window(_mb_as_numpy(_mfm.mo_energy),")
-    out.append("                              _mb_homo_index(_mb_as_numpy(_mfm.mo_occ)),")
-    out.append("                              ES_N_HOMO_BELOW, ES_N_LUMO_ABOVE)")
-    out.append("    # Use the EQUILIBRIUM window for the 'eq' slice so the")
-    out.append("    # three arrays share length even when an orbital swap")
-    out.append("    # shifts the HOMO index at a displaced geometry.")
-    out.append("    _mos_eq, _homo_in_eq = _mb_mo_window(MO_ENERGIES_EQ, HOMO_IDX,")
-    out.append("                                         ES_N_HOMO_BELOW, ES_N_LUMO_ABOVE)")
-    out.append("    _n_win = len(_mos_eq)")
-    out.append("    # Re-slice ± arrays to match the equilibrium window size.")
-    out.append("    # If a displaced HOMO shifted, take the same-length slice.")
-    out.append("    _mos_p = _mos_p[:_n_win] if len(_mos_p) >= _n_win else (")
-    out.append("        np.concatenate([_mos_p, np.full(_n_win - len(_mos_p), np.nan)])")
-    out.append("    )")
-    out.append("    _mos_m = _mos_m[:_n_win] if len(_mos_m) >= _n_win else (")
-    out.append("        np.concatenate([_mos_m, np.full(_n_win - len(_mos_m), np.nan)])")
-    out.append("    )")
+    out.append("        _homo_j = _mb_homo_index(_mb_as_numpy(_mfj.mo_occ))")
+    out.append("        _win_j, _hiw_j = _mb_mo_window(_mb_as_numpy(_mfj.mo_energy),")
+    out.append("                                       _homo_j, ES_N_HOMO_BELOW,")
+    out.append("                                       ES_N_LUMO_ABOVE)")
+    out.append("        # The equilibrium window's length at every node: a window")
+    out.append("        # cut short at the basis's top is padded, written null.")
+    out.append("        if len(_win_j) >= _n_win:")
+    out.append("            _win_j = _win_j[:_n_win]")
+    out.append("        else:")
+    out.append("            _win_j = np.concatenate([_win_j,")
+    out.append("                                     np.full(_n_win - len(_win_j), np.nan)])")
+    out.append("        # EACH ORBITAL'S EQUILIBRIUM PARTNER, by the overlap of the two")
+    out.append("        # geometries' orbitals (the `reordered` mark's rule).")
+    out.append("        _S = gto.intor_cross('int1e_ovlp', mol, _mfj.mol)")
+    out.append("        _match.append(_mb_orbital_match(_C_EQ, _mb_as_numpy(_mfj.mo_coeff),")
+    out.append("                                        _S, _lo_eq, _homo_j - _hiw_j,")
+    out.append("                                        _n_win))")
+    out.append("        _mos.append(_win_j)")
+    out.append("        _scf.append(float(_mfj.e_tot))")
     out.append("    modes_payload[_mode_pos]['electronic_structure'] = _mb_ModeElectronicStructure(")
-    out.append("        amplitude_ang=DISPLACEMENT_AMPLITUDE_ANG,")
-    out.append("        mo_energies_eq_eh=_mos_eq,")
-    out.append("        mo_energies_minus_eh=_mos_m,")
-    out.append("        mo_energies_plus_eh=_mos_p,")
+    out.append("        state=_PROBE_STATE,")
+    out.append("        mo_energies_eh=[None if _m is None else _mb_finite_or_none(_m)")
+    out.append("                        for _m in _mos],")
+    out.append("        scf_energies_eh=_scf,")
+    out.append("        orbital_match=_match,")
     out.append("        homo_index_in_window=_homo_in_eq,")
-    out.append("        scf_energy_eq_eh=E_eq,")
-    out.append("        scf_energy_minus_eh=_mfm.e_tot,")
-    out.append("        scf_energy_plus_eh=_mfp.e_tot,")
+    from .script_input import RUNTIME_NAME
+    out.append(f"        scf_conv_tol={RUNTIME_NAME}['scf_conv_tol'],")
+    out.append(f"        scf_conv_tol_grad={RUNTIME_NAME}['scf_conv_tol_grad'],")
     out.append("    ).to_dict()")
     out.append("    # Per-mode checkpoint -- live-watch can show ES")
     out.append("    # incrementally as each mode completes.")

@@ -1371,3 +1371,290 @@ def test_a_mode_selection_that_moves_nothing_is_refused_by_name(make, refused):
     of no mode, or of another molecule's."""
     with pytest.raises(ValueError, match=refused):
         make(_model_vibration())
+
+
+# --------------------------------------------------------------------- #
+#  The probe, at the frame rule's nodes (`engines/vibration.md` § 6.11   #
+#  § 4)                                                                  #
+# --------------------------------------------------------------------- #
+
+def _sigma_codata(nu_cm1: float, temperature_k: float) -> float:
+    """The thermal spread ``Q_zp sqrt(2n + 1)`` at ``temperature_k``, from
+    CODATA (science § 2a)."""
+    return q_zp_codata(nu_cm1) * math.sqrt(2.0 * _n_codata(nu_cm1,
+                                                           temperature_k) + 1)
+
+
+def _hbar_omega_eh(nu_cm1: float) -> float:
+    """``hbar omega`` in Hartree, from CODATA."""
+    return codata.h * codata.c * nu_cm1 * 100.0 / HARTREE_J
+
+
+#: SCIENCE § 5.1'S TABLE, as typed there: the Gauss-Hermite positions in
+#: units of sigma, the middle first, and their weights -- four decimals and
+#: five.
+_GAUSS_HERMITE_TABLE = {
+    5: ((0.0, 1.3556, 2.8570), (0.53333, 0.22208, 0.01126)),
+    7: ((0.0, 1.1544, 2.3668, 3.7504), (0.45714, 0.24012, 0.03076, 0.00055)),
+}
+
+
+def _in_the_sets_order(middle_first):
+    """``(0, x1, x2, ...)`` laid out as a set's nodes are, ``(0, +x1, -x1,
+    +x2, -x2, ...)`` (`engines/vibration-frames.md` § 4)."""
+    out = [middle_first[0]]
+    for x in middle_first[1:]:
+        out += [x, -x]
+    return np.array(out)
+
+
+def _weights_in_the_sets_order(middle_first):
+    out = [middle_first[0]]
+    for w in middle_first[1:]:
+        out += [w, w]
+    return np.array(out)
+
+
+@pytest.mark.parametrize("nu", [1600.0, -1600.0], ids=["real", "imaginary"])
+@pytest.mark.parametrize("nodes", [3, 5, 7])
+def test_the_probes_nodes_are_its_thermal_states_gauss_hermite_rule(nodes,
+                                                                    nu):
+    """`engines/vibration.md` § 6.11 § 4: the probe computes at the nodes of
+    the mode's thermal state at the probe's temperature -- three by default,
+    0 and +-sqrt(3) sigma(T), weights 2/3, 1/6, 1/6; five or seven as science
+    § 5.1's table states them -- in the set's order, sigma from CODATA; an
+    imaginary mode at the width |omega| gives.  The counts offered are the
+    frame-set doors' own.  THE SILENT FAILURE: a probe pushing each mode a
+    length of its own choosing, or an imaginary mode probed at no width or
+    another."""
+    assert V.OFFERED_NODES == (3, 5, 7)
+    q, w = V.probe_rule(nu, V.probe_state(300.0), nodes)
+    sigma = _sigma_codata(abs(nu), 300.0)
+    if nodes == 3:
+        np.testing.assert_allclose(q, [0.0, math.sqrt(3) * sigma,
+                                       -math.sqrt(3) * sigma], rtol=1e-6)
+        np.testing.assert_allclose(w, [2 / 3, 1 / 6, 1 / 6], rtol=1e-9)
+        return
+    xs, ws = _GAUSS_HERMITE_TABLE[nodes]
+    np.testing.assert_allclose(q, _in_the_sets_order(xs) * sigma, rtol=0,
+                               atol=5e-5 * sigma)
+    np.testing.assert_allclose(w, _weights_in_the_sets_order(ws), rtol=0,
+                               atol=5e-6)
+
+
+def _probed(mode, energies_of, *, nodes=3, temperature_k=300.0,
+            scf_of=None, matches=None, failed=(), noise=1e-5, homo=0):
+    """``mode`` probed as the deck records it (`engines/vibration.md` § 6.11
+    § 4): at the nodes of its thermal state, each node's orbital window the
+    response ``energies_of(Q)`` and its SCF energy ``scf_of(Q)``, a node in
+    ``failed`` recorded as failed -- its rows null -- and each orbital its
+    own partner unless ``matches`` says otherwise; the record's derived
+    values by the one derivation, as the writer states them."""
+    state = V.probe_state(temperature_k)
+    q, _ = V.probe_rule(mode.frequency_cm1, state, nodes)
+    window = len(energies_of(0.0))
+    block = {
+        "state": state,
+        "mo_energies_eh": [None if j in failed else
+                           [float(e) for e in energies_of(x)]
+                           for j, x in enumerate(q)],
+        "scf_energies_eh": [None if j in failed else
+                            float(scf_of(x) if scf_of else -1.0)
+                            for j, x in enumerate(q)],
+        "orbital_match": [None if j in failed else
+                          (list(range(window)) if matches is None
+                           else matches[j])
+                          for j in range(len(q))],
+        "homo_index_in_window": homo,
+        "scf_conv_tol": noise ** 2, "scf_conv_tol_grad": noise}
+    block.update(V.probe_derivations(mode.frequency_cm1, block))
+    return replace(mode, probe_record=block).probe
+
+
+def _poly(*coefficients):
+    return lambda x: sum(c * x ** k for k, c in enumerate(coefficients))
+
+
+def test_the_probes_average_slope_coupling_and_huang_rhys_are_the_closed_forms():
+    """§ 6.11 § 4's table on a response polynomial: the average over the
+    state is exact through degree 5 for three nodes, ``a0 + a2 sigma^2 + 3
+    a4 sigma^4``, its shift that less ``a0``; the slope is a central
+    difference whose error is ``eps''' Q+^2 / 6``; ``g`` the slope times
+    ``Q_zp``, ``S = (g / hbar omega)^2`` -- every number from CODATA.  THE
+    SILENT FAILURE: an average over the wrong weights, a slope per Å of a
+    display form, a coupling at another width."""
+    mode = h2_mode(4400.0)
+    sigma = _sigma_codata(4400.0, 300.0)
+    a = (0.31, 0.02, 0.4, 0.7, 1.1, 2.3)       # degree 5: the average
+    b = (0.52, -0.03, 0.2, 0.9, 0.0, 0.0)      # degree 3: the slope too
+    p = _probed(mode, lambda x: [_poly(*a)(x), _poly(*b)(x)])
+    want = [c[0] + c[2] * sigma ** 2 + 3 * c[4] * sigma ** 4 for c in (a, b)]
+    np.testing.assert_allclose(p.average_eh, want, rtol=1e-6)
+    np.testing.assert_allclose(p.shift_eh, [w - c[0] for w, c in
+                                            zip(want, (a, b))], rtol=1e-5)
+    q_plus = math.sqrt(3) * sigma
+    slope = b[1] + 6 * b[3] * q_plus ** 2 / 6
+    assert p.slope_eh_per_amu12_ang[1] == pytest.approx(slope, rel=1e-6)
+    g = slope * q_zp_codata(4400.0)
+    assert p.coupling_eh[1] == pytest.approx(g, rel=1e-6)
+    assert p.huang_rhys[1] == pytest.approx((g / _hbar_omega_eh(4400.0)) ** 2,
+                                            rel=1e-5)
+    assert p.temperature_k == 300.0 and p.marks == [None, None]
+
+
+def test_the_probes_harmonicity_reads_a_quartic_term():
+    """§ 6.11 § 4: the harmonicity ``(sum_j w_j E_j - E_0) / (omega^2
+    sigma^2 / 2)`` is 1 on a harmonic energy and ``1 + kappa_4 sigma^2 / 4
+    omega^2`` on ``E = omega^2 Q^2 / 2 + kappa_4 Q^4 / 24``, three nodes
+    exact; omega^2 = hbar omega / 2 Q_zp^2 from CODATA.  THE SILENT FAILURE:
+    a soft mode's straight-line nodes, whose energy the harmonic picture
+    does not hold, read as harmonic."""
+    mode = h2_mode(4400.0)
+    sigma = _sigma_codata(4400.0, 300.0)
+    w2 = _hbar_omega_eh(4400.0) / (2.0 * q_zp_codata(4400.0) ** 2)
+    harmonic = _probed(mode, lambda x: [0.1, 0.2],
+                       scf_of=lambda x: -1.17 + 0.5 * w2 * x ** 2)
+    assert harmonic.harmonicity == pytest.approx(1.0, rel=1e-6)
+    kappa4 = 0.2 * w2 / sigma ** 2
+    quartic = _probed(mode, lambda x: [0.1, 0.2],
+                      scf_of=lambda x: (-1.17 + 0.5 * w2 * x ** 2
+                                        + kappa4 * x ** 4 / 24.0))
+    assert quartic.harmonicity == pytest.approx(
+        1.0 + kappa4 * sigma ** 2 / (4.0 * w2), rel=1e-6)
+
+
+def test_the_probes_marks_and_the_even_share_below_the_noise():
+    """§ 6.11 § 4, the marks: an orbital within the SCF's noise of a
+    neighbour at equilibrium is `degenerate`, one whose partner across the
+    geometries is another orbital `reordered` -- each with its slope,
+    coupling, Huang-Rhys factor and even share null; one whose two outer
+    sides differ by no more than the noise is `noise`, its even share null
+    and its slope stated; else the even share is ``|e+ + e- - 2 e0| / |e+ -
+    e-|``.  THE SILENT FAILURE: water's antisymmetric stretch, whose two
+    sides differ by some 10^-8 Eh, read as an even share of tens of
+    thousands."""
+    mode = h2_mode(4400.0)
+    noise = 1e-5
+    q_plus = math.sqrt(3) * _sigma_codata(4400.0, 300.0)
+    p = _probed(mode, lambda x: [-0.50 + 0.01 * x + 0.04 * x ** 2,
+                                 -0.30 + 1e-7 * x + 0.06 * x ** 2,
+                                 0.10 + 0.02 * x, 0.10 + 2e-6 - 0.02 * x,
+                                 0.40 + 0.03 * x, 0.55 - 0.01 * x],
+                noise=noise,
+                matches=[[0, 1, 2, 3, 4, 5], [0, 1, 2, 3, 5, 4],
+                         [0, 1, 2, 3, 4, 5]])
+    assert p.marks == [None, "noise", "degenerate", "degenerate",
+                       "reordered", "reordered"]
+    assert p.even_share[0] == pytest.approx(abs(0.04 * q_plus / 0.01),
+                                            rel=1e-6)
+    assert p.even_share[1] is None
+    assert p.slope_eh_per_amu12_ang[1] == pytest.approx(1e-7, rel=1e-6)
+    for k in (2, 3, 4, 5):
+        assert p.slope_eh_per_amu12_ang[k] is None, k
+        assert p.coupling_eh[k] is None and p.huang_rhys[k] is None, k
+        assert p.even_share[k] is None, k
+    assert p.noise_ratio[0] == pytest.approx(2 * 0.01 * q_plus / noise,
+                                             rel=1e-6)
+
+
+def test_a_marked_levels_shift_is_blank_in_the_views_and_kept_in_the_record():
+    """§ 6.11 § 4, the marks (the user, 2026-11-27: *"Blank in views, keep
+    record"*): beside `degenerate` or `reordered` the window's energies at a
+    node are not one level's, so the views leave its average and shift
+    blank, and the gap's shift beside a marked HOMO or LUMO, as they leave
+    its slope -- the record keeping what the weights give.  A degenerate
+    pair a mode splits as ``-/+ g|Q|``: the weights give each a shift of
+    ``-/+ g sqrt(3) sigma / 3`` at three nodes, the upper level's true
+    average ``g <|Q|> = g sigma sqrt(2/pi)``.  THE SILENT FAILURE: a split
+    pair's index-ordered energies shown as the level's shift over the state,
+    and the gap's beside it."""
+    mode = h2_mode(4400.0)
+    g = 0.02
+    sigma = _sigma_codata(4400.0, 300.0)
+    p = _probed(mode, lambda x: [-0.30 - g * abs(x), -0.30 + g * abs(x),
+                                 0.05 + 0.01 * x], homo=1)
+    assert p.marks == ["degenerate", "degenerate", None]
+    assert p.shift_eh[:2] == [None, None] and p.average_eh[:2] == [None, None]
+    assert p.gap_shift_eh is None
+    assert p.shift_eh[2] == pytest.approx(0.0, abs=1e-15)
+    weights_give = g * math.sqrt(3) * sigma / 3
+    assert p.record["shift_eh"][1] == pytest.approx(weights_give, rel=1e-6)
+    assert p.record["shift_eh"][1] < g * sigma * math.sqrt(2 / math.pi)
+    reordered = _probed(mode, lambda x: [-0.50 + 0.01 * x,
+                                         -0.30 + 0.01 * x ** 2,
+                                         0.05 + 0.02 * x ** 2],
+                        matches=[[0, 1, 2], [0, 2, 1], [0, 1, 2]], homo=1)
+    assert reordered.marks == [None, "reordered", "reordered"]
+    assert reordered.gap_shift_eh is None
+    assert reordered.shift_eh == [pytest.approx(0.0, abs=1e-15), None, None]
+
+
+def test_an_imaginary_mode_is_probed_at_the_width_its_magnitude_gives():
+    """§ 6.11 § 4: an imaginary mode the selection includes is probed at
+    the width ``|omega|`` gives, said; its slope is stated, and its
+    coupling, Huang-Rhys factor and harmonicity are null -- it has no
+    harmonic width or energy.  THE SILENT FAILURE: a coupling of a mode
+    with no zero-point amplitude, or the mode dropped."""
+    imaginary = _imaginary_h2()
+    p = _probed(imaginary, lambda x: [0.1 + 0.02 * x, 0.3 - 0.01 * x],
+                scf_of=lambda x: -1.0 + x ** 2)
+    q_real, _ = V.probe_rule(120.0, V.probe_state(300.0), 3)
+    np.testing.assert_allclose(p.q_amu12_ang, q_real, rtol=1e-12)
+    assert p.slope_eh_per_amu12_ang[0] == pytest.approx(0.02, rel=1e-9)
+    assert p.coupling_eh == [None, None] and p.huang_rhys == [None, None]
+    assert p.harmonicity is None
+    assert any("imaginary" in s for s in p.said), p.said
+
+
+def test_the_probe_re_weighted_to_another_temperature():
+    """§ 6.11 § 4, § 9 item 6: the node energies re-weighted for the
+    thermal state at another temperature by the toolkit's rule for frames
+    placed elsewhere -- three nodes reproduce its ``<Q^2>``, so a quadratic
+    response's average is ``a0 + a2 sigma(T)^2`` exactly -- saying the share
+    of its motion beyond the outer nodes and that three are blind to its
+    shape.  THE SILENT FAILURE: the record's 300 K average shown as 600 K's,
+    or a hotter state's reach past the nodes left unsaid."""
+    mode = _model_vibration().mode(2)
+    p = _probed(mode, lambda x: [0.2 + 0.05 * x + 0.3 * x ** 2, 0.4])
+    hot = p.at(temperature_k=600.0)
+    sigma = _sigma_codata(700.0, 600.0)
+    assert hot.temperature_k == 600.0
+    assert hot.average_eh[0] == pytest.approx(0.2 + 0.3 * sigma ** 2,
+                                              rel=1e-6)
+    assert float(np.dot(hot.weights, np.asarray(hot.q_amu12_ang) ** 2)) == \
+        pytest.approx(sigma ** 2, rel=1e-6)
+    said = " ".join(hot.said)
+    assert "beyond the outermost frames" in said, said
+    assert "blind to the state's shape" in said, said
+    assert p.at(temperature_k=300.0).average_eh == pytest.approx(
+        p.average_eh, rel=1e-9)
+
+
+def test_the_probes_outer_nodes_move_an_atom_as_a_frame_sets_do():
+    """§ 6.11 § 4: the largest atom move at the outer nodes is the
+    outermost-move rule's, ``|q_out| max_A |L_A|`` -- three nodes
+    ``sqrt(3) sigma(T)`` times the largest atom's row, the same number a
+    frame set of the mode's thermal state states.  THE SILENT FAILURE: a
+    soft mode's push past a bond length left unsaid."""
+    mode = _model_vibration().mode(1)
+    p = _probed(mode, lambda x: [0.2, 0.4])
+    row = np.linalg.norm(mode.eigenvector_canonical_over_atoms_per_amu12,
+                         axis=1).max()
+    assert p.largest_move_ang == pytest.approx(
+        math.sqrt(3) * _sigma_codata(120.0, 300.0) * row, rel=1e-6)
+    assert p.largest_move_ang == pytest.approx(
+        mode.bind(states.thermal(temperature_k=300.0)).outermost_move(3),
+        rel=1e-12)
+
+
+def test_a_node_whose_scf_failed_leaves_every_number_across_the_nodes_null():
+    """§ 6.11 § 4: a node whose SCF did not converge is recorded with its
+    rows null, and every number across the nodes -- the average and the
+    shift among them -- is null beside it, the node said.  THE SILENT
+    FAILURE: an average over two nodes of three read as the state's."""
+    p = _probed(h2_mode(4400.0), lambda x: [0.1 + 0.02 * x, 0.3],
+                failed=(2,))
+    assert p.average_eh == [None, None] and p.shift_eh == [None, None]
+    assert p.slope_eh_per_amu12_ang == [None, None]
+    assert p.harmonicity is None
+    assert any("node 3 of 3" in s for s in p.said), p.said

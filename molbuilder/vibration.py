@@ -32,13 +32,21 @@ ROLE    from what a result states of a mode -- its frequency, whether it is
           distribution in the mode's unit, its draws from the mode's own
           stream of a seed, its frames as geometries, the weights of frames
           placed elsewhere and their words (§ 5.4), each atom's move;
+        * the PySCF probe's (`engines/vibration.md` § 6.11 § 4): its nodes
+          and weights, the thermal state's own rule at the probe's
+          temperature (:func:`probe_rule`, the counts offered
+          :data:`OFFERED_NODES`), its record's derived values -- each
+          orbital's average over the state and its shift, its mark
+          (:func:`probe_derivations`) -- and its views across the nodes
+          (:class:`Probe`, ``m.probe``);
         * :class:`Mode` and :class:`Vibration`, the view of a result a person
           computes with (`postprocess.vibration`, § 6.11 § 6) -- the shared
           fields the vibration's -- and the molecule's motion: the modes that
           move, a list or chosen in steps (:class:`ModeSelection`), a state
           bound to each mode, each drawn on its own (:class:`Motion`), its
           snapshots and their analyses (:class:`Snapshots`).
-USED-BY the result's derived values (`spectra.derived`), the motion
+USED-BY the PySCF vibration deck's probe (imported from ``mb_pyscf.pyz``),
+        the result's derived values (`spectra.derived`), the motion
         toolkit's frame sets
         (`vibration_frames`: the writer and reader, the doors' set, the
         outermost move, the weights for a set's rows), the SIESTA
@@ -74,25 +82,25 @@ import numpy as np
 # streams and the arrays' statistics `sampling`'s -- each asked here, and
 # by every other reader directly (`engines/vibration-frames.md` § 1).
 try:                                        # inside molbuilder
-    from .constants import FORCE_CONSTANT_MDYN_ANG_PER_AMU_CM2
+    from .constants import FORCE_CONSTANT_MDYN_ANG_PER_AMU_CM2, HARTREE_CM1
     from .oscillator import (
         Oscillator, _checked_frequency, _whole,
         checked_temperature_k, bose_einstein_mean_quanta, spread_of_quanta,
         thermal_spread_amu12_ang, zero_point_amplitude_amu12_ang)
-    from .oscillator_state import Chain, OscillatorState
+    from .oscillator_state import Chain, OscillatorState, thermal
     from .sampling import (_checked_seed, _count_words, even_odd_parts,
                            mean_with_error,
                            normal_stream, pair_means)
     from .distribution import Distribution, PointWeights, of_state
 except ImportError:                         # beside a job, in a bundle
     from constants import (  # type: ignore[no-redef]
-        FORCE_CONSTANT_MDYN_ANG_PER_AMU_CM2)
+        FORCE_CONSTANT_MDYN_ANG_PER_AMU_CM2, HARTREE_CM1)
     from oscillator import (  # type: ignore[no-redef]
         Oscillator, _checked_frequency, _whole,
         checked_temperature_k, bose_einstein_mean_quanta, spread_of_quanta,
         thermal_spread_amu12_ang, zero_point_amplitude_amu12_ang)
     from oscillator_state import (  # type: ignore[no-redef]
-        Chain, OscillatorState)
+        Chain, OscillatorState, thermal)
     from sampling import (  # type: ignore[no-redef]
         _checked_seed, _count_words, even_odd_parts, mean_with_error,
         normal_stream,
@@ -298,8 +306,13 @@ def force_constant_mdyn_per_ang(frequency_cm1: float,
 #: A STATE'S OWN RULE'S NODES WHEN UNSAID -- three: the bell curve's
 #: three frames at 0 and +-sqrt(3) sigma, exact to degree 5, five and seven
 #: the check on them (`science/vibrational-averaging.md` § 5.1, § 5.3); the
-#: doors offer it first (`vibration_frames.OFFERED_NODES`).
+#: doors offer it first (:data:`OFFERED_NODES`).
 DEFAULT_NODES = 3
+#: THE NODE COUNTS OFFERED -- the default first, five and seven the check on
+#: it: the frame-set doors' (`frameset from-mode --nodes`, the page's
+#: *Frames*) and the PySCF probe's (`probe_nodes`, `engines/vibration.md`
+#: § 6.11 § 4), here beside the rule because the probe travels with the job.
+OFFERED_NODES = (DEFAULT_NODES, 5, 7)
 
 
 @dataclass(frozen=True, eq=False)
@@ -439,6 +452,18 @@ def _symmetric_ordered(nodes, weights) -> Tuple[np.ndarray, np.ndarray]:
         q_out += [q, -q]
         w_out += [pw, pw]
     return np.array(q_out), np.array(w_out)
+
+
+def _rule_of(distribution: Distribution, nodes: int
+             ) -> Tuple[np.ndarray, np.ndarray, int]:
+    """A distribution's own ``nodes``-point Gauss rule
+    (`Distribution.gauss_rule`) made exactly symmetric and put in the set's
+    order (:func:`_symmetric_ordered`), and the degree it is exact to -- the
+    one rule a mode's own frames and the probe's nodes are made by."""
+    m = _whole(nodes, "nodes", 1)
+    x, w = distribution.gauss_rule(m)
+    q, weights = _symmetric_ordered(x, w)
+    return q, weights, 2 * m - 1
 
 
 def _frame_words(frame: int, n_frames: int) -> str:
@@ -632,11 +657,8 @@ class ModeDistribution:
 
     def _rule(self, nodes: int) -> Tuple[np.ndarray, np.ndarray, int]:
         """The state's own ``nodes``-point rule in the set's order
-        (:func:`_symmetric_ordered`) and the degree it is exact to."""
-        m = _whole(nodes, "nodes", 1)
-        x, w = self.distribution.gauss_rule(m)
-        q, weights = _symmetric_ordered(x, w)
-        return q, weights, 2 * m - 1
+        (:func:`_rule_of`) and the degree it is exact to."""
+        return _rule_of(self.distribution, nodes)
 
     def frames(self, nodes: int = DEFAULT_NODES) -> Frames:
         """The mode's own frames (`engines/vibration-frames.md` § 4): the
@@ -681,6 +703,417 @@ class ModeDistribution:
 
 
 # --------------------------------------------------------------------- #
+#  The probe, at the frame rule's nodes (§ 6.11 § 4)                     #
+# --------------------------------------------------------------------- #
+
+#: THE PROBE RECORD'S DERIVED VALUES -- each written beside what it comes
+#: from by :func:`probe_derivations` and checked on read (`spectra.derived`,
+#: `engines/vibration.md` § 6.6, § 6.11 § 4).
+PROBE_DERIVED_KEYS = ("q_amu12_ang", "weights", "average_eh", "shift_eh",
+                      "marks")
+
+#: AN ORBITAL'S MARKS, the first that holds taken (§ 6.11 § 4): within the
+#: SCF's noise of a neighbour at the equilibrium; another orbital's partner
+#: at some node; its two outer sides apart by no more than the noise.  The
+#: rule is part of the file's definition, as the activity class's is.
+DEGENERATE, REORDERED, NOISE = "degenerate", "reordered", "noise"
+
+
+def probe_state(temperature_k: float) -> Dict[str, Any]:
+    """THE PROBE'S STATE as its record states it (§ 6.11 § 4): the thermal
+    state at ``temperature_k`` (0 K and up), in the shape a bound state's
+    record has (:meth:`ModeDistribution.to_record`) -- its chain's steps,
+    the temperature, given."""
+    t = checked_temperature_k(temperature_k)
+    return {"chain": thermal(temperature_k=t).to_record(),
+            "temperature_k": t, "temperature_from": GIVEN}
+
+
+def _probe_distribution(frequency_cm1: float,
+                        state: Mapping[str, Any]) -> Distribution:
+    """The distribution of ``Q`` (amu^1/2.Å) of the probe's ``state``
+    (:func:`probe_state`'s shape) on the oscillator of the frequency's
+    magnitude -- an imaginary mode's at the width ``|omega|`` gives -- by
+    the one binding (:func:`_placed`)."""
+    nu = abs(float(frequency_cm1))
+    chain = Chain.from_record(state["chain"])
+    placed = _placed(Oscillator(nu), zero_point_amplitude_amu12_ang(nu, False),
+                     chain, state.get("temperature_k"), GIVEN)
+    return placed[3]
+
+
+def probe_rule(frequency_cm1: float, state: Mapping[str, Any],
+               nodes: int) -> Tuple[np.ndarray, np.ndarray]:
+    """THE PROBE'S NODES AND WEIGHTS (§ 6.11 § 4): the Gauss rule of the
+    probe's ``state`` on the mode's oscillator (:func:`_probe_distribution`),
+    ``nodes`` of them, exactly symmetric in the set's order ``(0, +q1, -q1,
+    ...)`` -- a mode's own frames' rule (:func:`_rule_of`): ``(q, weights)``,
+    ``q`` in amu^1/2.Å."""
+    q, weights, _ = _rule_of(_probe_distribution(frequency_cm1, state), nodes)
+    return q, weights
+
+
+def probe_average(weights, mo_energies) -> Tuple[List[Optional[float]],
+                                                 List[Optional[float]]]:
+    """EACH ORBITAL'S AVERAGE OVER THE STATE AND ITS SHIFT (§ 6.11 § 4):
+    ``sum_j w_j eps_j`` over the nodes, and that less node 0's -- for each
+    orbital of the window, ``None`` where a node states no energy for it (a
+    node whose SCF failed states none)."""
+    rows = list(mo_energies)
+    w = np.asarray(weights, dtype=float)
+    average: List[Optional[float]] = []
+    shift: List[Optional[float]] = []
+    for i in range(len(rows[0])):
+        column = [None if row is None else row[i] for row in rows]
+        if any(e is None for e in column):
+            average.append(None)
+            shift.append(None)
+            continue
+        mean = float(np.dot(w, np.asarray(column, dtype=float)))
+        average.append(mean)
+        shift.append(mean - float(column[0]))
+    return average, shift
+
+
+def probe_marks(mo_energies, orbital_match, noise: float
+                ) -> List[Optional[str]]:
+    """EACH ORBITAL'S MARK (§ 6.11 § 4), the first that holds:
+    :data:`DEGENERATE` -- at the equilibrium (node 0) within ``noise`` of a
+    neighbour in the window; :data:`REORDERED` -- at a node whose SCF
+    converged its partner (``orbital_match``) is not itself; :data:`NOISE`
+    -- its two outer nodes' energies apart by no more than ``noise``; else
+    ``None``.  ``noise`` the SCF's orbital-gradient tolerance."""
+    rows = list(mo_energies)
+    matches = list(orbital_match)
+    noise = float(noise)
+    equilibrium = rows[0]
+    n = len(equilibrium)
+    outer = (rows[-2], rows[-1]) if len(rows) >= 3 else (None, None)
+    marks: List[Optional[str]] = []
+    for i in range(n):
+        e0 = equilibrium[i]
+        beside = [equilibrium[k] for k in (i - 1, i + 1)
+                  if 0 <= k < n and equilibrium[k] is not None]
+        if e0 is not None and any(abs(float(e0) - float(e)) <= noise
+                                  for e in beside):
+            marks.append(DEGENERATE)
+        elif any(row is not None and row[i] != i for row in matches[1:]):
+            marks.append(REORDERED)
+        elif (outer[0] is not None and outer[1] is not None
+              and outer[0][i] is not None and outer[1][i] is not None
+              and abs(float(outer[0][i]) - float(outer[1][i])) <= noise):
+            marks.append(NOISE)
+        else:
+            marks.append(None)
+    return marks
+
+
+def probe_derivations(frequency_cm1: float, block: Mapping[str, Any]
+                      ) -> Dict[str, Any]:
+    """THE PROBE RECORD'S DERIVED VALUES (:data:`PROBE_DERIVED_KEYS`), from
+    what the block states -- its state, its node count (one SCF energy a
+    node), its node energies, matches and orbital-gradient tolerance -- and
+    the mode's frequency: what the writer states beside them and the reader
+    checks (`spectra.derived`)."""
+    q, weights = probe_rule(frequency_cm1, block["state"],
+                            len(block["scf_energies_eh"]))
+    average, shift = probe_average(weights, block["mo_energies_eh"])
+    return {"q_amu12_ang": [float(x) for x in q],
+            "weights": [float(x) for x in weights],
+            "average_eh": average, "shift_eh": shift,
+            "marks": probe_marks(block["mo_energies_eh"],
+                                 block["orbital_match"],
+                                 block["scf_conv_tol_grad"])}
+
+
+def _node_words(node: int, n_nodes: int) -> str:
+    """A node as a message says it, from 1: ``node 3 of 3``."""
+    return f"node {int(node) + 1} of {int(n_nodes)}"
+
+
+@dataclass(frozen=True, eq=False)
+class Probe:
+    """A PROBED MODE'S PROBE (`engines/vibration.md` § 6.11 § 4; ``m.probe``,
+    § 6.11 § 6): ``mode`` the mode, ``record`` its result's block as the
+    reader read it -- the state, the nodes and weights, the energies and
+    matches at each node, the average and shift the weights give, the marks,
+    the tolerances -- ``weights`` the weights in hand, the record's or
+    re-weighted (:meth:`at`), ``temperature_k`` theirs, ``reweighted`` what
+    re-weighting said.  Each number is a view, computed here: per orbital
+    of the window a list, ``None`` where § 4 says so -- a node that failed,
+    a mark (the average and shift too beside `degenerate` or `reordered`,
+    which the record keeps), an imaginary mode."""
+    mode: "Mode" = field(repr=False)
+    record: Mapping[str, Any] = field(repr=False)
+    weights: np.ndarray = field(repr=False)
+    temperature_k: Optional[float] = None
+    reweighted: Tuple[str, ...] = field(default=(), repr=False)
+
+    @classmethod
+    def of(cls, mode: "Mode", record: Mapping[str, Any]) -> "Probe":
+        """The probe of ``mode`` its result's ``record`` states, at the
+        record's own weights and temperature."""
+        return cls(mode, dict(record),
+                   np.asarray(record["weights"], dtype=float),
+                   record["state"].get("temperature_k"))
+
+    # ---- the record's own values -----------------------------------------
+    @property
+    def state(self) -> Mapping[str, Any]:
+        return self.record["state"]
+
+    @property
+    def q_amu12_ang(self) -> List[float]:
+        return list(self.record["q_amu12_ang"])
+
+    @property
+    def mo_energies_eh(self) -> List[Optional[List[Optional[float]]]]:
+        return list(self.record["mo_energies_eh"])
+
+    @property
+    def scf_energies_eh(self) -> List[Optional[float]]:
+        return list(self.record["scf_energies_eh"])
+
+    @property
+    def orbital_match(self) -> List[Optional[List[Optional[int]]]]:
+        return list(self.record["orbital_match"])
+
+    @property
+    def homo_index_in_window(self) -> int:
+        return int(self.record["homo_index_in_window"])
+
+    @property
+    def marks(self) -> List[Optional[str]]:
+        return list(self.record["marks"])
+
+    @property
+    def scf_conv_tol(self) -> float:
+        return float(self.record["scf_conv_tol"])
+
+    @property
+    def scf_conv_tol_grad(self) -> float:
+        return float(self.record["scf_conv_tol_grad"])
+
+    # ---- what the views stand on ------------------------------------------
+    @property
+    def _frequency(self) -> float:
+        """The magnitude of the frequency the nodes are of -- the result's
+        own (:attr:`Mode.result_frequency_cm1` where scaled)."""
+        return abs(float(self.mode._result_frequency))
+
+    @property
+    def _imaginary(self) -> bool:
+        return bool(self.mode.has_imag) or self.mode._result_frequency < 0.0
+
+    @property
+    def _failed(self) -> List[int]:
+        return [j for j, e in enumerate(self.scf_energies_eh) if e is None]
+
+    @property
+    def _q(self) -> np.ndarray:
+        return np.asarray(self.q_amu12_ang, dtype=float)
+
+    @property
+    def _window(self) -> int:
+        return len(self.mo_energies_eh[0])
+
+    def _per_orbital(self, value, *, unmarked: Tuple[Optional[str], ...]
+                     ) -> List[Optional[float]]:
+        """``value(i)`` for each orbital of the window, ``None`` where a node
+        failed or the orbital's mark is not one of ``unmarked``."""
+        if self._failed:
+            return [None] * self._window
+        marks = self.marks
+        return [value(i) if marks[i] in unmarked else None
+                for i in range(self._window)]
+
+    def _outer(self, i: int) -> Tuple[float, float, float]:
+        """Orbital ``i``'s energy at the two outer nodes and at node 0."""
+        rows = self.mo_energies_eh
+        return float(rows[-2][i]), float(rows[-1][i]), float(rows[0][i])
+
+    # ---- the levels' average and shift at the weights in hand -------------
+    def _one_level(self, values) -> List[Optional[float]]:
+        """``values`` per orbital, blank beside `degenerate` or `reordered`:
+        the window's energies there are not one level's across the nodes
+        (§ 6.11 § 4; the user, 2026-11-27: *"Blank in views, keep
+        record"* -- :attr:`record` keeps what the weights give)."""
+        return [None if mark in (DEGENERATE, REORDERED) else value
+                for value, mark in zip(values, self.marks)]
+
+    @property
+    def average_eh(self) -> List[Optional[float]]:
+        """Each orbital's average over the state, ``sum_j w_j eps_j``, at the
+        weights in hand (:func:`probe_average`) -- blank beside
+        `degenerate` or `reordered`."""
+        return self._one_level(probe_average(self.weights,
+                                             self.mo_energies_eh)[0])
+
+    @property
+    def shift_eh(self) -> List[Optional[float]]:
+        """Each orbital's average less its equilibrium energy -- blank
+        beside `degenerate` or `reordered`."""
+        return self._one_level(probe_average(self.weights,
+                                             self.mo_energies_eh)[1])
+
+    # ---- the views across the nodes ---------------------------------------
+    @property
+    def slope_eh_per_amu12_ang(self) -> List[Optional[float]]:
+        """Each orbital's slope, the state's regression ``sum_j w_j eps_j
+        Q_j / sum_j w_j Q_j^2`` -- three nodes ``(eps+ - eps-) / 2 Q+`` --
+        Eh/(amu^1/2.Å); ``None`` beside ``degenerate`` or ``reordered``."""
+        q, w = self._q, self.weights
+        spread = float(np.dot(w, q * q))
+        if len(q) < 2 or spread == 0.0:
+            return [None] * self._window
+        rows = self.mo_energies_eh
+        return self._per_orbital(
+            lambda i: float(np.dot(w, q * np.asarray(
+                [row[i] for row in rows], dtype=float))) / spread,
+            unmarked=(None, NOISE))
+
+    @property
+    def coupling_eh(self) -> List[Optional[float]]:
+        """``g = slope Q_zp``, Eh, per orbital; ``None`` for an imaginary
+        mode, which has no zero-point amplitude."""
+        q_zp = zero_point_amplitude_amu12_ang(self._frequency, False)
+        return [None if s is None or self._imaginary else s * q_zp
+                for s in self.slope_eh_per_amu12_ang]
+
+    @property
+    def huang_rhys(self) -> List[Optional[float]]:
+        """``S = (g / hbar omega)^2`` per orbital; ``None`` for an imaginary
+        mode."""
+        quantum = self._frequency / HARTREE_CM1
+        return [None if g is None else (g / quantum) ** 2
+                for g in self.coupling_eh]
+
+    @property
+    def even_share(self) -> List[Optional[float]]:
+        """``|eps+ + eps- - 2 eps0| / |eps+ - eps-|`` at the outer pair, per
+        orbital; ``None`` beside any mark -- under ``noise`` the two sides do
+        not differ beyond the SCF's noise."""
+        if len(self._q) < 3:
+            return [None] * self._window
+
+        def share(i):
+            plus, minus, zero = self._outer(i)
+            return abs(plus + minus - 2.0 * zero) / abs(plus - minus)
+        return self._per_orbital(share, unmarked=(None,))
+
+    @property
+    def noise_ratio(self) -> List[Optional[float]]:
+        """``|eps+ - eps-|`` at the outer pair over the SCF's orbital-
+        gradient tolerance, per orbital; ``None`` where a node failed."""
+        if len(self._q) < 3 or self._failed:
+            return [None] * self._window
+        tol = self.scf_conv_tol_grad
+        return [abs(self._outer(i)[0] - self._outer(i)[1]) / tol
+                for i in range(self._window)]
+
+    @property
+    def harmonicity(self) -> Optional[float]:
+        """``(sum_j w_j E_j - E_0) / (omega^2 <Q^2> / 2)``, ``<Q^2> = sum_j w_j
+        Q_j^2`` and ``omega^2 / 2 = hbar omega / 4 Q_zp^2`` -- 1 for a
+        harmonic mode; ``None`` for an imaginary mode or where a node
+        failed."""
+        if self._imaginary or self._failed or len(self._q) < 2:
+            return None
+        e = np.asarray(self.scf_energies_eh, dtype=float)
+        q, w = self._q, self.weights
+        q_zp = zero_point_amplitude_amu12_ang(self._frequency, False)
+        harmonic = (self._frequency / HARTREE_CM1) * float(np.dot(w, q * q)) \
+            / (4.0 * q_zp * q_zp)
+        return (float(np.dot(w, e)) - float(e[0])) / harmonic
+
+    @property
+    def largest_move_ang(self) -> float:
+        """The largest single atom's move at the outer nodes, Å -- the
+        outermost-move rule, ``|q_out| max_A |L_A|``."""
+        return float(np.abs(self._q).max()) * largest_move(
+            self.mode.eigenvector_canonical_over_atoms_per_amu12)
+
+    @property
+    def gap_eh(self) -> Optional[float]:
+        """The equilibrium's LUMO less its HOMO, Eh; ``None`` where the
+        window holds no LUMO."""
+        h, eq = self.homo_index_in_window, self.mo_energies_eh[0]
+        if h + 1 >= len(eq) or eq[h] is None or eq[h + 1] is None:
+            return None
+        return float(eq[h + 1]) - float(eq[h])
+
+    @property
+    def gap_shift_eh(self) -> Optional[float]:
+        """The gap's shift over the state, the LUMO's less the HOMO's --
+        blank beside a `degenerate` or `reordered` HOMO or LUMO
+        (:attr:`shift_eh`)."""
+        h, shift = self.homo_index_in_window, self.shift_eh
+        if h + 1 >= len(shift) or shift[h] is None or shift[h + 1] is None:
+            return None
+        return float(shift[h + 1]) - float(shift[h])
+
+    @property
+    def said(self) -> Tuple[str, ...]:
+        """What is said of the numbers: an imaginary mode, a node whose SCF
+        failed, what re-weighting said, and the largest move at the outer
+        nodes."""
+        out: List[str] = []
+        if self._imaginary:
+            out.append(f"mode {self.mode.index_1based} is imaginary "
+                       f"({self.mode._result_frequency:.1f} cm-1): probed at "
+                       f"the width its magnitude gives, with no coupling, "
+                       f"Huang-Rhys factor or harmonicity")
+        n = len(self._q)
+        for j in self._failed:
+            out.append(f"{_node_words(j, n)} (q = {self._q[j]:+.4f} "
+                       f"amu^1/2·Å): its SCF failed (did not converge, or "
+                       f"stopped) -- no number "
+                       f"across the nodes")
+        out.extend(self.reweighted)
+        out.append(f"the outer nodes move an atom by at most "
+                   f"{self.largest_move_ang:.4f} Å")
+        return tuple(out)
+
+    def at(self, temperature_k: float) -> "Probe":
+        """THE PROBE RE-WEIGHTED for the thermal state at ``temperature_k``
+        (§ 6.11 § 4, § 9 item 6): the weights the toolkit's one rule gives
+        frames placed elsewhere (:func:`weights_of_frames`) at the same
+        nodes, and what it says of them -- the share of that state's motion
+        beyond the outer nodes; for three, that they are blind to its
+        shape."""
+        state = probe_state(temperature_k)
+        found = weights_of_frames(
+            _probe_distribution(self._frequency, state), self._q)
+        return replace(self, weights=np.asarray(found.weights, dtype=float),
+                       temperature_k=float(state["temperature_k"]),
+                       reweighted=tuple(found.said))
+
+    def to_wire(self) -> Dict[str, Any]:
+        """The probe as the load door serves it (`web/spectra.md` § 3.1):
+        the record's values and every view, each a JSON value."""
+        return {
+            "temperature_k": self.temperature_k,
+            "state": dict(self.state),
+            "q_amu12_ang": self.q_amu12_ang,
+            "weights": [float(w) for w in self.weights],
+            "mo_energies_eh": self.mo_energies_eh,
+            "scf_energies_eh": self.scf_energies_eh,
+            "orbital_match": self.orbital_match,
+            "homo_index_in_window": self.homo_index_in_window,
+            "marks": self.marks,
+            "average_eh": self.average_eh, "shift_eh": self.shift_eh,
+            "slope_eh_per_amu12_ang": self.slope_eh_per_amu12_ang,
+            "coupling_eh": self.coupling_eh, "huang_rhys": self.huang_rhys,
+            "even_share": self.even_share, "noise_ratio": self.noise_ratio,
+            "harmonicity": self.harmonicity,
+            "largest_move_ang": self.largest_move_ang,
+            "gap_eh": self.gap_eh, "gap_shift_eh": self.gap_shift_eh,
+            "scf_conv_tol": self.scf_conv_tol,
+            "scf_conv_tol_grad": self.scf_conv_tol_grad,
+            "said": list(self.said)}
+
+
+# --------------------------------------------------------------------- #
 #  One mode, as a person computes with it (§ 6.11 § 6)                  #
 # --------------------------------------------------------------------- #
 
@@ -699,7 +1132,9 @@ class Mode:
     labels and regions, the modes' temperatures -- each reached here by its
     name; ``result_frequency_cm1`` the result's own frequency where the
     mode's is scaled or replaced (``None`` otherwise).  The pattern over
-    every atom is :attr:`eigenvector_canonical_over_atoms_per_amu12`."""
+    every atom is :attr:`eigenvector_canonical_over_atoms_per_amu12`;
+    ``probe_record`` the PySCF probe's block its result states (§ 6.11 § 4),
+    ``None`` for a mode the run did not probe -- :attr:`probe` its view."""
     index_1based: int
     frequency_cm1: float
     has_imag: bool
@@ -708,6 +1143,9 @@ class Mode:
     vibration: Optional["Vibration"] = field(default=None, repr=False,
                                              compare=False)
     result_frequency_cm1: Optional[float] = field(default=None, repr=False)
+    probe_record: Optional[Mapping[str, Any]] = field(default=None,
+                                                      repr=False,
+                                                      compare=False)
 
     # ---- what every mode shares, its vibration's -------------------------
     @property
@@ -856,6 +1294,14 @@ class Mode:
         ``Q = sum_A m_A L_A . u_A`` (§ 2b.2)."""
         return coordinate_of(self.eigenvector_canonical_over_atoms_per_amu12,
                              self.masses_amu, moves_ang)
+
+    @property
+    def probe(self) -> Optional[Probe]:
+        """The mode's probe (:class:`Probe`, § 6.11 § 4) -- the record's
+        values and the views across its nodes; ``None`` for a mode the run
+        did not probe."""
+        return (None if self.probe_record is None
+                else Probe.of(self, self.probe_record))
 
     @property
     def oscillator(self) -> Oscillator:
@@ -1614,7 +2060,10 @@ def _frequency_words(mode: "Mode") -> str:
             f"result's {mode.result_frequency_cm1:g}")
 
 
-__all__ = ["DEFAULT_NODES", "thermal_spread_of", "THERMAL_ROW_KEYS", "thermal_row",
+__all__ = ["DEFAULT_NODES", "OFFERED_NODES", "PROBE_DERIVED_KEYS",
+           "DEGENERATE", "REORDERED", "NOISE", "probe_state", "probe_rule",
+           "probe_average", "probe_marks", "probe_derivations", "Probe",
+           "thermal_spread_of", "THERMAL_ROW_KEYS", "thermal_row",
            "mode_over_atoms", "largest_move", "q_for_largest_move",
            "atom_moves", "displaced", "coordinate_of",
            "zero_point_displacement_ang", "largest_zero_point_move_ang",

@@ -264,6 +264,26 @@ def _map_raman(vals: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
     return out, said
 
 
+def _probe_from_push(vals: Dict[str, Any], config_cls
+                     ) -> Tuple[Dict[str, Any], List[str]]:
+    """A PySCF vibration described before 2.89.0, its probe stated in
+    today's items (`engines/vibration.md` § 6.11 § 9 item 1): the probe's
+    temperature the thermochemistry's -- the description's ``temperature_K``,
+    or that item's default where the file left it blank -- and its nodes
+    the rule's default, three; each said.  Its fixed push is taken out at
+    any value (`template.RETIRED_ITEMS`)."""
+    from ..vibration import DEFAULT_NODES
+    stated = vals.get("temperature_K")
+    temperature = (float(stated) if stated is not None
+                   else float(config_cls().temperature_K))
+    return ({"probe_temperature_K": temperature,
+             "probe_nodes": DEFAULT_NODES},
+            [f"probe_temperature_K = {temperature:g} (the thermochemistry's "
+             f"temperature, temperature_K"
+             + ("" if stated is not None else ", its default") + ")",
+             f"probe_nodes = {DEFAULT_NODES} (the rule's default)"])
+
+
 #: WHAT A KEY AN OLDER FILE LEFT OUT MEANT, with the rule it was written
 #: before -- written in its place, so the rewritten file says what the old
 #: one said by omitting it, and the old file kept as that rule's
@@ -1865,6 +1885,13 @@ def _decide_template(rec: "_Records", task):
         switches, switches_said = _map_raman(vals)
         kept.update(switches)
         said += switches_said
+    # A PySCF VIBRATION'S PROBE, AT THE NODES SINCE 2.89.0: its temperature
+    # stated from the thermochemistry's, never left to a default nobody saw
+    # (`engines/vibration.md` § 6.11 § 9 item 1).
+    if any(it.name == _T.PROBE_PUSH for it in retired):
+        probe, probe_said = _probe_from_push(vals, config_cls)
+        kept.update(probe)
+        said += probe_said
     said += ([f"{', '.join(run_items)} taken out -- a run setting is the job "
               f"request's, never the template's ({_RUN_OUT})"]
              if run_items else [])

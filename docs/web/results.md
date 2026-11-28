@@ -190,7 +190,7 @@ the draw: `data()` — `{curves, marks}` — and, for a sealed drawing,
 `picture(fmt)`. A spectrum drawn as mode positions alone draws no value:
 its Data has nothing to export, and says so; the modes' frequencies are the
 vibration's data file's. The orbital levels draw each level as dashes, so they hand
-each orbital across −A, 0, +A; SpectrumChart is sealed, so the spectra page
+each orbital across the probe's nodes, along the coordinate; SpectrumChart is sealed, so the spectra page
 installs the button in the wrap around it (`chartExport.install`) and reads the
 module's one read-only door, `drawn()` ([`spectrumchart.md`](?doc=web/spectrumchart.md)
 § 8.3), tagging each lane's bands and curve by the lane it declared.

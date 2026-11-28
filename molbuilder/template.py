@@ -3264,6 +3264,11 @@ def retired(name: str, engine: Optional[str] = None) -> Optional[Retired]:
         else None
 
 
+#: THE PySCF PROBE'S FIXED PUSH before 2.89.0 -- retired; `jobset migrate`
+#: states the probe's temperature from the thermochemistry's.
+PROBE_PUSH = "displacement_amplitude_ang"
+
+
 #: SIESTA's Raman selector before 2.45.0 -- retired on SIESTA alone, PySCF's
 #: orbital probe keeping it; `jobset migrate` states Compute Raman and Raman
 #: for from it (`engines/vibration.md` § 5.11 § 9).
@@ -3322,6 +3327,18 @@ RETIRED_ITEMS: Dict[str, Retired] = {
                     "Raman and Raman for say since 2.45.0: state them on "
                     "the stage instead, or take the override out"))
        for name in SIESTA_RAMAN_SELECTOR},
+    # THE PROBE'S FIXED PUSH (`engines/vibration.md` § 6.11 § 4, § 9 item 1):
+    # no push runs as before once the probe computes at the nodes of each
+    # mode's thermal state, so the person's decision (2026-11-22) takes it
+    # out at any value, `jobset migrate` stating the probe's temperature
+    # from the thermochemistry's (`migrate._probe_from_push`).
+    PROBE_PUSH: Retired(
+        "the orbital probe's fixed push, retired at 2.89.0: the probe "
+        "computes at the nodes of each mode's thermal state at "
+        "probe_temperature_K, probe_nodes of them",
+        "2.89.0", runs=None,
+        migrate_does=("takes it out and states probe_temperature_K from "
+                      "the thermochemistry's temperature_K")),
 }
 
 

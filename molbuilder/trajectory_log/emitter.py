@@ -161,9 +161,9 @@ class MolwatchEmitter:
     block per opt step.  See molbuilder spec for the format.
     """
 
-    def __init__(self, path, job, mol, runtime_info=None,
-                 convergence_targets=None, frozen_atoms=(),
-                 atom_index_map=None):
+    def __init__(self, path, job, mol, *, engine, generator,
+                 runtime_info=None, convergence_targets=None,
+                 frozen_atoms=(), atom_index_map=None):
         self.path = path
         self.job  = job
         self._scf_buf   = []   # per-cycle dicts; reset each new SCF
@@ -174,14 +174,10 @@ class MolwatchEmitter:
         # too (:func:`header_and_preview`).
         with open(self.path, 'w') as fh:
             fh.write(header_and_preview(
-                # THE ENGINE AND THE WRITER the header names stay typed here,
-                # not handed in by the deck: the deck's line that builds this
-                # emitter is a statement its same-calculation reading
-                # compares (`pyscf.script_input`), so a word added there
-                # would refuse a launched PySCF stage prepared again
-                # (`execution/job-request.md` § 5).  Only PySCF's decks
-                # build it.
-                job=job, engine="pyscf", generator="molbuilder/pyscf_input",
+                # THE ENGINE AND THE WRITER the header names are the deck's,
+                # told by the line that builds this emitter
+                # (`engines/pyscf.md` § 4), as prep's seed is told them.
+                job=job, engine=engine, generator=generator,
                 elements=[mol.atom_symbol(i) for i in range(mol.natm)],
                 coords_ang=mol.atom_coords(unit='Ang'),
                 frozen_atoms=frozen_atoms, runtime_info=runtime_info,

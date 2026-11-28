@@ -33,7 +33,7 @@ import xarray as xr
 | name | answers |
 |---|---|
 | `read_spectra_data(path)` | `<label>.spectra.nc`: the whole result as data, and its atom index map |
-| `vibration(path)` | the vibration run's folder, or its result file (`.spectra.json` or `.spectra.nc`): the result's modes to compute with: the values the record stores of each — the zero-point amplitude and displacement, the largest zero-point move, each free atom's share of the motion and its sums by element, label or region, Gaussian's reduced mass and force constant, the spread and mean quanta at the file's temperatures — each atom's move for a coordinate and back, a mode's states and their frames, the mode at another frequency (§ 2a) |
+| `vibration(path)` | the vibration run's folder, or its result file (`.spectra.json` or `.spectra.nc`): the result's modes to compute with: the values the record stores of each — the zero-point amplitude and displacement, the largest zero-point move, each free atom's share of the motion and its sums by element, label or region, Gaussian's reduced mass and force constant, the spread and mean quanta at the file's temperatures — each atom's move for a coordinate and back, a mode's states and their frames, the mode at another frequency (§ 2a); and a PySCF mode's probe, `m.probe` (§ 4) |
 | `infrared_view(path, direction=, partition=)` | the infrared the spectrum viewer draws |
 | `raman_view(path, laser_nm=, broaden_ev=)` | a SIESTA vibration's Raman at a laser |
 | `read_optical_data(path)` | `<label>.optical.nc`: the optical calls, each frame's ε₂ |
@@ -238,6 +238,36 @@ All in hartree, as the file's units say. `data["equilibrium"]` holds
 `scf_energy_eh`, `mo_energies_eh` and `homo_idx` where the engine reported them: a
 PySCF run's. On SIESTA all three are `None`, and the relaxation's energy is
 `read_steps`' (§ 7).
+
+**The orbitals along a mode — PySCF's probe.** A mode the probe ran on has
+`m.probe` (`None` otherwise): the levels at the nodes of the mode's thermal
+state, their average over it and its shift, and the views across the nodes —
+the slope, the coupling $g$, the Huang–Rhys factor, the even part's share, the
+noise ratio, the mode's harmonicity — each orbital's mark beside them, and
+the node energies re-weighted for another temperature
+([`engines/vibration.md`](?doc=engines/vibration.md) § 6.11 § 4, § 6). A
+real water vibration, B3LYP/def2-SVP, its bend probed at 300 K:
+
+```python
+>>> v = vibration("waterprobe2.spectra.json")
+>>> p = v.mode(1).probe
+>>> p.temperature_k, [round(q, 4) for q in p.q_amu12_ang]
+(300.0, [0.0, 0.1757, -0.1757])
+>>> h = p.homo_index_in_window
+>>> round(p.shift_eh[h] * 27211.386, 2), round(p.coupling_eh[h] * 27211.386, 1), round(p.harmonicity, 3)
+(8.19, 68.7, 0.997)
+>>> p.marks[h], p.marks[h + 3]
+(None, 'reordered')
+>>> c = p.at(temperature_k=77.0)
+>>> round(c.shift_eh[h] * 27211.386, 2), c.said[0]
+(8.18, "8.31 % of the state's motion lies beyond the outermost frames (q from -0.1757 to +0.1757 amu^1/2·Å), averaged by values the frames never computed")
+```
+
+The HOMO's shift over the 300 K state is 8.19 meV and its coupling 68.7 meV;
+the bend costs the harmonic energy at its nodes (0.997); LUMO+2 is marked
+`reordered` — it crosses another level between the nodes — so its slope,
+shift and average are `None` in the views, kept in the record
+(`p.record["shift_eh"]`).
 
 ## 5. The charges, on your atoms
 

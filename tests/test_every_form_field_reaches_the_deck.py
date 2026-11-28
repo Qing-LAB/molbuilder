@@ -73,7 +73,8 @@ _ENABLING = {
         "solvent_method":        [{"solvent": "water", "compute_raman": False,
                                    "compute_ir": False}],
         # What each enters nothing without (`active_when`).
-        "displacement_amplitude_ang": [{"es_mode_selection": "all"}],
+        "probe_temperature_K":   [{"es_mode_selection": "all"}],
+        "probe_nodes":           [{"es_mode_selection": "all"}],
         "es_n_homo_below":       [{"es_mode_selection": "all"}],
         "es_n_lumo_above":       [{"es_mode_selection": "all"}],
         "freq_min_cm1":          [{"es_mode_selection": "all"}],
